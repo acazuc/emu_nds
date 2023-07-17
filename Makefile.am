@@ -23,7 +23,7 @@ libemu_nds_libretro_la_SOURCES = $(libemu_nds_la_SOURCES) \
 
 libemu_nds_libretro_la_LDFLAGS = -Wl,--version-script=$(srcdir)/src/libretro/libretro.T
 
-AM_CFLAGS = -Wall -Wextra -Wshadow
+AM_CFLAGS = -Wall -Wextra -Wshadow -flto=auto
 
 pkgincludedir = $(includedir)/emu_nds
 pkginclude_HEADERS = src/nds.h
