@@ -958,7 +958,6 @@ THUMB_INSTR(blx_off,
 	uint32_t pc = cpu_get_reg(cpu, CPU_REG_PC);
 	uint32_t lr = (pc + 2) | 1;
 	int32_t dst = (cpu_get_reg(cpu, CPU_REG_LR) & ~1) + (nn << 1);
-	dst &= 0x7FFFFF;
 	cpu_set_reg(cpu, CPU_REG_PC, dst);
 	cpu_set_reg(cpu, CPU_REG_LR, lr);
 	CPU_SET_FLAG_T(cpu, 0);

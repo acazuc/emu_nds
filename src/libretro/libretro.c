@@ -249,9 +249,9 @@ bool retro_load_game(const struct retro_game_info *info)
 		log_cb(RETRO_LOG_ERROR, "failed to load arm7_bios.bin\n");
 		goto err;
 	}
-	if (!load_bios("bios7.bin", arm7_bios, sizeof(arm7_bios)))
+	if (!load_bios("bios9.bin", arm9_bios, sizeof(arm9_bios)))
 	{
-		log_cb(RETRO_LOG_ERROR, "failed to load arm7_bios.bin\n");
+		log_cb(RETRO_LOG_ERROR, "failed to load arm9_bios.bin\n");
 		goto err;
 	}
 	if (!load_bios("firmware.bin", firmware, sizeof(firmware)))

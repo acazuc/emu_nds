@@ -60,8 +60,16 @@ static void nds_cycles(nds_t *nds, uint32_t cycles)
 	{
 		nds->cycle++;
 		if (nds->cycle & 1)
-			cpu_cycle(nds->arm7);
-		cpu_cycle(nds->arm9);
+		{
+			if (!nds->arm7->instr_delay)
+				cpu_cycle(nds->arm7);
+			else
+				nds->arm7->instr_delay--;
+		}
+		if (!nds->arm9->instr_delay)
+			cpu_cycle(nds->arm9);
+		else
+			nds->arm9->instr_delay--;
 		apu_cycle(nds->apu);
 	}
 }

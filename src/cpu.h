@@ -85,6 +85,23 @@ enum cpu_state
 	CPU_STATE_STOP,
 };
 
+struct cp15
+{
+	uint32_t midr;
+	uint32_t ctr;
+	uint32_t tcmsr;
+	uint32_t cr;
+	uint8_t dpr;
+	uint8_t ipr;
+	uint8_t wdpr;
+	uint16_t apdpr;
+	uint16_t apipr;
+	uint32_t eapdpr;
+	uint32_t eapipr;
+	uint32_t pudr[8];
+	uint32_t puir[8];
+};
+
 typedef struct cpu
 {
 	uint8_t  (*get8 )(mem_t *mem, uint32_t addr);
@@ -94,6 +111,7 @@ typedef struct cpu
 	void (*set16)(mem_t *mem, uint32_t addr, uint16_t val);
 	void (*set32)(mem_t *mem, uint32_t addr, uint32_t val);
 	struct cpu_regs regs;
+	struct cp15 cp15;
 	mem_t *mem;
 	const struct cpu_instr *instr;
 	uint32_t last_bios_decode;
@@ -109,6 +127,9 @@ void cpu_del(cpu_t *cpu);
 
 void cpu_cycle(cpu_t *cpu);
 void cpu_update_mode(cpu_t *cpu);
+
+uint32_t cp15_read(cpu_t *cpu, uint8_t cn, uint8_t cm, uint8_t cp);
+void cp15_write(cpu_t *cpu, uint8_t cn, uint8_t cm, uint8_t cp, uint32_t v);
 
 static inline uint32_t cpu_get_reg(cpu_t *cpu, uint32_t reg)
 {

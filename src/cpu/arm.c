@@ -1325,22 +1325,52 @@ ARM_INSTR(cdp,
 
 ARM_INSTR(mcr,
 {
-	(void)cpu;
-	assert(!"unimp");
+	uint8_t opc = (cpu->instr_opcode >> 21) & 0x7;
+	uint8_t cn  = (cpu->instr_opcode >> 16) & 0xF;
+	uint8_t rd  = (cpu->instr_opcode >> 12) & 0xF;
+	uint8_t pn  = (cpu->instr_opcode >>  8) & 0xF;
+	uint8_t cp  = (cpu->instr_opcode >>  5) & 0x7;
+	uint8_t cm  = (cpu->instr_opcode >>  0) & 0xF;
+	assert(cpu->arm9);
+	assert(pn == 15);
+	assert(opc == 0);
+	cp15_write(cpu, cn, cm, cp, cpu_get_reg(cpu, rd));
+	cpu_inc_pc(cpu, 4);
+	cpu->instr_delay += 2;
 },
 {
-	(void)cpu;
-	snprintf(data, size, "mcr");
+	uint8_t opc = (cpu->instr_opcode >> 21) & 0x7;
+	uint8_t cn  = (cpu->instr_opcode >> 16) & 0xF;
+	uint8_t rd  = (cpu->instr_opcode >> 12) & 0xF;
+	uint8_t pn  = (cpu->instr_opcode >>  8) & 0xF;
+	uint8_t cp  = (cpu->instr_opcode >>  5) & 0x7;
+	uint8_t cm  = (cpu->instr_opcode >>  0) & 0xF;
+	snprintf(data, size, "mcr p%d, %d, r%d, cr%d, cr%d, %d", pn, opc, rd, cn, cm, cp);
 });
 
 ARM_INSTR(mrc,
 {
-	(void)cpu;
-	assert(!"unimp");
+	uint8_t opc = (cpu->instr_opcode >> 21) & 0x7;
+	uint8_t cn  = (cpu->instr_opcode >> 16) & 0xF;
+	uint8_t rd  = (cpu->instr_opcode >> 12) & 0xF;
+	uint8_t pn  = (cpu->instr_opcode >>  8) & 0xF;
+	uint8_t cp  = (cpu->instr_opcode >>  5) & 0x7;
+	uint8_t cm  = (cpu->instr_opcode >>  0) & 0xF;
+	assert(cpu->arm9);
+	assert(pn == 15);
+	assert(opc == 0);
+	cpu_set_reg(cpu, rd, cp15_read(cpu, cn, cm, cp));
+	cpu_inc_pc(cpu, 4);
+	cpu->instr_delay += 2;
 },
 {
-	(void)cpu;
-	snprintf(data, size, "mrc");
+	uint8_t opc = (cpu->instr_opcode >> 21) & 0x7;
+	uint8_t cn  = (cpu->instr_opcode >> 16) & 0xF;
+	uint8_t rd  = (cpu->instr_opcode >> 12) & 0xF;
+	uint8_t pn  = (cpu->instr_opcode >>  8) & 0xF;
+	uint8_t cp  = (cpu->instr_opcode >>  5) & 0x7;
+	uint8_t cm  = (cpu->instr_opcode >>  0) & 0xF;
+	snprintf(data, size, "mrc p%d, %d, r%d, cr%d, cr%d, %d", pn, opc, rd, cn, cm, cp);
 });
 
 ARM_INSTR(swi,
