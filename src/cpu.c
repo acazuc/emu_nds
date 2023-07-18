@@ -324,7 +324,10 @@ void cpu_update_mode(cpu_t *cpu)
 
 uint32_t cp15_read(cpu_t *cpu, uint8_t cn, uint8_t cm, uint8_t cp)
 {
-	switch ((cm << 8) | (cn << 4) | cp)
+#if 1
+	printf("cp15[%" PRIx8 "%" PRIx8 "%" PRIx8 "] read\n", cn, cm, cp);
+#endif
+	switch ((cn << 8) | (cm << 4) | cp)
 	{
 		case 0x000:
 			return cpu->cp15.midr;
@@ -380,18 +383,29 @@ uint32_t cp15_read(cpu_t *cpu, uint8_t cn, uint8_t cm, uint8_t cp)
 			return cpu->cp15.puir[6];
 		case 0x671:
 			return cpu->cp15.puir[7];
+		case 0x900:
+			return cpu->cp15.dcl;
+		case 0x901:
+			return cpu->cp15.icl;
+		case 0x910:
+			return cpu->cp15.dtcm;
+		case 0x911:
+			return cpu->cp15.itcm;
 		default:
-			printf("unknown cp15 read reg: %x / %x / %x\n", cn, cm, cp);
+			printf("unknown cp15 read reg: %" PRIx8 "%" PRIx8 "%" PRIx8 "\n", cn, cm, cp);
 	}
 	return 0;
 }
 
 void cp15_write(cpu_t *cpu, uint8_t cn, uint8_t cm, uint8_t cp, uint32_t v)
 {
-	switch ((cp << 8) | (cn << 4) | cm)
+#if 1
+	printf("cp15[%" PRIx8 "%" PRIx8 "%" PRIx8 "] = %08" PRIx32 "\n", cn, cm, cp, v);
+#endif
+	switch ((cn << 8) | (cm << 4) | cp)
 	{
-		case 0x010:
-			cpu->cp15.cr = (cpu->cp15.cr & ~0x81085) | (v & 0x81085);
+		case 0x100:
+			cpu->cp15.cr = (cpu->cp15.cr & ~0xFF085) | (v & 0xFF085);
 			break;
 		case 0x200:
 			cpu->cp15.dpr = v;
@@ -462,7 +476,19 @@ void cp15_write(cpu_t *cpu, uint8_t cn, uint8_t cm, uint8_t cp, uint32_t v)
 		case 0x671:
 			cpu->cp15.puir[7] = v;
 			break;
+		case 0x900:
+			cpu->cp15.dcl = v;
+			break;
+		case 0x901:
+			cpu->cp15.icl = v;
+			break;
+		case 0x910:
+			cpu->cp15.dtcm = v;
+			break;
+		case 0x911:
+			cpu->cp15.itcm = v;
+			break;
 		default:
-			printf("unknown cp15 write reg: %x / %x / %x\n", cn, cm, cp);
+			printf("unknown cp15 write reg: %" PRIx8 "%" PRIx8 "%" PRIx8 ": %" PRIx32 "\n", cn, cm, cp, v);
 	}
 }

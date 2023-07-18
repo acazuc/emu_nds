@@ -732,11 +732,6 @@ THUMB_INSTR(n####next, \
 				if (i == base_reg) \
 					nowriteback = true; \
 				uint32_t v = cpu->get32(cpu->mem, sp); \
-				if (i == CPU_REG_PC) \
-				{ \
-					pc_inc = false; \
-					v &= ~1; \
-				} \
 				cpu_set_reg(cpu, i, v); \
 			} \
 			else \
@@ -753,8 +748,6 @@ THUMB_INSTR(n####next, \
 				{ \
 					v = cpu_get_reg(cpu, i); \
 				} \
-				if (i == CPU_REG_PC) \
-					v += 6; \
 				cpu->set32(cpu->mem, sp, v); \
 			} \
 			if (post_pre != down_up) \
@@ -954,10 +947,10 @@ THUMB_INSTR(b,
 
 THUMB_INSTR(blx_off,
 {
-	uint32_t nn = cpu->instr_opcode & 0x7FF;
+	uint32_t nn = cpu->instr_opcode & 0x7FE;
 	uint32_t pc = cpu_get_reg(cpu, CPU_REG_PC);
 	uint32_t lr = (pc + 2) | 1;
-	int32_t dst = (cpu_get_reg(cpu, CPU_REG_LR) & ~1) + (nn << 1);
+	int32_t dst = (cpu_get_reg(cpu, CPU_REG_LR) & ~3) + (nn << 1);
 	cpu_set_reg(cpu, CPU_REG_PC, dst);
 	cpu_set_reg(cpu, CPU_REG_LR, lr);
 	CPU_SET_FLAG_T(cpu, 0);

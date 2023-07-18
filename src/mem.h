@@ -56,6 +56,12 @@
 
 #define MEM_ARM9_REG_AUXSPICNT     0x1A0
 #define MEM_ARM9_REG_AUXSPIDATA    0x1A2
+#define MEM_ARM9_REG_ROM_TIME      0x1A4
+#define MEM_ARM9_REG_ROM_CMD       0x1A8
+#define MEM_ARM9_REG_ROM_SEED0_L   0x1B0
+#define MEM_ARM9_REG_ROM_SEED1_L   0x1B4
+#define MEM_ARM9_REG_ROM_SEED0_H   0x1B8
+#define MEM_ARM9_REG_ROM_SEED1_H   0x1BA
 
 #define MEM_ARM9_REG_EXMEMCNT      0x204
 #define MEM_ARM9_REG_IME           0x208
@@ -158,6 +164,15 @@ typedef struct mem
 	uint8_t firmware[0x40000];
 	uint8_t arm7_regs[0x600];
 	uint8_t arm9_regs[0x700];
+	uint8_t mram[0x400000];
+	uint8_t wram[0x8000];
+	uint8_t arm7_wram[0x10000];
+	uint32_t arm7_wram_base;
+	uint32_t arm7_wram_mask;
+	uint32_t arm9_wram_base;
+	uint32_t arm9_wram_mask;
+	uint8_t dtcm[0x4000];
+	uint8_t itcm[0x8000];
 } mem_t;
 
 mem_t *mem_new(nds_t *nds, mbc_t *mbc);

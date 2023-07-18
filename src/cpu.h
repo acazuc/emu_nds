@@ -100,6 +100,10 @@ struct cp15
 	uint32_t eapipr;
 	uint32_t pudr[8];
 	uint32_t puir[8];
+	uint32_t dcl;
+	uint32_t icl;
+	uint32_t dtcm;
+	uint32_t itcm;
 };
 
 typedef struct cpu
