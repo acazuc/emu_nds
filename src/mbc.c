@@ -38,8 +38,8 @@ void mbc_del(mbc_t *mbc)
 
 static void encrypt(mbc_t *mbc, uint32_t *data)
 {
-	uint32_t x = data[0];
-	uint32_t y = data[1];
+	uint32_t x = data[1];
+	uint32_t y = data[0];
 	for (size_t i = 0; i < 0x10; ++i)
 	{
 		uint32_t z = mbc->keybuf[i] ^ x;
@@ -56,8 +56,8 @@ static void encrypt(mbc_t *mbc, uint32_t *data)
 
 static void decrypt(mbc_t *mbc, uint32_t *data)
 {
-	uint32_t x = data[0];
-	uint32_t y = data[1];
+	uint32_t x = data[1];
+	uint32_t y = data[0];
 	for (size_t i = 11; i > 0x1; --i)
 	{
 		uint32_t z = mbc->keybuf[i] ^ x;
@@ -85,9 +85,9 @@ static void apply_keycode(mbc_t *mbc, uint32_t *keycode, uint8_t mod)
 	encrypt(mbc, &keycode[1]);
 	encrypt(mbc, &keycode[0]);
 	for (size_t i = 0; i < 0x12; ++i)
-		mbc->keybuf[i] ^= bswap32(mbc->keybuf[i % mod]);
+		mbc->keybuf[i] ^= bswap32(keycode[i % mod]);
 	uint32_t scratch[2] = {0, 0};
-	for (size_t i = 0; i < 0x410; i += 2)
+	for (size_t i = 0; i < 0x412; i += 2)
 	{
 		encrypt(mbc, scratch);
 		mbc->keybuf[i + 0] = scratch[1];
@@ -148,11 +148,11 @@ void mbc_cmd(mbc_t *mbc)
 					mbc->cmd = MBC_CMD_ROMID1;
 					mbc->cmd_data.gethdr.count = 0;
 					mbc->nds->mem->arm9_regs[MEM_ARM9_REG_ROMCTRL + 2] |= (1 << 7); /* XXX another way */
-					mbc->nds->arm7->debug = CPU_DEBUG_ALL | CPU_DEBUG_REGS_ML;
+					//mbc->nds->arm7->debug = CPU_DEBUG_ALL | CPU_DEBUG_REGS_ML;
 					return;
 				case 0x3C:
 					mbc->enc = 1;
-					init_keycode(mbc, ((uint32_t*)mbc->data)[0x3], 1, 8);
+					init_keycode(mbc, ((uint32_t*)mbc->data)[0x3], 1, 2);
 					mbc->nds->mem->arm9_regs[MEM_ARM9_REG_ROMCTRL + 3] &= ~(1 << 7); /* XXX another way */
 					return;
 				default:
