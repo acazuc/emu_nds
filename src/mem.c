@@ -1,6 +1,7 @@
 #include "mem.h"
 #include "cpu.h"
 #include "nds.h"
+#include "mbc.h"
 
 #include <inttypes.h>
 #include <stdlib.h>
@@ -18,6 +19,7 @@ mem_t *mem_new(nds_t *nds, mbc_t *mbc)
 	mem->arm7_wram_mask = 0;
 	mem->arm9_wram_base = 0;
 	mem->arm9_wram_base = 0x7FFF;
+	mem->arm9_regs[MEM_ARM7_REG_ROMCTRL + 2] = 0x80;
 	return mem;
 }
 
@@ -55,6 +57,32 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM7_REG_IME + 1:
 		case MEM_ARM7_REG_POSTFLG:
 			mem->arm7_regs[addr] = v;
+			return;
+		case MEM_ARM7_REG_ROMCTRL:
+		case MEM_ARM7_REG_ROMCTRL + 1:
+		case MEM_ARM7_REG_ROMCMD:
+		case MEM_ARM7_REG_ROMCMD + 1:
+		case MEM_ARM7_REG_ROMCMD + 2:
+		case MEM_ARM7_REG_ROMCMD + 3:
+		case MEM_ARM7_REG_ROMCMD + 4:
+		case MEM_ARM7_REG_ROMCMD + 5:
+		case MEM_ARM7_REG_ROMCMD + 6:
+		case MEM_ARM7_REG_ROMCMD + 7:
+			mem->arm9_regs[addr] = v;
+			return;
+		case MEM_ARM7_REG_ROMDATA:
+		case MEM_ARM7_REG_ROMDATA + 1:
+		case MEM_ARM7_REG_ROMDATA + 2:
+		case MEM_ARM7_REG_ROMDATA + 3:
+			mbc_write(mem->mbc, v);
+			return;
+		case MEM_ARM7_REG_ROMCTRL + 2:
+			mem->arm9_regs[addr] = (mem->arm9_regs[addr] & (1 << 7)) | (v & ~(1 << 7));
+			return;
+		case MEM_ARM7_REG_ROMCTRL + 3:
+			mem->arm9_regs[addr] = v;
+			if (v & 0x80)
+				mbc_cmd(mem->mbc);
 			return;
 		default:
 			printf("unknown ARM7 register %08" PRIx32 "\n", addr);
@@ -97,6 +125,24 @@ static uint8_t get_arm7_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM7_REG_IME + 1:
 		case MEM_ARM7_REG_POSTFLG:
 			return mem->arm7_regs[addr];
+		case MEM_ARM7_REG_ROMCTRL:
+		case MEM_ARM7_REG_ROMCTRL + 1:
+		case MEM_ARM7_REG_ROMCTRL + 2:
+		case MEM_ARM7_REG_ROMCTRL + 3:
+		case MEM_ARM7_REG_ROMCMD:
+		case MEM_ARM7_REG_ROMCMD + 1:
+		case MEM_ARM7_REG_ROMCMD + 2:
+		case MEM_ARM7_REG_ROMCMD + 3:
+		case MEM_ARM7_REG_ROMCMD + 4:
+		case MEM_ARM7_REG_ROMCMD + 5:
+		case MEM_ARM7_REG_ROMCMD + 6:
+		case MEM_ARM7_REG_ROMCMD + 7:
+			return mem->arm9_regs[addr];
+		case MEM_ARM7_REG_ROMDATA:
+		case MEM_ARM7_REG_ROMDATA + 1:
+		case MEM_ARM7_REG_ROMDATA + 2:
+		case MEM_ARM7_REG_ROMDATA + 3:
+			return mbc_read(mem->mbc);
 		default:
 			printf("unknown ARM7 register %08" PRIx32 "\n", addr);
 			break;
@@ -238,7 +284,31 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM9_REG_IME:
 		case MEM_ARM9_REG_IME + 1:
 		case MEM_ARM9_REG_POSTFLG:
+		case MEM_ARM9_REG_ROMCTRL:
+		case MEM_ARM9_REG_ROMCTRL + 1:
+		case MEM_ARM9_REG_ROMCMD:
+		case MEM_ARM9_REG_ROMCMD + 1:
+		case MEM_ARM9_REG_ROMCMD + 2:
+		case MEM_ARM9_REG_ROMCMD + 3:
+		case MEM_ARM9_REG_ROMCMD + 4:
+		case MEM_ARM9_REG_ROMCMD + 5:
+		case MEM_ARM9_REG_ROMCMD + 6:
+		case MEM_ARM9_REG_ROMCMD + 7:
 			mem->arm9_regs[addr] = v;
+			return;
+		case MEM_ARM9_REG_ROMCTRL + 2:
+			mem->arm9_regs[addr] = (mem->arm9_regs[addr] & (1 << 7)) | (v & ~(1 << 7));
+			return;
+		case MEM_ARM9_REG_ROMCTRL + 3:
+			mem->arm9_regs[addr] = v;
+			if (v & 0x80)
+				mbc_cmd(mem->mbc);
+			return;
+		case MEM_ARM9_REG_ROMDATA:
+		case MEM_ARM9_REG_ROMDATA + 1:
+		case MEM_ARM9_REG_ROMDATA + 2:
+		case MEM_ARM9_REG_ROMDATA + 3:
+			mbc_write(mem->mbc, v);
 			return;
 		default:
 			printf("unknown ARM9 register %08" PRIx32 "\n", addr);
@@ -280,7 +350,24 @@ static uint8_t get_arm9_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM9_REG_IME:
 		case MEM_ARM9_REG_IME + 1:
 		case MEM_ARM9_REG_POSTFLG:
+		case MEM_ARM9_REG_ROMCTRL:
+		case MEM_ARM9_REG_ROMCTRL + 1:
+		case MEM_ARM9_REG_ROMCTRL + 2:
+		case MEM_ARM9_REG_ROMCTRL + 3:
+		case MEM_ARM9_REG_ROMCMD:
+		case MEM_ARM9_REG_ROMCMD + 1:
+		case MEM_ARM9_REG_ROMCMD + 2:
+		case MEM_ARM9_REG_ROMCMD + 3:
+		case MEM_ARM9_REG_ROMCMD + 4:
+		case MEM_ARM9_REG_ROMCMD + 5:
+		case MEM_ARM9_REG_ROMCMD + 6:
+		case MEM_ARM9_REG_ROMCMD + 7:
 			return mem->arm9_regs[addr];
+		case MEM_ARM9_REG_ROMDATA:
+		case MEM_ARM9_REG_ROMDATA + 1:
+		case MEM_ARM9_REG_ROMDATA + 2:
+		case MEM_ARM9_REG_ROMDATA + 3:
+			return mbc_read(mem->mbc);
 		default:
 			printf("unknown ARM9 register %08" PRIx32 "\n", addr);
 			break;
@@ -316,7 +403,7 @@ uint##size##_t mem_arm9_get##size(mem_t *mem, uint32_t addr) \
 			if (size == 32) \
 				addr &= ~3; \
 			uint32_t a = addr - dtcm_base; \
-			a &= dtcm_size; \
+			a &= dtcm_size - 1; \
 			a &= 0x3FFF; \
 			return *(uint##size##_t*)&mem->dtcm[a]; \
 		} \
@@ -388,7 +475,7 @@ void mem_arm9_set##size(mem_t *mem, uint32_t addr, uint##size##_t val) \
 			if (size == 32) \
 				addr &= ~3; \
 			uint32_t a = addr - dtcm_base; \
-			a &= dtcm_size; \
+			a &= dtcm_size - 1; \
 			a &= 0x3FFF; \
 			*(uint##size##_t*)&mem->dtcm[a] = val; \
 			return; \

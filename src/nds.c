@@ -14,7 +14,7 @@ nds_t *nds_new(const void *rom_data, size_t rom_size)
 	if (!nds)
 		return NULL;
 
-	nds->mbc = mbc_new(rom_data, rom_size);
+	nds->mbc = mbc_new(nds, rom_data, rom_size);
 	if (!nds->mbc)
 		return NULL;
 

@@ -56,12 +56,12 @@
 
 #define MEM_ARM9_REG_AUXSPICNT     0x1A0
 #define MEM_ARM9_REG_AUXSPIDATA    0x1A2
-#define MEM_ARM9_REG_ROM_TIME      0x1A4
-#define MEM_ARM9_REG_ROM_CMD       0x1A8
-#define MEM_ARM9_REG_ROM_SEED0_L   0x1B0
-#define MEM_ARM9_REG_ROM_SEED1_L   0x1B4
-#define MEM_ARM9_REG_ROM_SEED0_H   0x1B8
-#define MEM_ARM9_REG_ROM_SEED1_H   0x1BA
+#define MEM_ARM9_REG_ROMCTRL       0x1A4
+#define MEM_ARM9_REG_ROMCMD        0x1A8
+#define MEM_ARM9_REG_ROMSEED0_L    0x1B0
+#define MEM_ARM9_REG_ROMSEED1_L    0x1B4
+#define MEM_ARM9_REG_ROMSEED0_H    0x1B8
+#define MEM_ARM9_REG_ROMSEED1_H    0x1BA
 
 #define MEM_ARM9_REG_EXMEMCNT      0x204
 #define MEM_ARM9_REG_IME           0x208
@@ -90,6 +90,8 @@
 
 #define MEM_ARM9_REG_POSTFLG       0x300
 #define MEM_ARM9_REG_POWCNT1       0x304
+
+#define MEM_ARM9_REG_ROMDATA       0x100010
 
 
 
@@ -129,7 +131,7 @@
 #define MEM_ARM7_REG_KEYCNT        0x132
 #define MEM_ARM7_REG_RCNT          0x134
 #define MEM_ARM7_REG_EXTKEYIN      0x136
-#define MEM_AMR7_REG_RTC           0x138
+#define MEM_ARM7_REG_RTC           0x138
 
 #define MEM_ARM7_REG_IPCSYNC       0x180
 #define MEM_ARM7_REG_IPCFIFOCNT    0x184
@@ -137,6 +139,14 @@
 
 #define MEM_ARM7_REG_AUXSPICNT     0x1A0
 #define MEM_ARM7_REG_AUXSPIDATA    0x1A2
+#define MEM_ARM7_REG_ROMCTRL       0x1A4
+#define MEM_ARM7_REG_ROMCMD        0x1A8
+#define MEM_ARM7_REG_ROMSEED0_L    0x1B0
+#define MEM_ARM7_REG_ROMSEED1_L    0x1B4
+#define MEM_ARM7_REG_ROMSEED0_H    0x1B8
+#define MEM_ARM7_REG_ROMSEED1_H    0x1BA
+#define MEM_ARM7_REG_SPICTL        0x1C0
+#define MEM_ARM7_REG_SPIDATA       0x1C2
 
 #define MEM_ARM7_REG_EXMEMCNT      0x204
 #define MEM_ARM7_REG_WIFIWAITCNT   0x206
@@ -151,6 +161,8 @@
 #define MEM_ARM7_REG_HALTCNT       0x301
 #define MEM_ARM7_REG_POWCNT2       0x304
 #define MEM_ARM7_REG_BIOSPROT      0x308
+
+#define MEM_ARM7_REG_ROMDATA       0x100010
 
 typedef struct mbc mbc_t;
 typedef struct nds nds_t;
