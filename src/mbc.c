@@ -58,7 +58,7 @@ static void decrypt(mbc_t *mbc, uint32_t *data)
 {
 	uint32_t x = data[1];
 	uint32_t y = data[0];
-	for (size_t i = 11; i > 0x1; --i)
+	for (size_t i = 0x11; i > 0x1; --i)
 	{
 		uint32_t z = mbc->keybuf[i] ^ x;
 		x  = mbc->keybuf[0x012 + ((z >> 24) & 0xFF)];
@@ -152,7 +152,7 @@ void mbc_cmd(mbc_t *mbc)
 					return;
 				case 0x3C:
 					mbc->enc = 1;
-					init_keycode(mbc, ((uint32_t*)mbc->data)[0x3], 1, 2);
+					init_keycode(mbc, ((uint32_t*)mbc->data)[0x3], 2, 2);
 					mbc->nds->mem->arm9_regs[MEM_ARM9_REG_ROMCTRL + 3] &= ~(1 << 7); /* XXX another way */
 					return;
 				default:
@@ -163,13 +163,32 @@ void mbc_cmd(mbc_t *mbc)
 		case 1:
 		{
 			uint32_t values[2];
-			values[1] = bswap32(cmd >> 32);
-			values[0] = bswap32(cmd >>  0);
+			values[1] = cmd >> 32;
+			values[0] = cmd >> 0;
 			decrypt(mbc, values);
-			uint32_t tmp = bswap32(values[0]);
-			values[0] = bswap32(values[1]);
-			values[1] = tmp;
-			printf("decrypted: %08x %08x\n", values[0], values[1]);
+			cmd = ((uint64_t)values[1] << 32) | values[0];
+			printf("CMD KEY1 %016" PRIx64 "\n", cmd);
+			switch ((cmd >> 56) & 0xF0)
+			{
+				case 0x40:
+					/* XXX enable key2 */
+					return;
+				case 0x10:
+					/* XXX 2nd rom chip id */
+					return;
+				case 0x20:
+					/* XXX secure area block */
+					return;
+				case 0x60:
+					/* XXX key2 disable */
+					return;
+				case 0xA0:
+					/* XXX main data mode */
+					return;
+				default:
+					assert(!"unknown command");
+					return;
+			}
 			break;
 		}
 	}
