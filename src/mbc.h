@@ -20,6 +20,8 @@ typedef struct mbc
 	uint8_t *data;
 	size_t data_size;
 	enum mbc_cmd cmd;
+	uint8_t enc;
+	uint32_t keybuf[0x412];
 	union
 	{
 		struct

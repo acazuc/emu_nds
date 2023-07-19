@@ -36,7 +36,7 @@ cpu_t *cpu_new(mem_t *mem, int arm9)
 		cpu->set8 = mem_arm7_set8;
 		cpu->set16 = mem_arm7_set16;
 		cpu->set32 = mem_arm7_set32;
-		cpu->debug = CPU_DEBUG_ALL | CPU_DEBUG_REGS_ML;
+		//cpu->debug = CPU_DEBUG_ALL | CPU_DEBUG_REGS_ML;
 	}
 	cpu->mem = mem;
 	cpu->regs.cpsr = 0xD3;
