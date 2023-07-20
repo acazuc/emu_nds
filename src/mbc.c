@@ -112,6 +112,25 @@ static void init_keycode(mbc_t *mbc, uint32_t idcode, uint8_t level, uint8_t mod
 		apply_keycode(mbc, keycode, mod);
 }
 
+static void start_cmd(mbc_t *mbc)
+{
+	mbc->nds->mem->arm9_regs[MEM_ARM9_REG_ROMCTRL + 2] |= (1 << 7); /* XXX another way */
+}
+
+static void end_cmd(mbc_t *mbc)
+{
+	mbc->cmd = MBC_CMD_NONE;
+	mbc->nds->mem->arm9_regs[MEM_ARM9_REG_ROMCTRL + 3] &= ~(1 << 7); /* XXX another way */
+}
+
+static uint64_t bitswap39(uint64_t v)
+{
+	uint64_t ret = 0;
+	for (size_t i = 0; i < 39; ++i)
+		ret |= ((v >> i) & 1) << (38 - i);
+	return ret;
+}
+
 void mbc_cmd(mbc_t *mbc)
 {
 	uint64_t cmd;
@@ -135,25 +154,24 @@ void mbc_cmd(mbc_t *mbc)
 					assert(cmd == 0x9F00000000000000ULL);
 					mbc->cmd = MBC_CMD_DUMMY;
 					mbc->cmd_data.dummy.count = 0x2000;
-					mbc->nds->mem->arm9_regs[MEM_ARM9_REG_ROMCTRL + 2] |= (1 << 7); /* XXX another way */
+					start_cmd(mbc);
 					return;
 				case 0x00:
 					assert(cmd == 0x0000000000000000ULL);
 					mbc->cmd = MBC_CMD_GETHDR;
 					mbc->cmd_data.gethdr.count = 0;
-					mbc->nds->mem->arm9_regs[MEM_ARM9_REG_ROMCTRL + 2] |= (1 << 7); /* XXX another way */
+					start_cmd(mbc);
 					return;
 				case 0x90:
 					assert(cmd == 0x9000000000000000ULL);
 					mbc->cmd = MBC_CMD_ROMID1;
 					mbc->cmd_data.gethdr.count = 0;
-					mbc->nds->mem->arm9_regs[MEM_ARM9_REG_ROMCTRL + 2] |= (1 << 7); /* XXX another way */
-					//mbc->nds->arm7->debug = CPU_DEBUG_ALL | CPU_DEBUG_REGS_ML;
+					start_cmd(mbc);
 					return;
 				case 0x3C:
 					mbc->enc = 1;
 					init_keycode(mbc, ((uint32_t*)mbc->data)[0x3], 2, 2);
-					mbc->nds->mem->arm9_regs[MEM_ARM9_REG_ROMCTRL + 3] &= ~(1 << 7); /* XXX another way */
+					end_cmd(mbc);
 					return;
 				default:
 					assert(!"unknown command");
@@ -168,21 +186,30 @@ void mbc_cmd(mbc_t *mbc)
 			decrypt(mbc, values);
 			cmd = ((uint64_t)values[1] << 32) | values[0];
 			printf("CMD KEY1 %016" PRIx64 "\n", cmd);
-			switch ((cmd >> 56) & 0xF0)
+			switch ((cmd >> 60) & 0xF)
 			{
-				case 0x40:
-					/* XXX enable key2 */
+				case 0x4:
+				{
+					static const uint8_t seeds[] =
+					{
+						0xE8, 0x4D, 0x5A, 0xB1,
+						0x17, 0x8F, 0x99, 0xD5,
+					};
+					mbc->key2_x = bitswap39(((cmd & 0xFFFFFF00000) >> 5) | 0x6000 | seeds[mbc->data[0x13] & 0x7]);
+					mbc->key2_y = bitswap39(0x5C879B9B05);
+					end_cmd(mbc);
 					return;
-				case 0x10:
+				}
+				case 0x1:
 					/* XXX 2nd rom chip id */
 					return;
-				case 0x20:
+				case 0x2:
 					/* XXX secure area block */
 					return;
-				case 0x60:
+				case 0x6:
 					/* XXX key2 disable */
 					return;
-				case 0xA0:
+				case 0xA:
 					/* XXX main data mode */
 					return;
 				default:
@@ -201,35 +228,28 @@ uint8_t mbc_read(mbc_t *mbc)
 		case MBC_CMD_NONE:
 			return 0;
 		case MBC_CMD_DUMMY:
-#if 1
+#if 0
 			printf("dummy 0x%" PRIx32 "\n", mbc->cmd_data.dummy.count);
 #endif
 			if (!--mbc->cmd_data.dummy.count)
-			{
-				mbc->cmd = MBC_CMD_NONE;
-				mbc->nds->mem->arm9_regs[MEM_ARM9_REG_ROMCTRL + 3] &= ~(1 << 7); /* XXX another way */
-			}
+				end_cmd(mbc);
 			return 0xFF;
 		case MBC_CMD_GETHDR:
 		{
-#if 1
+#if 0
 			printf("gethdr 0x%" PRIx32 "\n", mbc->cmd_data.gethdr.count);
 #endif
-			if (mbc->cmd_data.gethdr.count == 0x1FF)
-			{
-				mbc->cmd = MBC_CMD_NONE;
-				mbc->nds->mem->arm9_regs[MEM_ARM9_REG_ROMCTRL + 3] &= ~(1 << 7); /* XXX another way */
-			}
 			uint8_t v;
 			if (mbc->cmd_data.gethdr.count < mbc->data_size)
 				v = mbc->data[mbc->cmd_data.gethdr.count];
 			else
 				v = 0;
-			mbc->cmd_data.gethdr.count++;
+			if (++mbc->cmd_data.gethdr.count == 0x200)
+				end_cmd(mbc);
 			return v;
 		}
 		case MBC_CMD_ROMID1:
-#if 1
+#if 0
 			printf("romid1 0x%" PRIx32 "\n", mbc->cmd_data.romid1.count);
 #endif
 			switch (mbc->cmd_data.romid1.count)
@@ -244,8 +264,7 @@ uint8_t mbc_read(mbc_t *mbc)
 					mbc->cmd_data.romid1.count++;
 					return 0x00;
 				case 3:
-					mbc->cmd = MBC_CMD_NONE;
-					mbc->nds->mem->arm9_regs[MEM_ARM9_REG_ROMCTRL + 3] &= ~(1 << 7); /* XXX another way */
+					end_cmd(mbc);
 					return 0x00;
 			}
 			assert(!"dead");

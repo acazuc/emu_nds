@@ -22,6 +22,8 @@ typedef struct mbc
 	enum mbc_cmd cmd;
 	uint8_t enc;
 	uint32_t keybuf[0x412];
+	uint64_t key2_x;
+	uint64_t key2_y;
 	union
 	{
 		struct

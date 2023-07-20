@@ -61,6 +61,7 @@ static void nds_cycles(nds_t *nds, uint32_t cycles)
 		nds->cycle++;
 		if (nds->cycle & 1)
 		{
+			mem_timers(nds->mem);
 			if (!nds->arm7->instr_delay)
 				cpu_cycle(nds->arm7);
 			else

@@ -184,10 +184,11 @@ static bool handle_interrupt(cpu_t *cpu)
 	{
 		reg_if = mem_arm7_get_reg16(cpu->mem, MEM_ARM7_REG_IF);
 		reg_ie = mem_arm7_get_reg16(cpu->mem, MEM_ARM7_REG_IE);
-		ime = mem_arm7_get_reg16(cpu->mem, MEM_ARM7_REG_IME);
+		if (cpu->state != CPU_STATE_RUN)
+			ime = true;
+		else
+			ime = mem_arm7_get_reg16(cpu->mem, MEM_ARM7_REG_IME);
 	}
-	if (!reg_if)
-		return false;
 	uint16_t ints = reg_ie & reg_if;
 	if (!ints)
 		return false;

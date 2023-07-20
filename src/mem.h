@@ -145,7 +145,7 @@
 #define MEM_ARM7_REG_ROMSEED1_L    0x1B4
 #define MEM_ARM7_REG_ROMSEED0_H    0x1B8
 #define MEM_ARM7_REG_ROMSEED1_H    0x1BA
-#define MEM_ARM7_REG_SPICTL        0x1C0
+#define MEM_ARM7_REG_SPICNT        0x1C0
 #define MEM_ARM7_REG_SPIDATA       0x1C2
 
 #define MEM_ARM7_REG_EXMEMCNT      0x204
@@ -167,10 +167,32 @@
 typedef struct mbc mbc_t;
 typedef struct nds nds_t;
 
+typedef struct mem_timer
+{
+	uint16_t v;
+} mem_timer_t;
+
+struct spi_firmware
+{
+	uint8_t cmd;
+	union
+	{
+		struct
+		{
+			uint8_t posb;
+			uint32_t addr;
+			uint8_t v;
+		} read;
+	} cmd_data;
+};
+
 typedef struct mem
 {
 	nds_t *nds;
 	mbc_t *mbc;
+	mem_timer_t arm7_timers[4];
+	mem_timer_t arm9_timers[4];
+	struct spi_firmware spi_firmware;
 	uint8_t arm7_bios[0x4000];
 	uint8_t arm9_bios[0x1000];
 	uint8_t firmware[0x40000];
@@ -189,6 +211,8 @@ typedef struct mem
 
 mem_t *mem_new(nds_t *nds, mbc_t *mbc);
 void mem_del(mem_t *mem);
+
+void mem_timers(mem_t *mem);
 
 uint8_t  mem_arm7_get8 (mem_t *mem, uint32_t addr);
 uint16_t mem_arm7_get16(mem_t *mem, uint32_t addr);

@@ -5,7 +5,10 @@
 
 #include <inttypes.h>
 #include <stdlib.h>
+#include <assert.h>
 #include <stdio.h>
+
+static const uint16_t timer_masks[4] = {0, 0x7E, 0x1FE, 0x7FE};
 
 mem_t *mem_new(nds_t *nds, mbc_t *mbc)
 {
@@ -30,6 +33,206 @@ void mem_del(mem_t *mem)
 	free(mem);
 }
 
+#define ARM_TIMERS(armv) \
+static void arm##armv##_timers(mem_t *mem) \
+{ \
+	bool prev_overflowed = false; \
+	for (size_t i = 0; i < 4; ++i) \
+	{ \
+		uint8_t cnt_h = mem_arm##armv##_get_reg8(mem, MEM_ARM##armv##_REG_TM0CNT_H + i * 4); \
+		if (!(cnt_h & (1 << 7))) \
+			goto next_timer; \
+		if (i && (cnt_h & (1 << 2))) \
+		{ \
+			if (!prev_overflowed) \
+				goto next_timer; \
+		} \
+		else \
+		{ \
+			if ((mem->nds->cycle & timer_masks[cnt_h & 3])) \
+				goto next_timer; \
+		} \
+		mem->arm##armv##_timers[i].v++; \
+		if (!mem->arm##armv##_timers[i].v) \
+		{ \
+			mem->arm##armv##_timers[i].v = mem_arm##armv##_get_reg16(mem, MEM_ARM##armv##_REG_TM0CNT_L + i * 4); \
+			if (cnt_h & (1 << 6)) \
+				mem_arm##armv##_set_reg16(mem, MEM_ARM##armv##_REG_IF, mem_arm##armv##_get_reg16(mem, MEM_ARM##armv##_REG_IF) | (1 << (3 + i))); \
+			prev_overflowed = true; \
+			continue; \
+		} \
+next_timer: \
+		prev_overflowed = false; \
+	} \
+} \
+static void arm##armv##_timer_control(mem_t *mem, uint8_t timer, uint8_t v) \
+{ \
+	uint8_t prev = mem_arm##armv##_get_reg8(mem, MEM_ARM##armv##_REG_TM0CNT_H + timer * 4); \
+	mem_arm##armv##_set_reg8(mem, MEM_ARM##armv##_REG_TM0CNT_H + timer * 4, v); \
+	if ((v & (1 << 7)) && !(prev & (1 << 7))) \
+		mem->arm##armv##_timers[timer].v = mem_arm##armv##_get_reg16(mem, MEM_ARM##armv##_REG_TM0CNT_L); \
+}
+
+ARM_TIMERS(7);
+ARM_TIMERS(9);
+
+void mem_timers(mem_t *mem)
+{
+	arm7_timers(mem);
+	arm9_timers(mem);
+}
+
+static uint8_t powerman_read(mem_t *mem)
+{
+	/* XXX */
+	(void)mem;
+	return 0;
+}
+
+static uint8_t firmware_read(mem_t *mem)
+{
+	switch (mem->spi_firmware.cmd)
+	{
+		case 0x0:
+			return 0;
+		case 0x3:
+#if 0
+			printf("firmware read %02x\n", mem->spi_firmware.cmd_data.read.v);
+#endif
+			return mem->spi_firmware.cmd_data.read.v;
+	}
+	return 0;
+}
+
+static uint8_t touchscreen_read(mem_t *mem)
+{
+	/* XXX */
+	(void)mem;
+	return 0;
+}
+
+static void powerman_write(mem_t *mem, uint8_t v)
+{
+	/* XXX */
+	(void)mem;
+	(void)v;
+}
+
+static void firmware_write(mem_t *mem, uint8_t v)
+{
+	switch (mem->spi_firmware.cmd)
+	{
+		case 0x0:
+			mem->spi_firmware.cmd = v;
+			switch (v)
+			{
+				case 0x3:
+					mem->spi_firmware.cmd_data.read.posb = 0;
+					mem->spi_firmware.cmd_data.read.addr = 0;
+					break;
+			}
+			return;
+		case 0x3:
+			if (mem->spi_firmware.cmd_data.read.posb < 3)
+			{
+				mem->spi_firmware.cmd_data.read.addr <<= 8;
+				mem->spi_firmware.cmd_data.read.addr |= v;
+				mem->spi_firmware.cmd_data.read.posb++;
+				return;
+			}
+#if 1
+			printf("[%08x] firmware read: [%x] = %x\n",
+			       cpu_get_reg(mem->nds->arm7, CPU_REG_PC),
+			       mem->spi_firmware.cmd_data.read.addr,
+			       mem->firmware[mem->spi_firmware.cmd_data.read.addr & 0x3FFFF]);
+#endif
+			mem->spi_firmware.cmd_data.read.v = mem->firmware[mem->spi_firmware.cmd_data.read.addr & 0x3FFFF];
+			mem->spi_firmware.cmd_data.read.addr++;
+			return;
+	}
+}
+
+static void touchscreen_write(mem_t *mem, uint8_t v)
+{
+	/* XXX */
+	(void)mem;
+	(void)v;
+}
+
+static void powerman_reset(mem_t *mem)
+{
+	/* XXX */
+	(void)mem;
+}
+
+static void firmware_reset(mem_t *mem)
+{
+	mem->spi_firmware.cmd = 0;
+}
+
+static void touchscreen_reset(mem_t *mem)
+{
+	/* XXX */
+	(void)mem;
+}
+
+static uint8_t spi_read(mem_t *mem)
+{
+#if 0
+	printf("SPI read\n");
+#endif
+	switch (mem->arm7_regs[MEM_ARM7_REG_SPICNT + 1] & 0x3)
+	{
+		case 0:
+			return powerman_read(mem);
+		case 1:
+			return firmware_read(mem);
+		case 2:
+			return touchscreen_read(mem);
+		case 3:
+			assert(!"invalid SPI device");
+			return 0;
+	}
+	return 0;
+}
+
+static void spi_write(mem_t *mem, uint8_t v)
+{
+#if 0
+	printf("SPI write %02" PRIx8 "\n", v);
+#endif
+	switch (mem->arm7_regs[MEM_ARM7_REG_SPICNT + 1] & 0x3)
+	{
+		case 0:
+			powerman_write(mem, v);
+			break;
+		case 1:
+			firmware_write(mem, v);
+			break;
+		case 2:
+			touchscreen_write(mem, v);
+			break;
+		case 3:
+			assert(!"invalid SPI device");
+			return;
+	}
+	if (!(mem->arm7_regs[MEM_ARM7_REG_SPICNT + 1] & (1 << 3)))
+	{
+		switch (mem->arm7_regs[MEM_ARM7_REG_SPICNT + 1] & 0x3)
+		{
+			case 0:
+				powerman_reset(mem);
+				break;
+			case 1:
+				firmware_reset(mem);
+				break;
+			case 2:
+				touchscreen_reset(mem);
+				break;
+		}
+	}
+}
+
 static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 {
 	switch (addr)
@@ -49,13 +252,26 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM7_REG_IE + 1:
 		case MEM_ARM7_REG_IE + 2:
 		case MEM_ARM7_REG_IE + 3:
-		case MEM_ARM7_REG_IF:
-		case MEM_ARM7_REG_IF + 1:
-		case MEM_ARM7_REG_IF + 2:
-		case MEM_ARM7_REG_IF + 3:
+			printf("[%08x] IE[%03x] = %x\n", cpu_get_reg(mem->nds->arm7, CPU_REG_PC), addr, v);
+			mem->arm7_regs[addr] = v;
+			return;
 		case MEM_ARM7_REG_IME:
 		case MEM_ARM7_REG_IME + 1:
+		case MEM_ARM7_REG_IME + 2:
+		case MEM_ARM7_REG_IME + 3:
 		case MEM_ARM7_REG_POSTFLG:
+		case MEM_ARM7_REG_TM0CNT_L:
+		case MEM_ARM7_REG_TM0CNT_L + 1:
+		case MEM_ARM7_REG_TM0CNT_H + 1:
+		case MEM_ARM7_REG_TM1CNT_L:
+		case MEM_ARM7_REG_TM1CNT_L + 1:
+		case MEM_ARM7_REG_TM1CNT_H + 1:
+		case MEM_ARM7_REG_TM2CNT_L:
+		case MEM_ARM7_REG_TM2CNT_L + 1:
+		case MEM_ARM7_REG_TM2CNT_H + 1:
+		case MEM_ARM7_REG_TM3CNT_L:
+		case MEM_ARM7_REG_TM3CNT_L + 1:
+		case MEM_ARM7_REG_TM3CNT_H + 1:
 			mem->arm7_regs[addr] = v;
 			return;
 		case MEM_ARM7_REG_ROMCTRL:
@@ -77,15 +293,63 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 			mbc_write(mem->mbc, v);
 			return;
 		case MEM_ARM7_REG_ROMCTRL + 2:
-			mem->arm9_regs[addr] = (mem->arm9_regs[addr] & (1 << 7)) | (v & ~(1 << 7));
+			mem->arm9_regs[addr] = (mem->arm9_regs[addr] & (1 << 7))
+			                     | (v & ~(1 << 7));
 			return;
 		case MEM_ARM7_REG_ROMCTRL + 3:
 			mem->arm9_regs[addr] = v;
 			if (v & 0x80)
 				mbc_cmd(mem->mbc);
 			return;
+		case MEM_ARM7_REG_IF:
+		case MEM_ARM7_REG_IF + 1:
+		case MEM_ARM7_REG_IF + 2:
+		case MEM_ARM7_REG_IF + 3:
+			mem->arm7_regs[addr] &= ~v;
+			return;
+		case MEM_ARM7_REG_TM0CNT_H:
+			arm7_timer_control(mem, 0, v);
+			return;
+		case MEM_ARM7_REG_TM1CNT_H:
+			arm7_timer_control(mem, 1, v);
+			return;
+		case MEM_ARM7_REG_TM2CNT_H:
+			arm7_timer_control(mem, 2, v);
+			return;
+		case MEM_ARM7_REG_TM3CNT_H:
+			arm7_timer_control(mem, 3, v);
+			return;
+		case MEM_ARM7_REG_SPICNT:
+			mem->arm7_regs[addr] = v & ~(1 << 7);
+			return;
+		case MEM_ARM7_REG_SPICNT + 1:
+			mem->arm7_regs[addr] = v;
+			return;
+		case MEM_ARM7_REG_SPIDATA:
+			spi_write(mem, v);
+			return;
+		case MEM_ARM7_REG_SPIDATA + 1:
+			return;
+		case MEM_ARM7_REG_HALTCNT:
+			switch ((v >> 6) & 0x3)
+			{
+				case 0:
+					return;
+				case 1:
+					assert(!"GBA mode not supported");
+					return;
+				case 2:
+					printf("HALT %08x %08x\n", mem_arm7_get_reg32(mem, MEM_ARM7_REG_IF), mem_arm7_get_reg32(mem, MEM_ARM7_REG_IE));
+					mem->nds->arm7->state = CPU_STATE_HALT;
+					return;
+				case 3:
+					printf("STOP %08x %08x\n", mem_arm7_get_reg32(mem, MEM_ARM7_REG_IF), mem_arm7_get_reg32(mem, MEM_ARM7_REG_IE));
+					mem->nds->arm7->state = CPU_STATE_STOP;
+					return;
+			}
+			return;
 		default:
-			printf("unknown ARM7 register %08" PRIx32 "\n", addr);
+			printf("unknown ARM7 set register %08" PRIx32 " = %02x\n", addr, v);
 			break;
 	}
 }
@@ -123,7 +387,12 @@ static uint8_t get_arm7_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM7_REG_IF + 3:
 		case MEM_ARM7_REG_IME:
 		case MEM_ARM7_REG_IME + 1:
+		case MEM_ARM7_REG_IME + 2:
+		case MEM_ARM7_REG_IME + 3:
 		case MEM_ARM7_REG_POSTFLG:
+		case MEM_ARM7_REG_SPICNT:
+		case MEM_ARM7_REG_SPICNT + 1:
+		case MEM_ARM7_REG_HALTCNT:
 			return mem->arm7_regs[addr];
 		case MEM_ARM7_REG_ROMCTRL:
 		case MEM_ARM7_REG_ROMCTRL + 1:
@@ -143,8 +412,28 @@ static uint8_t get_arm7_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM7_REG_ROMDATA + 2:
 		case MEM_ARM7_REG_ROMDATA + 3:
 			return mbc_read(mem->mbc);
+		case MEM_ARM7_REG_TM0CNT_L:
+			return mem->arm7_timers[0].v;
+		case MEM_ARM7_REG_TM0CNT_L + 1:
+			return mem->arm7_timers[0].v >> 8;
+		case MEM_ARM7_REG_TM1CNT_L:
+			return mem->arm7_timers[1].v;
+		case MEM_ARM7_REG_TM1CNT_L + 1:
+			return mem->arm7_timers[1].v >> 8;
+		case MEM_ARM7_REG_TM2CNT_L:
+			return mem->arm7_timers[2].v;
+		case MEM_ARM7_REG_TM2CNT_L + 1:
+			return mem->arm7_timers[2].v >> 8;
+		case MEM_ARM7_REG_TM3CNT_L:
+			return mem->arm7_timers[3].v;
+		case MEM_ARM7_REG_TM3CNT_L + 1:
+			return mem->arm7_timers[3].v >> 8;
+		case MEM_ARM7_REG_SPIDATA:
+			return spi_read(mem);
+		case MEM_ARM7_REG_SPIDATA + 1:
+			return 0;
 		default:
-			printf("unknown ARM7 register %08" PRIx32 "\n", addr);
+			printf("unknown ARM7 get register %08" PRIx32 "\n", addr);
 			break;
 	}
 	return 0;
@@ -188,7 +477,8 @@ uint##size##_t mem_arm7_get##size(mem_t *mem, uint32_t addr) \
 		case 0x3: /* wram */ \
 			if (!mem->arm7_wram_mask || addr >= 0x3800000) \
 				return *(uint##size##_t*)&mem->arm7_wram[addr & 0xFFFF]; \
-			return *(uint##size##_t*)&mem->wram[mem->arm7_wram_base + (addr & mem->arm7_wram_mask)]; \
+			return *(uint##size##_t*)&mem->wram[mem->arm7_wram_base \
+			     + (addr & mem->arm7_wram_mask)]; \
 		case 0x4: /* io ports */ \
 			return get_arm7_reg##size(mem, addr - 0x4000000); \
 		case 0x6: /* vram */ \
@@ -212,7 +502,7 @@ MEM_ARM7_GET(16);
 MEM_ARM7_GET(32);
 
 #define MEM_ARM7_SET(size) \
-void mem_arm7_set##size(mem_t *mem, uint32_t addr, uint##size##_t val) \
+void mem_arm7_set##size(mem_t *mem, uint32_t addr, uint##size##_t v) \
 { \
 	if (addr >= 0x10000000) \
 		goto end; \
@@ -228,16 +518,17 @@ void mem_arm7_set##size(mem_t *mem, uint32_t addr, uint##size##_t val) \
 		case 0x0: /* ARM7 bios */ \
 			break; \
 		case 0x2: /* main memory */ \
-			*(uint##size##_t*)&mem->mram[addr & 0x3FFFFF] = val; \
+			*(uint##size##_t*)&mem->mram[addr & 0x3FFFFF] = v; \
 			return; \
 		case 0x3: /* wram */ \
 			if (!mem->arm7_wram_mask || addr >= 0x3800000) \
-				*(uint##size##_t*)&mem->arm7_wram[addr & 0xFFFF] = val; \
+				*(uint##size##_t*)&mem->arm7_wram[addr & 0xFFFF] = v; \
 			else \
-				*(uint##size##_t*)&mem->wram[mem->arm7_wram_base + (addr & mem->arm7_wram_mask)] = val; \
+				*(uint##size##_t*)&mem->wram[mem->arm7_wram_base \
+				                          + (addr & mem->arm7_wram_mask)] = v; \
 			return; \
 		case 0x4: /* io ports */ \
-			set_arm7_reg##size(mem, addr - 0x4000000, val); \
+			set_arm7_reg##size(mem, addr - 0x4000000, v); \
 			return; \
 		case 0x6: /* vram */ \
 			break; \
@@ -277,12 +568,10 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM9_REG_IE + 1:
 		case MEM_ARM9_REG_IE + 2:
 		case MEM_ARM9_REG_IE + 3:
-		case MEM_ARM9_REG_IF:
-		case MEM_ARM9_REG_IF + 1:
-		case MEM_ARM9_REG_IF + 2:
-		case MEM_ARM9_REG_IF + 3:
 		case MEM_ARM9_REG_IME:
 		case MEM_ARM9_REG_IME + 1:
+		case MEM_ARM9_REG_IME + 2:
+		case MEM_ARM9_REG_IME + 3:
 		case MEM_ARM9_REG_POSTFLG:
 		case MEM_ARM9_REG_ROMCTRL:
 		case MEM_ARM9_REG_ROMCTRL + 1:
@@ -294,10 +583,23 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM9_REG_ROMCMD + 5:
 		case MEM_ARM9_REG_ROMCMD + 6:
 		case MEM_ARM9_REG_ROMCMD + 7:
+		case MEM_ARM9_REG_TM0CNT_L:
+		case MEM_ARM9_REG_TM0CNT_L + 1:
+		case MEM_ARM9_REG_TM0CNT_H + 1:
+		case MEM_ARM9_REG_TM1CNT_L:
+		case MEM_ARM9_REG_TM1CNT_L + 1:
+		case MEM_ARM9_REG_TM1CNT_H + 1:
+		case MEM_ARM9_REG_TM2CNT_L:
+		case MEM_ARM9_REG_TM2CNT_L + 1:
+		case MEM_ARM9_REG_TM2CNT_H + 1:
+		case MEM_ARM9_REG_TM3CNT_L:
+		case MEM_ARM9_REG_TM3CNT_L + 1:
+		case MEM_ARM9_REG_TM3CNT_H + 1:
 			mem->arm9_regs[addr] = v;
 			return;
 		case MEM_ARM9_REG_ROMCTRL + 2:
-			mem->arm9_regs[addr] = (mem->arm9_regs[addr] & (1 << 7)) | (v & ~(1 << 7));
+			mem->arm9_regs[addr] = (mem->arm9_regs[addr] & (1 << 7))
+			                     | (v & ~(1 << 7));
 			return;
 		case MEM_ARM9_REG_ROMCTRL + 3:
 			mem->arm9_regs[addr] = v;
@@ -310,8 +612,26 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM9_REG_ROMDATA + 3:
 			mbc_write(mem->mbc, v);
 			return;
+		case MEM_ARM9_REG_IF:
+		case MEM_ARM9_REG_IF + 1:
+		case MEM_ARM9_REG_IF + 2:
+		case MEM_ARM9_REG_IF + 3:
+			mem->arm9_regs[addr] &= ~v;
+			return;
+		case MEM_ARM9_REG_TM0CNT_H:
+			arm9_timer_control(mem, 0, v);
+			return;
+		case MEM_ARM9_REG_TM1CNT_H:
+			arm9_timer_control(mem, 1, v);
+			return;
+		case MEM_ARM9_REG_TM2CNT_H:
+			arm9_timer_control(mem, 2, v);
+			return;
+		case MEM_ARM9_REG_TM3CNT_H:
+			arm9_timer_control(mem, 3, v);
+			return;
 		default:
-			printf("unknown ARM9 register %08" PRIx32 "\n", addr);
+			printf("unknown ARM9 set register %08" PRIx32 "\n", addr);
 			break;
 	}
 }
@@ -349,6 +669,8 @@ static uint8_t get_arm9_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM9_REG_IF + 3:
 		case MEM_ARM9_REG_IME:
 		case MEM_ARM9_REG_IME + 1:
+		case MEM_ARM9_REG_IME + 2:
+		case MEM_ARM9_REG_IME + 3:
 		case MEM_ARM9_REG_POSTFLG:
 		case MEM_ARM9_REG_ROMCTRL:
 		case MEM_ARM9_REG_ROMCTRL + 1:
@@ -368,8 +690,24 @@ static uint8_t get_arm9_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM9_REG_ROMDATA + 2:
 		case MEM_ARM9_REG_ROMDATA + 3:
 			return mbc_read(mem->mbc);
+		case MEM_ARM9_REG_TM0CNT_L:
+			return mem->arm9_timers[0].v;
+		case MEM_ARM9_REG_TM0CNT_L + 1:
+			return mem->arm9_timers[0].v >> 8;
+		case MEM_ARM9_REG_TM1CNT_L:
+			return mem->arm9_timers[1].v;
+		case MEM_ARM9_REG_TM1CNT_L + 1:
+			return mem->arm9_timers[1].v >> 8;
+		case MEM_ARM9_REG_TM2CNT_L:
+			return mem->arm9_timers[2].v;
+		case MEM_ARM9_REG_TM2CNT_L + 1:
+			return mem->arm9_timers[2].v >> 8;
+		case MEM_ARM9_REG_TM3CNT_L:
+			return mem->arm9_timers[3].v;
+		case MEM_ARM9_REG_TM3CNT_L + 1:
+			return mem->arm9_timers[3].v >> 8;
 		default:
-			printf("unknown ARM9 register %08" PRIx32 "\n", addr);
+			printf("unknown ARM9 get register %08" PRIx32 "\n", addr);
 			break;
 	}
 	return 0;
@@ -434,7 +772,8 @@ uint##size##_t mem_arm9_get##size(mem_t *mem, uint32_t addr) \
 		case 0x3: /* shared wram */ \
 			if (!mem->arm9_wram_mask) \
 				return 0; \
-			return *(uint##size##_t*)&mem->wram[mem->arm9_wram_base + (addr & mem->arm9_wram_mask)]; \
+			return *(uint##size##_t*)&mem->wram[mem->arm9_wram_base \
+			                                  + (addr & mem->arm9_wram_mask)]; \
 		case 0x4: /* io ports */ \
 			return get_arm9_reg##size(mem, addr - 0x4000000); \
 		case 0x5: /* palettes */ \
@@ -462,7 +801,7 @@ MEM_ARM9_GET(16);
 MEM_ARM9_GET(32);
 
 #define MEM_ARM9_SET(size) \
-void mem_arm9_set##size(mem_t *mem, uint32_t addr, uint##size##_t val) \
+void mem_arm9_set##size(mem_t *mem, uint32_t addr, uint##size##_t v) \
 { \
 	if (mem->nds->arm9->cp15.cr & (1 << 16)) \
 	{ \
@@ -477,7 +816,7 @@ void mem_arm9_set##size(mem_t *mem, uint32_t addr, uint##size##_t val) \
 			uint32_t a = addr - dtcm_base; \
 			a &= dtcm_size - 1; \
 			a &= 0x3FFF; \
-			*(uint##size##_t*)&mem->dtcm[a] = val; \
+			*(uint##size##_t*)&mem->dtcm[a] = v; \
 			return; \
 		} \
 	} \
@@ -500,15 +839,16 @@ void mem_arm9_set##size(mem_t *mem, uint32_t addr, uint##size##_t val) \
 			} \
 			break; \
 		case 0x2: /* main memory */ \
-			*(uint##size##_t*)&mem->mram[addr & 0x3FFFFF] = val; \
+			*(uint##size##_t*)&mem->mram[addr & 0x3FFFFF] = v; \
 			return; \
 		case 0x3: /* shared wram */ \
 			if (!mem->arm7_wram_mask) \
 				return; \
-			*(uint##size##_t*)&mem->wram[mem->arm9_wram_base + (addr & mem->arm9_wram_mask)] = val; \
+			*(uint##size##_t*)&mem->wram[mem->arm9_wram_base \
+			                           + (addr & mem->arm9_wram_mask)] = v; \
 			return; \
 		case 0x4: /* io ports */ \
-			set_arm9_reg##size(mem, addr - 0x4000000, val); \
+			set_arm9_reg##size(mem, addr - 0x4000000, v); \
 			return; \
 		case 0x5: /* palettes */ \
 			break; \
