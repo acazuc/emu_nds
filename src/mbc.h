@@ -12,6 +12,7 @@ enum mbc_cmd
 	MBC_CMD_DUMMY,
 	MBC_CMD_GETHDR,
 	MBC_CMD_ROMID1,
+	MBC_CMD_ROMID2,
 };
 
 typedef struct mbc
@@ -38,6 +39,10 @@ typedef struct mbc
 		{
 			uint32_t count;
 		} romid1;
+		struct
+		{
+			uint32_t count;
+		} romid2;
 	} cmd_data;
 } mbc_t;
 

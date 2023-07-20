@@ -57,7 +57,7 @@ static void arm##armv##_timers(mem_t *mem) \
 		{ \
 			mem->arm##armv##_timers[i].v = mem_arm##armv##_get_reg16(mem, MEM_ARM##armv##_REG_TM0CNT_L + i * 4); \
 			if (cnt_h & (1 << 6)) \
-				mem_arm##armv##_set_reg16(mem, MEM_ARM##armv##_REG_IF, mem_arm##armv##_get_reg16(mem, MEM_ARM##armv##_REG_IF) | (1 << (3 + i))); \
+				mem_arm##armv##_if(mem, 1 << (3 + i)); \
 			prev_overflowed = true; \
 			continue; \
 		} \
@@ -246,7 +246,7 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 			mem->arm7_regs[addr] = v & 0x47;
 			if ((v & (1 << 13))
 			 && (mem->arm9_regs[MEM_ARM9_REG_IPCSYNC] & (1 << 14)))
-				mem->arm9_regs[MEM_ARM9_REG_IF] |= (1 << 16);
+				mem_arm9_if(mem, 1 << 16);
 			return;
 		case MEM_ARM7_REG_IPCSYNC + 2:
 		case MEM_ARM7_REG_IPCSYNC + 3:
@@ -286,6 +286,8 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM7_REG_ROMCMD + 5:
 		case MEM_ARM7_REG_ROMCMD + 6:
 		case MEM_ARM7_REG_ROMCMD + 7:
+		case MEM_ARM7_REG_AUXSPICNT:
+		case MEM_ARM7_REG_AUXSPICNT + 1:
 			mem->arm9_regs[addr] = v;
 			return;
 		case MEM_ARM7_REG_ROMDATA:
@@ -408,6 +410,8 @@ static uint8_t get_arm7_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM7_REG_ROMCMD + 5:
 		case MEM_ARM7_REG_ROMCMD + 6:
 		case MEM_ARM7_REG_ROMCMD + 7:
+		case MEM_ARM7_REG_AUXSPICNT:
+		case MEM_ARM7_REG_AUXSPICNT + 1:
 			return mem->arm9_regs[addr];
 		case MEM_ARM7_REG_ROMDATA:
 		case MEM_ARM7_REG_ROMDATA + 1:
@@ -561,7 +565,7 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 			mem->arm9_regs[addr] = v & 0x47;
 			if ((v & (1 << 13))
 			 && (mem->arm7_regs[MEM_ARM7_REG_IPCSYNC] & (1 << 14)))
-				mem->arm7_regs[MEM_ARM7_REG_IF] |= (1 << 16);
+				mem_arm7_if(mem, 1 << 16);
 			return;
 		case MEM_ARM9_REG_IPCSYNC + 2:
 		case MEM_ARM9_REG_IPCSYNC + 3:
@@ -597,6 +601,8 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM9_REG_TM3CNT_L:
 		case MEM_ARM9_REG_TM3CNT_L + 1:
 		case MEM_ARM9_REG_TM3CNT_H + 1:
+		case MEM_ARM9_REG_AUXSPICNT:
+		case MEM_ARM9_REG_AUXSPICNT + 1:
 			mem->arm9_regs[addr] = v;
 			return;
 		case MEM_ARM9_REG_ROMCTRL + 2:
@@ -686,6 +692,8 @@ static uint8_t get_arm9_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM9_REG_ROMCMD + 5:
 		case MEM_ARM9_REG_ROMCMD + 6:
 		case MEM_ARM9_REG_ROMCMD + 7:
+		case MEM_ARM9_REG_AUXSPICNT:
+		case MEM_ARM9_REG_AUXSPICNT + 1:
 			return mem->arm9_regs[addr];
 		case MEM_ARM9_REG_ROMDATA:
 		case MEM_ARM9_REG_ROMDATA + 1:

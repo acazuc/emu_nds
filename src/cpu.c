@@ -171,31 +171,31 @@ static bool handle_interrupt(cpu_t *cpu)
 {
 	if (CPU_GET_FLAG_I(cpu))
 		return false;
-	uint16_t reg_if;
-	uint16_t reg_ie;
+	uint32_t reg_if;
+	uint32_t reg_ie;
 	uint16_t ime;
 	if (cpu->arm9)
 	{
-		reg_if = mem_arm9_get_reg16(cpu->mem, MEM_ARM9_REG_IF);
-		reg_ie = mem_arm9_get_reg16(cpu->mem, MEM_ARM9_REG_IE);
+		reg_if = mem_arm9_get_reg32(cpu->mem, MEM_ARM9_REG_IF);
+		reg_ie = mem_arm9_get_reg32(cpu->mem, MEM_ARM9_REG_IE);
 		ime = mem_arm9_get_reg16(cpu->mem, MEM_ARM9_REG_IME);
 	}
 	else
 	{
-		reg_if = mem_arm7_get_reg16(cpu->mem, MEM_ARM7_REG_IF);
-		reg_ie = mem_arm7_get_reg16(cpu->mem, MEM_ARM7_REG_IE);
+		reg_if = mem_arm7_get_reg32(cpu->mem, MEM_ARM7_REG_IF);
+		reg_ie = mem_arm7_get_reg32(cpu->mem, MEM_ARM7_REG_IE);
 		if (cpu->state != CPU_STATE_RUN)
 			ime = true;
 		else
 			ime = mem_arm7_get_reg16(cpu->mem, MEM_ARM7_REG_IME);
 	}
-	uint16_t ints = reg_ie & reg_if;
+	uint32_t ints = reg_ie & reg_if;
 	if (!ints)
 		return false;
 	cpu->state = CPU_STATE_RUN;
 	if (!ime)
 		return false;
-	for (uint8_t i = 0; i < 16; ++i)
+	for (uint8_t i = 0; i < 32; ++i)
 	{
 		if (!(ints & (1 << i)))
 			continue;

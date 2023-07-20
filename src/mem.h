@@ -288,4 +288,14 @@ static inline void mem_arm7_set_reg32(mem_t *mem, uint32_t reg, uint32_t val)
 	*(uint32_t*)&mem->arm7_regs[reg] = val;
 }
 
+static inline void mem_arm9_if(mem_t *mem, uint32_t f)
+{
+	mem_arm9_set_reg32(mem, MEM_ARM9_REG_IF, mem_arm9_get_reg32(mem, MEM_ARM9_REG_IF) | f);
+}
+
+static inline void mem_arm7_if(mem_t *mem, uint32_t f)
+{
+	mem_arm7_set_reg32(mem, MEM_ARM7_REG_IF, mem_arm7_get_reg32(mem, MEM_ARM7_REG_IF) | f);
+}
+
 #endif

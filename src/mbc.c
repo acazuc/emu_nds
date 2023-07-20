@@ -121,6 +121,11 @@ static void end_cmd(mbc_t *mbc)
 {
 	mbc->cmd = MBC_CMD_NONE;
 	mbc->nds->mem->arm9_regs[MEM_ARM9_REG_ROMCTRL + 3] &= ~(1 << 7); /* XXX another way */
+	if (mem_arm9_get_reg16(mbc->nds->mem, MEM_ARM9_REG_AUXSPICNT) & (1 << 14))
+	{
+		mem_arm9_if(mbc->nds->mem, 1 << 19);
+		mem_arm7_if(mbc->nds->mem, 1 << 19);
+	}
 }
 
 static uint64_t bitswap39(uint64_t v)
@@ -129,6 +134,13 @@ static uint64_t bitswap39(uint64_t v)
 	for (size_t i = 0; i < 39; ++i)
 		ret |= ((v >> i) & 1) << (38 - i);
 	return ret;
+}
+
+static uint8_t key2_byte(mbc_t *mbc, uint8_t v)
+{
+	mbc->key2_x = ((((mbc->key2_x >> 5) ^ (mbc->key2_x >> 17) ^ (mbc->key2_x >> 18) ^ (mbc->key2_x >> 31)) & 0xFF) | (mbc->key2_x << 8)) & 0x7FFFFFFFFF;
+	mbc->key2_y = ((((mbc->key2_y >> 5) ^ (mbc->key2_y >> 23) ^ (mbc->key2_y >> 18) ^ (mbc->key2_y >> 31)) & 0xFF) | (mbc->key2_y << 8)) & 0x7FFFFFFFFF;
+	return v ^ mbc->key2_x ^ mbc->key2_y;
 }
 
 void mbc_cmd(mbc_t *mbc)
@@ -165,7 +177,7 @@ void mbc_cmd(mbc_t *mbc)
 				case 0x90:
 					assert(cmd == 0x9000000000000000ULL);
 					mbc->cmd = MBC_CMD_ROMID1;
-					mbc->cmd_data.gethdr.count = 0;
+					mbc->cmd_data.romid1.count = 0;
 					start_cmd(mbc);
 					return;
 				case 0x3C:
@@ -201,7 +213,9 @@ void mbc_cmd(mbc_t *mbc)
 					return;
 				}
 				case 0x1:
-					/* XXX 2nd rom chip id */
+					mbc->cmd = MBC_CMD_ROMID2;
+					mbc->cmd_data.romid2.count = 0;
+					start_cmd(mbc);
 					return;
 				case 0x2:
 					/* XXX secure area block */
@@ -236,7 +250,7 @@ uint8_t mbc_read(mbc_t *mbc)
 			return 0xFF;
 		case MBC_CMD_GETHDR:
 		{
-#if 0
+#if 1
 			printf("gethdr 0x%" PRIx32 "\n", mbc->cmd_data.gethdr.count);
 #endif
 			uint8_t v;
@@ -249,7 +263,7 @@ uint8_t mbc_read(mbc_t *mbc)
 			return v;
 		}
 		case MBC_CMD_ROMID1:
-#if 0
+#if 1
 			printf("romid1 0x%" PRIx32 "\n", mbc->cmd_data.romid1.count);
 #endif
 			switch (mbc->cmd_data.romid1.count)
@@ -269,6 +283,27 @@ uint8_t mbc_read(mbc_t *mbc)
 			}
 			assert(!"dead");
 			return 0;
+		case MBC_CMD_ROMID2:
+#if 1
+			printf("romid2 0x%" PRIx32 "\n", mbc->cmd_data.romid2.count);
+#endif
+			switch (mbc->cmd_data.romid2.count)
+			{
+				case 0:
+					mbc->cmd_data.romid2.count++;
+					return key2_byte(mbc, 0xC2);
+				case 1:
+					mbc->cmd_data.romid2.count++;
+					return key2_byte(mbc, 0x00);
+				case 2:
+					mbc->cmd_data.romid2.count++;
+					return key2_byte(mbc, 0x00);
+				case 3:
+					end_cmd(mbc);
+					return key2_byte(mbc, 0x00);
+			}
+			assert(!"dead");
+			return key2_byte(mbc, 0);
 		default:
 			assert(!"unknown cmd");
 	}
