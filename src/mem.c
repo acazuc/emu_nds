@@ -70,7 +70,7 @@ static void arm##armv##_timer_control(mem_t *mem, uint8_t timer, uint8_t v) \
 	uint8_t prev = mem_arm##armv##_get_reg8(mem, MEM_ARM##armv##_REG_TM0CNT_H + timer * 4); \
 	mem_arm##armv##_set_reg8(mem, MEM_ARM##armv##_REG_TM0CNT_H + timer * 4, v); \
 	if ((v & (1 << 7)) && !(prev & (1 << 7))) \
-		mem->arm##armv##_timers[timer].v = mem_arm##armv##_get_reg16(mem, MEM_ARM##armv##_REG_TM0CNT_L); \
+		mem->arm##armv##_timers[timer].v = mem_arm##armv##_get_reg16(mem, MEM_ARM##armv##_REG_TM0CNT_L + timer * 4); \
 }
 
 ARM_TIMERS(7);
@@ -235,6 +235,9 @@ static void spi_write(mem_t *mem, uint8_t v)
 
 static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 {
+#if 0
+	printf("ARM7 register [%08" PRIx32 "] = %02x\n", addr, v);
+#endif
 	switch (addr)
 	{
 		case MEM_ARM7_REG_IPCSYNC:
@@ -252,7 +255,6 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM7_REG_IE + 1:
 		case MEM_ARM7_REG_IE + 2:
 		case MEM_ARM7_REG_IE + 3:
-			printf("[%08x] IE[%03x] = %x\n", cpu_get_reg(mem->nds->arm7, CPU_REG_PC), addr, v);
 			mem->arm7_regs[addr] = v;
 			return;
 		case MEM_ARM7_REG_IME:

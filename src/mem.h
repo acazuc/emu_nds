@@ -238,7 +238,7 @@ static inline void mem_arm9_set_reg8(mem_t *mem, uint32_t reg, uint8_t val)
 	mem->arm9_regs[reg] = val;
 }
 
-static inline uint8_t mem_arm9_get_reg16(mem_t *mem, uint32_t reg)
+static inline uint16_t mem_arm9_get_reg16(mem_t *mem, uint32_t reg)
 {
 	return *(uint16_t*)&mem->arm9_regs[reg];
 }
@@ -248,7 +248,7 @@ static inline void mem_arm9_set_reg16(mem_t *mem, uint32_t reg, uint16_t val)
 	*(uint16_t*)&mem->arm9_regs[reg] = val;
 }
 
-static inline uint8_t mem_arm9_get_reg32(mem_t *mem, uint32_t reg)
+static inline uint32_t mem_arm9_get_reg32(mem_t *mem, uint32_t reg)
 {
 	return *(uint32_t*)&mem->arm9_regs[reg];
 }
@@ -268,7 +268,7 @@ static inline void mem_arm7_set_reg8(mem_t *mem, uint32_t reg, uint8_t val)
 	mem->arm7_regs[reg] = val;
 }
 
-static inline uint8_t mem_arm7_get_reg16(mem_t *mem, uint32_t reg)
+static inline uint16_t mem_arm7_get_reg16(mem_t *mem, uint32_t reg)
 {
 	return *(uint16_t*)&mem->arm7_regs[reg];
 }
@@ -278,7 +278,7 @@ static inline void mem_arm7_set_reg16(mem_t *mem, uint32_t reg, uint16_t val)
 	*(uint16_t*)&mem->arm7_regs[reg] = val;
 }
 
-static inline uint8_t mem_arm7_get_reg32(mem_t *mem, uint32_t reg)
+static inline uint32_t mem_arm7_get_reg32(mem_t *mem, uint32_t reg)
 {
 	return *(uint32_t*)&mem->arm7_regs[reg];
 }
