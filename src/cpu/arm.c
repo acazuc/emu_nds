@@ -1,5 +1,6 @@
 #include "instr.h"
 #include "../cpu.h"
+#include "../mem.h"
 
 #include <inttypes.h>
 #include <stdlib.h>
@@ -591,9 +592,9 @@ ARM_INSTR(opname##_##oparg####rotname, \
 			addr &= ~3; \
 		uint32_t v; \
 		if (word_byte) \
-			v = cpu->get8(cpu->mem, addr); \
+			v = cpu->get8(cpu->mem, addr, MEM_DATA_NSEQ); \
 		else \
-			v = cpu->get32(cpu->mem, addr); \
+			v = cpu->get32(cpu->mem, addr, MEM_DATA_NSEQ); \
 		if (!word_byte && !writeback_mm) \
 			v = ARM_ROR(v, (rn & 3) * 8); \
 		cpu_set_reg(cpu, rdr, v); \
@@ -603,9 +604,9 @@ ARM_INSTR(opname##_##oparg####rotname, \
 		uint32_t rd = cpu_get_reg(cpu, rdr); \
 		rd += (rdr == CPU_REG_PC) ? 12 : 0; \
 		if (word_byte) \
-			cpu->set8(cpu->mem, rn, rd); \
+			cpu->set8(cpu->mem, rn, rd, MEM_DATA_NSEQ); \
 		else \
-			cpu->set32(cpu->mem, rn, rd); \
+			cpu->set32(cpu->mem, rn, rd, MEM_DATA_NSEQ); \
 	} \
 	if (post_pre && writeback_mm && (!st_ld || rnr != rdr)) \
 		cpu_set_reg(cpu, rnr, rn); \
@@ -618,14 +619,7 @@ ARM_INSTR(opname##_##oparg####rotname, \
 		cpu_set_reg(cpu, rnr, rn); \
 	} \
 	if (!st_ld || rdr != CPU_REG_PC) \
-	{ \
 		cpu_inc_pc(cpu, 4); \
-		cpu->instr_delay = 3; \
-	} \
-	else \
-	{ \
-		cpu->instr_delay = 5; \
-	} \
 }, \
 { \
 	uint32_t rd = (cpu->instr_opcode >> 12) & 0xF; \
@@ -673,19 +667,19 @@ ARM_INSTR(opname##_##oparg, \
 	{ \
 		if (op == 1) \
 		{ \
-			uint32_t v = cpu->get16(cpu->mem, rn & ~1); \
+			uint32_t v = cpu->get16(cpu->mem, rn & ~1, MEM_DATA_NSEQ); \
 			cpu_set_reg(cpu, rdr, ARM_ROR(v, (rn & 1) * 8)); \
 		} \
 		else if (op == 2) \
 		{ \
-			cpu_set_reg(cpu, rdr, (int8_t)cpu->get8(cpu->mem, rn)); \
+			cpu_set_reg(cpu, rdr, (int8_t)cpu->get8(cpu->mem, rn, MEM_DATA_NSEQ)); \
 		} \
 		else if (op == 3) \
 		{ \
 			if (rn & 1) \
-				cpu_set_reg(cpu, rdr, (int8_t)cpu->get8(cpu->mem, rn)); \
+				cpu_set_reg(cpu, rdr, (int8_t)cpu->get8(cpu->mem, rn, MEM_DATA_NSEQ)); \
 			else \
-				cpu_set_reg(cpu, rdr, (int16_t)cpu->get16(cpu->mem, rn)); \
+				cpu_set_reg(cpu, rdr, (int16_t)cpu->get16(cpu->mem, rn, MEM_DATA_NSEQ)); \
 		} \
 		post_update = (rdr != rnr); \
 	} \
@@ -695,13 +689,13 @@ ARM_INSTR(opname##_##oparg, \
 		rd += (rdr == CPU_REG_PC) ? 12 : 0; \
 		if (op == 1) \
 		{ \
-			cpu->set16(cpu->mem, rn, rd); \
+			cpu->set16(cpu->mem, rn, rd, MEM_DATA_NSEQ); \
 		} \
 		else if (op == 2) \
 		{ \
 			uint32_t rdr2 = (rdr + 1) & 0xF; \
-			cpu_set_reg(cpu, rdr , cpu->get32(cpu->mem, rn + 0)); \
-			cpu_set_reg(cpu, rdr2, cpu->get32(cpu->mem, rn + 4)); \
+			cpu_set_reg(cpu, rdr , cpu->get32(cpu->mem, rn + 0, MEM_DATA_NSEQ)); \
+			cpu_set_reg(cpu, rdr2, cpu->get32(cpu->mem, rn + 4, MEM_DATA_NSEQ)); \
 			post_update = (rdr != rnr && rdr2 != rnr); \
 		} \
 		else if (op == 3) \
@@ -709,8 +703,8 @@ ARM_INSTR(opname##_##oparg, \
 			uint32_t rdr2 = (rdr + 1) & 0xF; \
 			uint32_t rd2 = cpu_get_reg(cpu, rdr2); \
 			rd2 += (rdr2 == CPU_REG_PC) ? 12 : 0; \
-			cpu->set32(cpu->mem, rn + 0, rd); \
-			cpu->set32(cpu->mem, rn + 4, rd2); \
+			cpu->set32(cpu->mem, rn + 0, rd, MEM_DATA_NSEQ); \
+			cpu->set32(cpu->mem, rn + 4, rd2, MEM_DATA_NSEQ); \
 		} \
 	} \
 	if (post_pre && writeback && post_update) \
@@ -724,14 +718,7 @@ ARM_INSTR(opname##_##oparg, \
 		cpu_set_reg(cpu, rnr, rn); \
 	} \
 	if (rdr != CPU_REG_PC) \
-	{ \
 		cpu_inc_pc(cpu, 4); \
-		cpu->instr_delay = 3; \
-	} \
-	else \
-	{ \
-		cpu->instr_delay = 5; \
-	} \
 }, \
 { \
 	uint32_t rd = (cpu->instr_opcode >> 12) & 0xF; \
@@ -908,7 +895,7 @@ ARM_INSTR(opname####oparg, \
 				rn += 4; \
 			if (st_ld) \
 			{ \
-				uint32_t v = cpu->get32(cpu->mem, rn); \
+				uint32_t v = cpu->get32(cpu->mem, rn, MEM_DATA_SEQ); \
 				if (i == CPU_REG_PC) \
 				{ \
 					pc_inc = false; \
@@ -960,11 +947,10 @@ ARM_INSTR(opname####oparg, \
 				} \
 				if (i == CPU_REG_PC) \
 					v += 12; \
-				cpu->set32(cpu->mem, rn, v); \
+				cpu->set32(cpu->mem, rn, v, MEM_DATA_SEQ); \
 			} \
 			if (post_pre != down_up) \
 				rn += 4; \
-			cpu->instr_delay++; \
 			first = false; \
 		} \
 	} \
@@ -974,12 +960,14 @@ ARM_INSTR(opname####oparg, \
 			rn += 0x4; \
 		if (st_ld) \
 		{ \
-			cpu_set_reg(cpu, CPU_REG_PC, cpu->get32(cpu->mem, rn) & ~3); \
+			uint32_t v = cpu->get32(cpu->mem, rn, MEM_DATA_SEQ); \
+			cpu_set_reg(cpu, CPU_REG_PC, v & ~3); \
 			pc_inc = false; \
 		} \
 		else \
 		{ \
-			cpu->set32(cpu->mem, rn, cpu_get_reg(cpu, CPU_REG_PC) + 12); \
+			uint32_t v = cpu_get_reg(cpu, CPU_REG_PC) + 12; \
+			cpu->set32(cpu->mem, rn, v, MEM_DATA_SEQ); \
 		} \
 		if (post_pre != down_up) \
 			rn += 0x4; \
@@ -1116,7 +1104,7 @@ ARM_INSTR(mrs_##n, \
 	uint32_t rd = (cpu->instr_opcode >> 12) & 0xF; \
 	cpu_set_reg(cpu, rd, v); \
 	cpu_inc_pc(cpu,  4); \
-	cpu->instr_delay = 1; \
+	cpu->instr_delay += 1; \
 }, \
 { \
 	uint32_t rd = (cpu->instr_opcode >> 12) & 0xF; \
@@ -1162,7 +1150,7 @@ ARM_INSTR(msr_##n, \
 	cpu_inc_pc(cpu, 4); \
 	if (!psr) \
 		cpu_update_mode(cpu); \
-	cpu->instr_delay = 1; \
+	cpu->instr_delay += 1; \
 }, \
 { \
 	char flags[5]; \
@@ -1233,18 +1221,19 @@ ARM_INSTR(n, \
 	uint32_t rn = cpu_get_reg(cpu, rnr); \
 	if (word_byte) \
 	{ \
-		uint8_t v = cpu->get8(cpu->mem, rn); \
-		cpu->set8(cpu->mem, rn, cpu_get_reg(cpu, rm)); \
+		uint8_t v = cpu->get8(cpu->mem, rn, MEM_DATA_SEQ); \
+		cpu->set8(cpu->mem, rn, cpu_get_reg(cpu, rm), MEM_DATA_SEQ); \
 		cpu_set_reg(cpu, rd, v); \
 	} \
 	else \
 	{ \
-		uint32_t v = cpu->get32(cpu->mem, rn & ~3); \
+		uint32_t v = cpu->get32(cpu->mem, rn & ~3, MEM_DATA_SEQ); \
 		v = ARM_ROR(v, (rn & 3) * 8); \
-		cpu->set32(cpu->mem, rn, cpu_get_reg(cpu, rm)); \
+		cpu->set32(cpu->mem, rn, cpu_get_reg(cpu, rm), MEM_DATA_SEQ); \
 		cpu_set_reg(cpu, rd, v); \
 	} \
 	cpu_inc_pc(cpu, 4); \
+	cpu->instr_delay++; \
 }, \
 { \
 	uint32_t rd = (cpu->instr_opcode >> 12) & 0xF; \
@@ -1262,7 +1251,7 @@ ARM_INSTR(b,
 	if (cpu->instr_opcode & 0x800000)
 		v = -(~v & 0x7FFFFF) - 1;
 	cpu_inc_pc(cpu, 8 + 4 * v);
-	cpu->instr_delay = 3;
+	cpu->instr_delay += 3;
 },
 {
 	int32_t v = cpu->instr_opcode & 0x7FFFFF;
@@ -1278,7 +1267,7 @@ ARM_INSTR(bl,
 		v = -(~v & 0x7FFFFF) - 1;
 	cpu_set_reg(cpu, CPU_REG_LR, cpu_get_reg(cpu, CPU_REG_PC) + 4);
 	cpu_inc_pc(cpu, 8 + 4 * v);
-	cpu->instr_delay = 3;
+	cpu->instr_delay += 3;
 },
 {
 	int32_t v = cpu->instr_opcode & 0x7FFFFF;

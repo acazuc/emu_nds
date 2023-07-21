@@ -1,5 +1,6 @@
 #include "instr.h"
 #include "../cpu.h"
+#include "../mem.h"
 
 #include <inttypes.h>
 #include <stdint.h>
@@ -55,7 +56,7 @@ THUMB_INSTR(n##_imm, \
 	cpu_set_reg(cpu, rdr, rs); \
 	update_flags_logical(cpu, rs); \
 	cpu_inc_pc(cpu, 2); \
-	cpu->instr_delay = 1; \
+	cpu->instr_delay += 1; \
 }, \
 { \
 	uint32_t shift = (cpu->instr_opcode >> 6) & 0x1F; \
@@ -117,7 +118,7 @@ THUMB_INSTR(n##_##v, \
 		CPU_SET_FLAG_C(cpu, res < rs); \
 	} \
 	cpu_inc_pc(cpu, 2); \
-	cpu->instr_delay = 1; \
+	cpu->instr_delay += 1; \
 }, \
 { \
 	uint32_t rsr = (cpu->instr_opcode >> 3) & 0x7; \
@@ -172,7 +173,7 @@ THUMB_INSTR(n##_i8r##r, \
 	uint32_t nn = cpu->instr_opcode & 0xFF; \
 	mcas_##n(cpu, r, nn); \
 	cpu_inc_pc(cpu, 2); \
-	cpu->instr_delay = 1; \
+	cpu->instr_delay += 1; \
 }, \
 { \
 	uint32_t nn = cpu->instr_opcode & 0xFF; \
@@ -356,7 +357,7 @@ THUMB_INSTR(alu_##n, \
 		rs += 4; \
 	alu_##n(cpu, rd, rdr, rs); \
 	cpu_inc_pc(cpu, 2); \
-	cpu->instr_delay = 1; \
+	cpu->instr_delay += 1; \
 }, \
 { \
 	uint32_t rd = (cpu->instr_opcode >> 0) & 0x7; \
@@ -474,10 +475,11 @@ THUMB_INSTR(ldrpc_r##r, \
 { \
 	uint32_t rd = (cpu->instr_opcode >> 8) & 0x7; \
 	uint32_t nn = cpu->instr_opcode & 0xFF; \
-	uint32_t v = cpu->get32(cpu->mem, ((cpu_get_reg(cpu, 15) + 4) & ~2) + nn * 4); \
+	uint32_t addr = ((cpu_get_reg(cpu, CPU_REG_PC) + 4) & ~2) + nn * 4; \
+	uint32_t v = cpu->get32(cpu->mem, addr, MEM_DATA_NSEQ); \
 	cpu_set_reg(cpu, rd, v); \
 	cpu_inc_pc(cpu, 2); \
-	cpu->instr_delay = 3; \
+	cpu->instr_delay++; \
 }, \
 { \
 	uint32_t rd = (cpu->instr_opcode >> 8) & 0x7; \
@@ -496,36 +498,36 @@ THUMB_LDRPC_R(7);
 
 static void stld_str(cpu_t *cpu, uint32_t rd, uint32_t rb, uint32_t ro)
 {
-	cpu->set32(cpu->mem, rb + ro, cpu_get_reg(cpu, rd));
+	cpu->set32(cpu->mem, rb + ro, cpu_get_reg(cpu, rd), MEM_DATA_NSEQ);
 }
 
 static void stld_strh(cpu_t *cpu, uint32_t rd, uint32_t rb, uint32_t ro)
 {
-	cpu->set16(cpu->mem, rb + ro, cpu_get_reg(cpu, rd));
+	cpu->set16(cpu->mem, rb + ro, cpu_get_reg(cpu, rd), MEM_DATA_NSEQ);
 }
 
 static void stld_strb(cpu_t *cpu, uint32_t rd, uint32_t rb, uint32_t ro)
 {
-	cpu->set8(cpu->mem, rb + ro, cpu_get_reg(cpu, rd));
+	cpu->set8(cpu->mem, rb + ro, cpu_get_reg(cpu, rd), MEM_DATA_NSEQ);
 }
 
 static void stld_ldr(cpu_t *cpu, uint32_t rd, uint32_t rb, uint32_t ro)
 {
 	uint32_t addr = rb + ro;
-	uint32_t v = cpu->get32(cpu->mem, addr);
+	uint32_t v = cpu->get32(cpu->mem, addr, MEM_DATA_NSEQ);
 	cpu_set_reg(cpu, rd, THUMB_ROR(v, (addr & 3) * 8));
 }
 
 static void stld_ldrh(cpu_t *cpu, uint32_t rd, uint32_t rb, uint32_t ro)
 {
 	uint32_t addr = rb + ro;
-	uint32_t v = cpu->get16(cpu->mem, addr);
+	uint32_t v = cpu->get16(cpu->mem, addr, MEM_DATA_NSEQ);
 	cpu_set_reg(cpu, rd, THUMB_ROR(v, (addr & 1) * 8));
 }
 
 static void stld_ldrb(cpu_t *cpu, uint32_t rd, uint32_t rb, uint32_t ro)
 {
-	cpu_set_reg(cpu, rd, cpu->get8(cpu->mem, rb + ro));
+	cpu_set_reg(cpu, rd, cpu->get8(cpu->mem, rb + ro, MEM_DATA_NSEQ));
 }
 
 static void stld_ldrsh(cpu_t *cpu, uint32_t rd, uint32_t rb, uint32_t ro)
@@ -533,15 +535,15 @@ static void stld_ldrsh(cpu_t *cpu, uint32_t rd, uint32_t rb, uint32_t ro)
 	uint32_t addr = rb + ro;
 	uint32_t v;
 	if (addr & 1)
-		v = (int8_t)cpu->get8(cpu->mem, addr);
+		v = (int8_t)cpu->get8(cpu->mem, addr, MEM_DATA_NSEQ);
 	else
-		v = (int16_t)cpu->get16(cpu->mem, addr);
+		v = (int16_t)cpu->get16(cpu->mem, addr, MEM_DATA_NSEQ);
 	cpu_set_reg(cpu, rd, v);
 }
 
 static void stld_ldrsb(cpu_t *cpu, uint32_t rd, uint32_t rb, uint32_t ro)
 {
-	cpu_set_reg(cpu, rd, (int8_t)cpu->get8(cpu->mem, rb + ro));
+	cpu_set_reg(cpu, rd, (int8_t)cpu->get8(cpu->mem, rb + ro, MEM_DATA_NSEQ));
 }
 
 #define THUMB_STLD_REG(n, st_ld) \
@@ -552,7 +554,6 @@ THUMB_INSTR(n##_reg, \
 	uint32_t ro = (cpu->instr_opcode >> 6) & 0x7; \
 	stld_##n(cpu, rd, cpu_get_reg(cpu, rb), cpu_get_reg(cpu, ro)); \
 	cpu_inc_pc(cpu, 2); \
-	cpu->instr_delay = st_ld ? 3 : 2; \
 }, \
 { \
 	uint32_t rd = (cpu->instr_opcode >> 0) & 0x7; \
@@ -579,7 +580,6 @@ THUMB_INSTR(n##_imm, \
 	nn *= nn_mult; \
 	stld_##n(cpu, rd, cpu_get_reg(cpu, rb), nn); \
 	cpu_inc_pc(cpu, 2); \
-	cpu->instr_delay = st_ld ? 3 : 2; \
 }, \
 { \
 	uint32_t rd = (cpu->instr_opcode >> 0) & 0x7; \
@@ -603,15 +603,14 @@ THUMB_INSTR(n##sp_r##r, \
 	if (st_ld) \
 	{ \
 		uint32_t addr = cpu_get_reg(cpu, CPU_REG_SP) + nn; \
-		uint32_t v = cpu->get32(cpu->mem, addr); \
+		uint32_t v = cpu->get32(cpu->mem, addr, MEM_DATA_NSEQ); \
 		cpu_set_reg(cpu, rd, THUMB_ROR(v, (addr & 3) * 8)); \
 	} \
 	else \
 	{ \
-		cpu->set32(cpu->mem, cpu_get_reg(cpu, CPU_REG_SP) + nn, cpu_get_reg(cpu, rd)); \
+		cpu->set32(cpu->mem, cpu_get_reg(cpu, CPU_REG_SP) + nn, cpu_get_reg(cpu, rd), MEM_DATA_NSEQ); \
 	} \
 	cpu_inc_pc(cpu, 2); \
-	cpu->instr_delay = st_ld ? 3 : 2; \
 }, \
 { \
 	uint32_t rd = (cpu->instr_opcode >> 8) & 0x7; \
@@ -646,7 +645,6 @@ THUMB_INSTR(add##rr##_r##r, \
 	else \
 		cpu_set_reg(cpu, rd, ((cpu_get_reg(cpu, CPU_REG_PC) + 4) & ~2) + nn); \
 	cpu_inc_pc(cpu, 2); \
-	cpu->instr_delay = 1; \
 }, \
 { \
 	uint32_t rd = (cpu->instr_opcode >> 8) & 0x7; \
@@ -680,7 +678,6 @@ THUMB_INSTR(addsp_imm,
 	else
 		cpu_set_reg(cpu, CPU_REG_SP, cpu_get_reg(cpu, CPU_REG_SP) + nn * 4);
 	cpu_inc_pc(cpu, 2);
-	cpu->instr_delay = 1;
 },
 {
 	uint32_t add_sub = (cpu->instr_opcode >> 7) & 0x1;
@@ -730,7 +727,7 @@ THUMB_INSTR(n####next, \
 			{ \
 				if (i == base_reg) \
 					nowriteback = true; \
-				uint32_t v = cpu->get32(cpu->mem, sp); \
+				uint32_t v = cpu->get32(cpu->mem, sp, MEM_DATA_SEQ); \
 				cpu_set_reg(cpu, i, v); \
 			} \
 			else \
@@ -747,11 +744,10 @@ THUMB_INSTR(n####next, \
 				{ \
 					v = cpu_get_reg(cpu, i); \
 				} \
-				cpu->set32(cpu->mem, sp, v); \
+				cpu->set32(cpu->mem, sp, v, MEM_DATA_SEQ); \
 			} \
 			if (post_pre != down_up) \
 				sp += 4; \
-			cpu->instr_delay++; \
 			first = false; \
 		} \
 	} \
@@ -761,16 +757,15 @@ THUMB_INSTR(n####next, \
 			sp += 4; \
 		if (st_ld) \
 		{ \
-			cpu_set_reg(cpu, CPU_REG_PC, cpu->get32(cpu->mem, sp) & ~1); \
+			cpu_set_reg(cpu, CPU_REG_PC, cpu->get32(cpu->mem, sp, MEM_DATA_SEQ) & ~1); \
 			pc_inc = false; \
 		} \
 		else \
 		{ \
-			cpu->set32(cpu->mem, sp, cpu_get_reg(cpu, CPU_REG_LR)); \
+			cpu->set32(cpu->mem, sp, cpu_get_reg(cpu, CPU_REG_LR), MEM_DATA_SEQ); \
 		} \
 		if (post_pre != down_up) \
 			sp += 4; \
-		cpu->instr_delay++; \
 	} \
 	else if (!rl) \
 	{ \
@@ -778,12 +773,12 @@ THUMB_INSTR(n####next, \
 			sp += 0x4; \
 		if (st_ld) \
 		{ \
-			cpu_set_reg(cpu, CPU_REG_PC, cpu->get32(cpu->mem, sp) & ~1); \
+			cpu_set_reg(cpu, CPU_REG_PC, cpu->get32(cpu->mem, sp, MEM_DATA_SEQ) & ~1); \
 			pc_inc = false; \
 		} \
 		else \
 		{ \
-			cpu->set32(cpu->mem, sp, cpu_get_reg(cpu, CPU_REG_PC) + 6); \
+			cpu->set32(cpu->mem, sp, cpu_get_reg(cpu, CPU_REG_PC) + 6, MEM_DATA_SEQ); \
 		} \
 		if (post_pre != down_up) \
 			sp += 0x4; \
@@ -884,13 +879,11 @@ THUMB_INSTR(n, \
 	{ \
 		int8_t nn = cpu->instr_opcode & 0xFF; \
 		cpu_inc_pc(cpu, (int32_t)nn * 2 + 4); \
-		cpu->instr_delay += 2; \
 	} \
 	else \
 	{ \
 		cpu_inc_pc(cpu, 2); \
 	} \
-	cpu->instr_delay++; \
 }, \
 { \
 	uint32_t nn = cpu->instr_opcode & 0xFF; \
@@ -934,7 +927,6 @@ THUMB_INSTR(b,
 		nn = -(~nn & 0x3FF) - 1;
 	nn *= 2;
 	cpu_set_reg(cpu, CPU_REG_PC, cpu_get_reg(cpu, CPU_REG_PC) + 4 + nn);
-	cpu->instr_delay = 3;
 },
 {
 	int32_t nn = cpu->instr_opcode & 0x7FF;
@@ -953,7 +945,6 @@ THUMB_INSTR(blx_off,
 	cpu_set_reg(cpu, CPU_REG_PC, dst);
 	cpu_set_reg(cpu, CPU_REG_LR, lr);
 	CPU_SET_FLAG_T(cpu, 0);
-	cpu->instr_delay = 3;
 },
 {
 	uint32_t nn = cpu->instr_opcode & 0x7FF;
@@ -967,7 +958,6 @@ THUMB_INSTR(bl_setup,
 		nn = -(~nn & 0x3FF) - 1;
 	cpu_set_reg(cpu, CPU_REG_LR, cpu_get_reg(cpu, CPU_REG_PC) + 4 + (nn * (1 << 12)));
 	cpu_inc_pc(cpu, 2);
-	cpu->instr_delay = 1;
 },
 {
 	uint32_t nn = cpu->instr_opcode & 0x7FF;
@@ -982,7 +972,6 @@ THUMB_INSTR(bl_off,
 	int32_t dst = (cpu_get_reg(cpu, CPU_REG_LR) & ~1) + (nn << 1);
 	cpu_set_reg(cpu, CPU_REG_PC, dst);
 	cpu_set_reg(cpu, CPU_REG_LR, lr);
-	cpu->instr_delay = 3;
 },
 {
 	uint32_t nn = cpu->instr_opcode & 0x7FF;

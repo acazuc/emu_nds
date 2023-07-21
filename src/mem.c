@@ -10,6 +10,34 @@
 
 static const uint16_t timer_masks[4] = {0, 0x7E, 0x1FE, 0x7FE};
 
+static const uint8_t arm7_mram_cycles_32[] = {0, 4, 20, 4, 18};
+static const uint8_t arm7_mram_cycles_16[] = {0, 2, 18, 2, 16};
+static const uint8_t arm7_mram_cycles_8[]  = {0, 2, 18, 2, 16};
+
+static const uint8_t arm7_wram_cycles_32[] = {0, 2,  2, 2,  2};
+static const uint8_t arm7_wram_cycles_16[] = {0, 2,  2, 2,  2};
+static const uint8_t arm7_wram_cycles_8[]  = {0, 2,  2, 2,  2};
+
+static const uint8_t arm7_vram_cycles_32[] = {0, 4,  2, 4,  4};
+static const uint8_t arm7_vram_cycles_16[] = {0, 2,  2, 2,  2};
+static const uint8_t arm7_vram_cycles_8[]  = {0, 2,  2, 2,  2};
+
+static const uint8_t arm9_mram_cycles_32[] = {0, 4, 20, 18, 18};
+static const uint8_t arm9_mram_cycles_16[] = {0, 2, 18,  9,  9};
+static const uint8_t arm9_mram_cycles_8[]  = {0, 2, 18,  9,  9};
+
+static const uint8_t arm9_wram_cycles_32[] = {0, 2,  8,  8,  8};
+static const uint8_t arm9_wram_cycles_16[] = {0, 2,  8,  4,  4};
+static const uint8_t arm9_wram_cycles_8[]  = {0, 2,  8,  4,  4};
+
+static const uint8_t arm9_vram_cycles_32[] = {0, 4, 10, 10, 10};
+static const uint8_t arm9_vram_cycles_16[] = {0, 2,  8,  5,  5};
+static const uint8_t arm9_vram_cycles_8[]  = {0, 2,  8,  5,  5};
+
+static const uint8_t arm9_tcm_cycles_32[]  = {0, 1,  1, 1,  1};
+static const uint8_t arm9_tcm_cycles_16[]  = {0, 1,  1, 1,  1};
+static const uint8_t arm9_tcm_cycles_8[]   = {0, 1,  1, 1,  1};
+
 mem_t *mem_new(nds_t *nds, mbc_t *mbc)
 {
 	mem_t *mem = calloc(sizeof(*mem), 1);
@@ -352,6 +380,17 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 					return;
 			}
 			return;
+		case MEM_ARM7_REG_BIOSPROT:
+		case MEM_ARM7_REG_BIOSPROT + 1:
+		case MEM_ARM7_REG_BIOSPROT + 2:
+			if (!mem->biosprot)
+				mem->arm7_regs[addr] = v;
+			return;
+		case MEM_ARM7_REG_BIOSPROT + 3:
+			if (!mem->biosprot)
+				mem->arm7_regs[addr] = v;
+			mem->biosprot = 1;
+			return;
 		default:
 			printf("unknown ARM7 set register %08" PRIx32 " = %02x\n", addr, v);
 			break;
@@ -397,6 +436,10 @@ static uint8_t get_arm7_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM7_REG_SPICNT:
 		case MEM_ARM7_REG_SPICNT + 1:
 		case MEM_ARM7_REG_HALTCNT:
+		case MEM_ARM7_REG_BIOSPROT:
+		case MEM_ARM7_REG_BIOSPROT + 1:
+		case MEM_ARM7_REG_BIOSPROT + 2:
+		case MEM_ARM7_REG_BIOSPROT + 3:
 			return mem->arm7_regs[addr];
 		case MEM_ARM7_REG_ROMCTRL:
 		case MEM_ARM7_REG_ROMCTRL + 1:
@@ -459,8 +502,13 @@ static uint32_t get_arm7_reg32(mem_t *mem, uint32_t addr)
 	     | (get_arm7_reg8(mem, addr + 3) << 24);
 }
 
+static void arm7_instr_delay(mem_t *mem, const uint8_t *table, enum mem_type type)
+{
+	mem->nds->arm7->instr_delay += table[type] + 1;
+}
+
 #define MEM_ARM7_GET(size) \
-uint##size##_t mem_arm7_get##size(mem_t *mem, uint32_t addr) \
+uint##size##_t mem_arm7_get##size(mem_t *mem, uint32_t addr, enum mem_type type) \
 { \
 	if (addr >= 0x10000000) \
 		goto end; \
@@ -473,19 +521,24 @@ uint##size##_t mem_arm7_get##size(mem_t *mem, uint32_t addr) \
 		case 0x0: /* ARM7 bios */ \
 			if (addr < sizeof(mem->arm7_bios)) \
 			{ \
-				if (cpu_get_reg(mem->nds->arm7, CPU_REG_PC) < sizeof(mem->arm7_bios)) \
-					return *(uint##size##_t*)&mem->arm7_bios[addr]; \
-				return (uint##size##_t)0xFFFFFFFF; \
+				uint32_t biosprot = mem_arm7_get_reg32(mem, MEM_ARM7_REG_BIOSPROT); \
+				if (addr < biosprot && cpu_get_reg(mem->nds->arm7, CPU_REG_PC) >= biosprot) \
+					return (uint##size##_t)0xFFFFFFFF; \
+				arm7_instr_delay(mem, arm7_wram_cycles_##size, type); \
+				return *(uint##size##_t*)&mem->arm7_bios[addr]; \
 			} \
 			break; \
 		case 0x2: /* main memory */ \
+			arm7_instr_delay(mem, arm7_mram_cycles_##size, type); \
 			return *(uint##size##_t*)&mem->mram[addr & 0x3FFFFF]; \
 		case 0x3: /* wram */ \
+			arm7_instr_delay(mem, arm7_wram_cycles_##size, type); \
 			if (!mem->arm7_wram_mask || addr >= 0x3800000) \
 				return *(uint##size##_t*)&mem->arm7_wram[addr & 0xFFFF]; \
 			return *(uint##size##_t*)&mem->wram[mem->arm7_wram_base \
 			     + (addr & mem->arm7_wram_mask)]; \
 		case 0x4: /* io ports */ \
+			arm7_instr_delay(mem, arm7_wram_cycles_##size, type); \
 			return get_arm7_reg##size(mem, addr - 0x4000000); \
 		case 0x6: /* vram */ \
 			break; \
@@ -508,7 +561,7 @@ MEM_ARM7_GET(16);
 MEM_ARM7_GET(32);
 
 #define MEM_ARM7_SET(size) \
-void mem_arm7_set##size(mem_t *mem, uint32_t addr, uint##size##_t v) \
+void mem_arm7_set##size(mem_t *mem, uint32_t addr, uint##size##_t v, enum mem_type type) \
 { \
 	if (addr >= 0x10000000) \
 		goto end; \
@@ -522,9 +575,11 @@ void mem_arm7_set##size(mem_t *mem, uint32_t addr, uint##size##_t v) \
 	switch ((addr >> 24) & 0xF) \
 	{ \
 		case 0x0: /* ARM7 bios */ \
+			arm7_instr_delay(mem, arm7_wram_cycles_##size, type); \
 			break; \
 		case 0x2: /* main memory */ \
 			*(uint##size##_t*)&mem->mram[addr & 0x3FFFFF] = v; \
+			arm7_instr_delay(mem, arm7_mram_cycles_##size, type); \
 			return; \
 		case 0x3: /* wram */ \
 			if (!mem->arm7_wram_mask || addr >= 0x3800000) \
@@ -532,9 +587,11 @@ void mem_arm7_set##size(mem_t *mem, uint32_t addr, uint##size##_t v) \
 			else \
 				*(uint##size##_t*)&mem->wram[mem->arm7_wram_base \
 				                          + (addr & mem->arm7_wram_mask)] = v; \
+			arm7_instr_delay(mem, arm7_wram_cycles_##size, type); \
 			return; \
 		case 0x4: /* io ports */ \
 			set_arm7_reg##size(mem, addr - 0x4000000, v); \
+			arm7_instr_delay(mem, arm7_wram_cycles_##size, type); \
 			return; \
 		case 0x6: /* vram */ \
 			break; \
@@ -737,8 +794,13 @@ static uint32_t get_arm9_reg32(mem_t *mem, uint32_t addr)
 	     | (get_arm9_reg8(mem, addr + 3) << 24);
 }
 
+static void arm9_instr_delay(mem_t *mem, const uint8_t *table, enum mem_type type)
+{
+	mem->nds->arm9->instr_delay += table[type] + 1;
+}
+
 #define MEM_ARM9_GET(size) \
-uint##size##_t mem_arm9_get##size(mem_t *mem, uint32_t addr) \
+uint##size##_t mem_arm9_get##size(mem_t *mem, uint32_t addr, enum mem_type type) \
 { \
 	if (mem->nds->arm9->cp15.cr & (1 << 16)) \
 	{ \
@@ -753,6 +815,7 @@ uint##size##_t mem_arm9_get##size(mem_t *mem, uint32_t addr) \
 			uint32_t a = addr - dtcm_base; \
 			a &= dtcm_size - 1; \
 			a &= 0x3FFF; \
+			arm9_instr_delay(mem, arm9_tcm_cycles_##size, type); \
 			return *(uint##size##_t*)&mem->dtcm[a]; \
 		} \
 	} \
@@ -760,6 +823,7 @@ uint##size##_t mem_arm9_get##size(mem_t *mem, uint32_t addr) \
 	{ \
 		uint32_t a = addr - 0xFFFF0000; \
 		a &= 0xFFF; \
+		arm9_instr_delay(mem, arm9_wram_cycles_##size, type); \
 		return *(uint##size##_t*)&mem->arm9_bios[a]; \
 	} \
 	if (addr >= 0x10000000) \
@@ -778,13 +842,16 @@ uint##size##_t mem_arm9_get##size(mem_t *mem, uint32_t addr) \
 			} \
 			break; \
 		case 0x2: /* main memory */ \
+			arm9_instr_delay(mem, arm9_mram_cycles_##size, type); \
 			return *(uint##size##_t*)&mem->mram[addr & 0x3FFFFF]; \
 		case 0x3: /* shared wram */ \
+			arm9_instr_delay(mem, arm9_wram_cycles_##size, type); \
 			if (!mem->arm9_wram_mask) \
 				return 0; \
 			return *(uint##size##_t*)&mem->wram[mem->arm9_wram_base \
 			                                  + (addr & mem->arm9_wram_mask)]; \
 		case 0x4: /* io ports */ \
+			arm9_instr_delay(mem, arm9_wram_cycles_##size, type); \
 			return get_arm9_reg##size(mem, addr - 0x4000000); \
 		case 0x5: /* palettes */ \
 			break; \
@@ -811,7 +878,7 @@ MEM_ARM9_GET(16);
 MEM_ARM9_GET(32);
 
 #define MEM_ARM9_SET(size) \
-void mem_arm9_set##size(mem_t *mem, uint32_t addr, uint##size##_t v) \
+void mem_arm9_set##size(mem_t *mem, uint32_t addr, uint##size##_t v, enum mem_type type) \
 { \
 	if (mem->nds->arm9->cp15.cr & (1 << 16)) \
 	{ \
@@ -827,6 +894,7 @@ void mem_arm9_set##size(mem_t *mem, uint32_t addr, uint##size##_t v) \
 			a &= dtcm_size - 1; \
 			a &= 0x3FFF; \
 			*(uint##size##_t*)&mem->dtcm[a] = v; \
+			arm9_instr_delay(mem, arm9_tcm_cycles_##size, type); \
 			return; \
 		} \
 	} \
@@ -850,15 +918,18 @@ void mem_arm9_set##size(mem_t *mem, uint32_t addr, uint##size##_t v) \
 			break; \
 		case 0x2: /* main memory */ \
 			*(uint##size##_t*)&mem->mram[addr & 0x3FFFFF] = v; \
+			arm9_instr_delay(mem, arm9_mram_cycles_##size, type); \
 			return; \
 		case 0x3: /* shared wram */ \
 			if (!mem->arm7_wram_mask) \
 				return; \
 			*(uint##size##_t*)&mem->wram[mem->arm9_wram_base \
 			                           + (addr & mem->arm9_wram_mask)] = v; \
+			arm9_instr_delay(mem, arm9_wram_cycles_##size, type); \
 			return; \
 		case 0x4: /* io ports */ \
 			set_arm9_reg##size(mem, addr - 0x4000000, v); \
+			arm9_instr_delay(mem, arm9_wram_cycles_##size, type); \
 			return; \
 		case 0x5: /* palettes */ \
 			break; \

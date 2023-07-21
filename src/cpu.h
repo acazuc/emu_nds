@@ -64,6 +64,8 @@ do \
 #define CPU_REG_LR 0xE
 #define CPU_REG_PC 0xF
 
+enum mem_type;
+
 struct cpu_regs
 {
 	uint32_t r[16];
@@ -108,12 +110,12 @@ struct cp15
 
 typedef struct cpu
 {
-	uint8_t  (*get8 )(mem_t *mem, uint32_t addr);
-	uint16_t (*get16)(mem_t *mem, uint32_t addr);
-	uint32_t (*get32)(mem_t *mem, uint32_t addr);
-	void (*set8 )(mem_t *mem, uint32_t addr, uint8_t val);
-	void (*set16)(mem_t *mem, uint32_t addr, uint16_t val);
-	void (*set32)(mem_t *mem, uint32_t addr, uint32_t val);
+	uint8_t  (*get8 )(mem_t *mem, uint32_t addr, enum mem_type type);
+	uint16_t (*get16)(mem_t *mem, uint32_t addr, enum mem_type type);
+	uint32_t (*get32)(mem_t *mem, uint32_t addr, enum mem_type type);
+	void (*set8 )(mem_t *mem, uint32_t addr, uint8_t val, enum mem_type type);
+	void (*set16)(mem_t *mem, uint32_t addr, uint16_t val, enum mem_type type);
+	void (*set32)(mem_t *mem, uint32_t addr, uint32_t val, enum mem_type type);
 	struct cpu_regs regs;
 	struct cp15 cp15;
 	mem_t *mem;

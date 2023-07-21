@@ -224,13 +224,21 @@ void mbc_cmd(mbc_t *mbc)
 					/* XXX key2 disable */
 					return;
 				case 0xA:
-					/* XXX main data mode */
+					mbc->enc = 2;
+					end_cmd(mbc);
 					return;
 				default:
 					assert(!"unknown command");
 					return;
 			}
 			break;
+		}
+		case 2:
+		{
+			uint64_t cmd_dec = 0;
+			for (size_t i = 0 ; i < 64; i += 8)
+				cmd_dec |= key2_byte(mbc, (cmd >> i) & 0xFF) << i;
+			printf("CMD KEY2 %016" PRIx64 "\n", cmd_dec);
 		}
 	}
 }

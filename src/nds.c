@@ -8,6 +8,42 @@
 #include <stdlib.h>
 #include <string.h>
 
+/*
+ * 22A4: read a firmware byte
+ * 227C: read an spi byte (return in r0, r0 = SPICNT (bit 15 not needed), r1 = hold)
+ * 22D6: read spi bytes (r1 = dst, r2 = bytes count, r3 = unk (unused?))
+ * 33A4: read spi bytes + WaitByLoop (r0 = dst, r1 = bytes count, r2 = unk (unused?))
+ * 2330: function to read a block byte per byte (with cached data)
+ *  - read + decrypt a firmware block into 0x037F90C4 (8 bytes, 0x037F800C as tmp buffer)
+ *  - increment uint16_t @ 0x037F800A (if not 0 at call, no data is read + unciphered) (upper 29 bits are cleared (mod 8))
+ *  - return 0x037F800C[*0x037F800A] in r0
+ * 20BC: decrypt a block of 8 bytes (r0 = dst, r1 = src)
+ * 1164: bios safe call
+ * 1130: bios call wrapper of 20BC (by 1164)
+ * 3344: thumb wrapper of 1130
+ * 2388: (called 1 time) do things, then call 2330 4 times
+ * 2A2A: LZ77UnCompReadByCallbackWrite16bit
+ * 2462: calls LZ77UnCompReadByCallbackWrite16bit with:
+               - open_and_get_32bit: 0x2388 (returns 0x010b4410, so LZ44 of 0x10b44 uncompressed bytes)
+               - close             : 0x22C6
+               - get_8bit          : 0x2330
+               - get_16bit / get_32bit as null
+ *       24a8: if (LZ77UnCompReadByCallbackWrite16bit(r0=0x200, r1=0x02320000, r2=0x33E0, r3=0x33E0) <= 0) { SVC_GetCRC16() }
+ *
+ *
+ * - 2388
+ *   - *
+ *   - 2330
+ *     - 33A4
+ *       - 22D6
+ *         - 227C
+ *     - 20BC (indirect)
+ *
+ * - 2462
+ *   - 2A2A
+ *     - 2388
+ */
+
 nds_t *nds_new(const void *rom_data, size_t rom_size)
 {
 	nds_t *nds = calloc(sizeof(*nds), 1);

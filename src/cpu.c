@@ -96,6 +96,54 @@ static bool check_arm_cond(cpu_t *cpu, uint32_t cond)
 	return false;
 }
 
+static void print_regs(cpu_t *cpu)
+{
+	printf("r00=%08" PRIx32 " r01=%08" PRIx32 " r02=%08" PRIx32 " r03=%08" PRIx32 " "
+	       "r04=%08" PRIx32 " r05=%08" PRIx32 " r06=%08" PRIx32 " r07=%08" PRIx32 " "
+	       "r08=%08" PRIx32 " r09=%08" PRIx32 " r10=%08" PRIx32 " r11=%08" PRIx32 " "
+	       "r12=%08" PRIx32 " r13=%08" PRIx32 " r14=%08" PRIx32 " r15=%08" PRIx32 "\n",
+	       cpu_get_reg(cpu, 0x0),
+	       cpu_get_reg(cpu, 0x1),
+	       cpu_get_reg(cpu, 0x2),
+	       cpu_get_reg(cpu, 0x3),
+	       cpu_get_reg(cpu, 0x4),
+	       cpu_get_reg(cpu, 0x5),
+	       cpu_get_reg(cpu, 0x6),
+	       cpu_get_reg(cpu, 0x7),
+	       cpu_get_reg(cpu, 0x8),
+	       cpu_get_reg(cpu, 0x9),
+	       cpu_get_reg(cpu, 0xA),
+	       cpu_get_reg(cpu, 0xB),
+	       cpu_get_reg(cpu, 0xC),
+	       cpu_get_reg(cpu, 0xD),
+	       cpu_get_reg(cpu, 0xE),
+	       cpu_get_reg(cpu, 0xF));
+}
+
+static void print_regs_ml(cpu_t *cpu)
+{
+	printf("r00=%08" PRIx32 " r01=%08" PRIx32 " r02=%08" PRIx32 " r03=%08" PRIx32 "\n"
+	       "r04=%08" PRIx32 " r05=%08" PRIx32 " r06=%08" PRIx32 " r07=%08" PRIx32 "\n"
+	       "r08=%08" PRIx32 " r09=%08" PRIx32 " r10=%08" PRIx32 " r11=%08" PRIx32 "\n"
+	       "r12=%08" PRIx32 " r13=%08" PRIx32 " r14=%08" PRIx32 " r15=%08" PRIx32 "\n",
+	       cpu_get_reg(cpu, 0x0),
+	       cpu_get_reg(cpu, 0x1),
+	       cpu_get_reg(cpu, 0x2),
+	       cpu_get_reg(cpu, 0x3),
+	       cpu_get_reg(cpu, 0x4),
+	       cpu_get_reg(cpu, 0x5),
+	       cpu_get_reg(cpu, 0x6),
+	       cpu_get_reg(cpu, 0x7),
+	       cpu_get_reg(cpu, 0x8),
+	       cpu_get_reg(cpu, 0x9),
+	       cpu_get_reg(cpu, 0xA),
+	       cpu_get_reg(cpu, 0xB),
+	       cpu_get_reg(cpu, 0xC),
+	       cpu_get_reg(cpu, 0xD),
+	       cpu_get_reg(cpu, 0xE),
+	       cpu_get_reg(cpu, 0xF));
+}
+
 static void print_instr(cpu_t *cpu, const char *msg, const struct cpu_instr *instr)
 {
 	char tmp[1024] = "";
@@ -118,51 +166,9 @@ static void print_instr(cpu_t *cpu, const char *msg, const struct cpu_instr *ins
 	if (cpu->debug & CPU_DEBUG_REGS)
 	{
 		if (cpu->debug & CPU_DEBUG_REGS_ML)
-		{
-			printf("r00=%08" PRIx32 " r01=%08" PRIx32 " r02=%08" PRIx32 " r03=%08" PRIx32 "\n"
-			       "r04=%08" PRIx32 " r05=%08" PRIx32 " r06=%08" PRIx32 " r07=%08" PRIx32 "\n"
-			       "r08=%08" PRIx32 " r09=%08" PRIx32 " r10=%08" PRIx32 " r11=%08" PRIx32 "\n"
-			       "r12=%08" PRIx32 " r13=%08" PRIx32 " r14=%08" PRIx32 " r15=%08" PRIx32 "\n",
-			       cpu_get_reg(cpu, 0x0),
-			       cpu_get_reg(cpu, 0x1),
-			       cpu_get_reg(cpu, 0x2),
-			       cpu_get_reg(cpu, 0x3),
-			       cpu_get_reg(cpu, 0x4),
-			       cpu_get_reg(cpu, 0x5),
-			       cpu_get_reg(cpu, 0x6),
-			       cpu_get_reg(cpu, 0x7),
-			       cpu_get_reg(cpu, 0x8),
-			       cpu_get_reg(cpu, 0x9),
-			       cpu_get_reg(cpu, 0xA),
-			       cpu_get_reg(cpu, 0xB),
-			       cpu_get_reg(cpu, 0xC),
-			       cpu_get_reg(cpu, 0xD),
-			       cpu_get_reg(cpu, 0xE),
-			       cpu_get_reg(cpu, 0xF));
-		}
+			print_regs_ml(cpu);
 		else
-		{
-			printf("r00=%08" PRIx32 " r01=%08" PRIx32 " r02=%08" PRIx32 " r03=%08" PRIx32 " "
-			       "r04=%08" PRIx32 " r05=%08" PRIx32 " r06=%08" PRIx32 " r07=%08" PRIx32 " "
-			       "r08=%08" PRIx32 " r09=%08" PRIx32 " r10=%08" PRIx32 " r11=%08" PRIx32 " "
-			       "r12=%08" PRIx32 " r13=%08" PRIx32 " r14=%08" PRIx32 " r15=%08" PRIx32 "\n",
-			       cpu_get_reg(cpu, 0x0),
-			       cpu_get_reg(cpu, 0x1),
-			       cpu_get_reg(cpu, 0x2),
-			       cpu_get_reg(cpu, 0x3),
-			       cpu_get_reg(cpu, 0x4),
-			       cpu_get_reg(cpu, 0x5),
-			       cpu_get_reg(cpu, 0x6),
-			       cpu_get_reg(cpu, 0x7),
-			       cpu_get_reg(cpu, 0x8),
-			       cpu_get_reg(cpu, 0x9),
-			       cpu_get_reg(cpu, 0xA),
-			       cpu_get_reg(cpu, 0xB),
-			       cpu_get_reg(cpu, 0xC),
-			       cpu_get_reg(cpu, 0xD),
-			       cpu_get_reg(cpu, 0xE),
-			       cpu_get_reg(cpu, 0xF));
-		}
+			print_regs(cpu);
 		fflush(stdout);
 	}
 }
@@ -228,7 +234,7 @@ static bool decode_instruction(cpu_t *cpu)
 		uint32_t pc = cpu_get_reg(cpu, CPU_REG_PC);
 		if (pc < 0x4000)
 			cpu->last_bios_decode = pc + 4;
-		cpu->instr_opcode = cpu->get16(cpu->mem, pc);
+		cpu->instr_opcode = cpu->get16(cpu->mem, pc, cpu->arm9 ? MEM_CODE_NSEQ : MEM_CODE_SEQ);
 		cpu->instr = cpu_instr_thumb[cpu->instr_opcode >> 6];
 	}
 	else
@@ -236,7 +242,7 @@ static bool decode_instruction(cpu_t *cpu)
 		uint32_t pc = cpu_get_reg(cpu, CPU_REG_PC);
 		if (pc < 0x4000)
 			cpu->last_bios_decode = pc + 8;
-		cpu->instr_opcode = cpu->get32(cpu->mem, pc);
+		cpu->instr_opcode = cpu->get32(cpu->mem, pc, cpu->arm9 ? MEM_CODE_NSEQ : MEM_CODE_SEQ);
 		if (!check_arm_cond(cpu, cpu->instr_opcode >> 28))
 		{
 			if (cpu->debug)
@@ -258,8 +264,8 @@ void cpu_cycle(cpu_t *cpu)
 		cpu->debug = CPU_DEBUG_REGS | CPU_DEBUG_INSTR;
 #endif
 #if 0
-	if (cpu_get_reg(cpu, CPU_REG_PC) == 0x872)
-		cpu->debug = 0;
+	if (cpu_get_reg(cpu, CPU_REG_PC) == 0x2366)
+		print_regs_ml(cpu);
 #endif
 
 	if (!cpu->instr)

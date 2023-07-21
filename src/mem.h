@@ -167,6 +167,15 @@
 typedef struct mbc mbc_t;
 typedef struct nds nds_t;
 
+enum mem_type
+{
+	MEM_DIRECT,
+	MEM_DATA_SEQ,
+	MEM_DATA_NSEQ,
+	MEM_CODE_SEQ,
+	MEM_CODE_NSEQ,
+};
+
 typedef struct mem_timer
 {
 	uint16_t v;
@@ -207,6 +216,7 @@ typedef struct mem
 	uint32_t arm9_wram_mask;
 	uint8_t dtcm[0x4000];
 	uint8_t itcm[0x8000];
+	int biosprot;
 } mem_t;
 
 mem_t *mem_new(nds_t *nds, mbc_t *mbc);
@@ -214,19 +224,19 @@ void mem_del(mem_t *mem);
 
 void mem_timers(mem_t *mem);
 
-uint8_t  mem_arm7_get8 (mem_t *mem, uint32_t addr);
-uint16_t mem_arm7_get16(mem_t *mem, uint32_t addr);
-uint32_t mem_arm7_get32(mem_t *mem, uint32_t addr);
-void mem_arm7_set8 (mem_t *mem, uint32_t addr, uint8_t val);
-void mem_arm7_set16(mem_t *mem, uint32_t addr, uint16_t val);
-void mem_arm7_set32(mem_t *mem, uint32_t addr, uint32_t val);
+uint8_t  mem_arm7_get8 (mem_t *mem, uint32_t addr, enum mem_type type);
+uint16_t mem_arm7_get16(mem_t *mem, uint32_t addr, enum mem_type type);
+uint32_t mem_arm7_get32(mem_t *mem, uint32_t addr, enum mem_type type);
+void mem_arm7_set8 (mem_t *mem, uint32_t addr, uint8_t val, enum mem_type type);
+void mem_arm7_set16(mem_t *mem, uint32_t addr, uint16_t val, enum mem_type type);
+void mem_arm7_set32(mem_t *mem, uint32_t addr, uint32_t val, enum mem_type type);
 
-uint8_t  mem_arm9_get8 (mem_t *mem, uint32_t addr);
-uint16_t mem_arm9_get16(mem_t *mem, uint32_t addr);
-uint32_t mem_arm9_get32(mem_t *mem, uint32_t addr);
-void mem_arm9_set8 (mem_t *mem, uint32_t addr, uint8_t val);
-void mem_arm9_set16(mem_t *mem, uint32_t addr, uint16_t val);
-void mem_arm9_set32(mem_t *mem, uint32_t addr, uint32_t val);
+uint8_t  mem_arm9_get8 (mem_t *mem, uint32_t addr, enum mem_type type);
+uint16_t mem_arm9_get16(mem_t *mem, uint32_t addr, enum mem_type type);
+uint32_t mem_arm9_get32(mem_t *mem, uint32_t addr, enum mem_type type);
+void mem_arm9_set8 (mem_t *mem, uint32_t addr, uint8_t val, enum mem_type type);
+void mem_arm9_set16(mem_t *mem, uint32_t addr, uint16_t val, enum mem_type type);
+void mem_arm9_set32(mem_t *mem, uint32_t addr, uint32_t val, enum mem_type type);
 
 static inline uint8_t mem_arm9_get_reg8(mem_t *mem, uint32_t reg)
 {
