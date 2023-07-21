@@ -740,8 +740,8 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 			mem->arm9_regs[addr] = v;
 			return;
 		default:
-			printf("[%08" PRIx32 "] unknown ARM9 set register %08" PRIx32 "\n",
-			       cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr);
+			printf("[%08" PRIx32 "] unknown ARM9 set register %08" PRIx32 " = %02" PRIx8 "\n",
+			       cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr, v);
 			break;
 	}
 }
