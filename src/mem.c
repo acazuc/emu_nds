@@ -391,6 +391,8 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 				mem->arm7_regs[addr] = v;
 			mem->biosprot = 1;
 			return;
+		case MEM_ARM7_REG_WRAMSTAT:
+			return;
 		default:
 			printf("unknown ARM7 set register %08" PRIx32 " = %02x\n", addr, v);
 			break;
@@ -481,6 +483,8 @@ static uint8_t get_arm7_reg8(mem_t *mem, uint32_t addr)
 			return spi_read(mem);
 		case MEM_ARM7_REG_SPIDATA + 1:
 			return 0;
+		case MEM_ARM7_REG_WRAMSTAT:
+			return mem->arm9_regs[MEM_ARM9_REG_WRAMCNT];
 		default:
 			printf("unknown ARM7 get register %08" PRIx32 "\n", addr);
 			break;
@@ -695,6 +699,37 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM9_REG_TM3CNT_H:
 			arm9_timer_control(mem, 3, v);
 			return;
+		case MEM_ARM9_REG_WRAMCNT:
+			v &= 3;
+			switch (v)
+			{
+				case 0:
+					mem->arm7_wram_base = 0;
+					mem->arm7_wram_mask = 0;
+					mem->arm9_wram_base = 0;
+					mem->arm9_wram_mask = 0x7FFF;
+					break;
+				case 1:
+					mem->arm7_wram_base = 0x4000;
+					mem->arm7_wram_mask = 0x3FFF;
+					mem->arm9_wram_base = 0;
+					mem->arm9_wram_mask = 0x3FFF;
+					break;
+				case 2:
+					mem->arm7_wram_base = 0;
+					mem->arm7_wram_mask = 0x3FFF;
+					mem->arm9_wram_base = 0x4000;
+					mem->arm9_wram_mask = 0x3FFF;
+					break;
+				case 3:
+					mem->arm7_wram_base = 0;
+					mem->arm7_wram_mask = 0x7FFF;
+					mem->arm9_wram_base = 0;
+					mem->arm9_wram_mask = 0;
+					break;
+			}
+			mem->arm9_regs[addr] = v;
+			return;
 		default:
 			printf("unknown ARM9 set register %08" PRIx32 "\n", addr);
 			break;
@@ -751,6 +786,7 @@ static uint8_t get_arm9_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM9_REG_ROMCMD + 7:
 		case MEM_ARM9_REG_AUXSPICNT:
 		case MEM_ARM9_REG_AUXSPICNT + 1:
+		case MEM_ARM9_REG_WRAMCNT:
 			return mem->arm9_regs[addr];
 		case MEM_ARM9_REG_ROMDATA:
 		case MEM_ARM9_REG_ROMDATA + 1:

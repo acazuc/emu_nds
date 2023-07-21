@@ -24,11 +24,18 @@
  * 2388: (called 1 time) do things, then call 2330 4 times
  * 2A2A: LZ77UnCompReadByCallbackWrite16bit
  * 2462: calls LZ77UnCompReadByCallbackWrite16bit with:
-               - open_and_get_32bit: 0x2388 (returns 0x010b4410, so LZ44 of 0x10b44 uncompressed bytes)
-               - close             : 0x22C6
-               - get_8bit          : 0x2330
-               - get_16bit / get_32bit as null
- *       24a8: if (LZ77UnCompReadByCallbackWrite16bit(r0=0x200, r1=0x02320000, r2=0x33E0, r3=0x33E0) <= 0) { SVC_GetCRC16() }
+ *             - open_and_get_32bit: 0x2388 (returns 0x010b4410, so LZ44 of 0x10b44 uncompressed bytes)
+ *             - close             : 0x22C6
+ *             - get_8bit          : 0x2330
+ *             - get_16bit / get_32bit as null
+ *
+ *             read firmware up to CA18
+ *       24A8: if (SVC_LZ77UnCompReadByCallbackWrite16bit(r0=0x0200, r1=0x02320000, r2=0x33E0, r3=0x33E0) > 0)
+ *       24B6      SVC_GetCRC16(r0=0xFFFF, r1=0x02320000, r2=0x10B44) = 0x245F
+ *
+ *             read firmware up to 14F18
+ *       24F2: if (SVC_LZ77UnCompReadBycallbackWrite16bit(r0=0xCA20, r1=0x037FA800, r2=0x33E0, r3=0x33E0) > 0)
+ *       2500:     SVC_GetCRC16(r0=0x245F, r1=0x037FA800, r2=0x0B2B0) = 0x0F1F
  *
  *
  * - 2388
