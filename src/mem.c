@@ -849,6 +849,22 @@ static void arm9_instr_delay(mem_t *mem, const uint8_t *table, enum mem_type typ
 #define MEM_ARM9_GET(size) \
 uint##size##_t mem_arm9_get##size(mem_t *mem, uint32_t addr, enum mem_type type) \
 { \
+	if (mem->nds->arm9->cp15.cr & (1 << 18)) \
+	{ \
+		uint32_t itcm_size = 0x200 << ((mem->nds->arm9->cp15.itcm & 0x3E) >> 1); \
+		if (addr < itcm_size) \
+		{ \
+			if (size == 16) \
+				addr &= ~1; \
+			if (size == 32) \
+				addr &= ~3; \
+			uint32_t a = addr; \
+			a &= itcm_size - 1; \
+			a &= 0x7FFF; \
+			arm9_instr_delay(mem, arm9_tcm_cycles_##size, type); \
+			return *(uint##size##_t*)&mem->itcm[a]; \
+		} \
+	} \
 	if (mem->nds->arm9->cp15.cr & (1 << 16)) \
 	{ \
 		uint32_t dtcm_base = mem->nds->arm9->cp15.dtcm & 0xFFFFF000; \
@@ -881,25 +897,6 @@ uint##size##_t mem_arm9_get##size(mem_t *mem, uint32_t addr, enum mem_type type)
 		addr &= ~3; \
 	switch ((addr >> 24) & 0xFF) \
 	{ \
-		case 0x0: /* TCM */ \
-		case 0x1: \
-			if (mem->nds->arm9->cp15.cr & (1 << 18)) \
-			{ \
-				uint32_t itcm_size = 0x200 << ((mem->nds->arm9->cp15.itcm & 0x3E) >> 1); \
-				if (addr < itcm_size) \
-				{ \
-					if (size == 16) \
-						addr &= ~1; \
-					if (size == 32) \
-						addr &= ~3; \
-					uint32_t a = addr; \
-					a &= itcm_size - 1; \
-					a &= 0x7FFF; \
-					arm9_instr_delay(mem, arm9_tcm_cycles_##size, type); \
-					return *(uint##size##_t*)&mem->itcm[a]; \
-				} \
-			} \
-			break; \
 		case 0x2: /* main memory */ \
 			arm9_instr_delay(mem, arm9_mram_cycles_##size, type); \
 			return *(uint##size##_t*)&mem->mram[addr & 0x3FFFFF]; \
@@ -939,6 +936,23 @@ MEM_ARM9_GET(32);
 #define MEM_ARM9_SET(size) \
 void mem_arm9_set##size(mem_t *mem, uint32_t addr, uint##size##_t v, enum mem_type type) \
 { \
+	if (mem->nds->arm9->cp15.cr & (1 << 18)) \
+	{ \
+		uint32_t itcm_size = 0x200 << ((mem->nds->arm9->cp15.itcm & 0x3E) >> 1); \
+		if (addr < itcm_size) \
+		{ \
+			if (size == 16) \
+				addr &= ~1; \
+			if (size == 32) \
+				addr &= ~3; \
+			uint32_t a = addr; \
+			a &= itcm_size - 1; \
+			a &= 0x7FFF; \
+			*(uint##size##_t*)&mem->itcm[a] = v; \
+			arm9_instr_delay(mem, arm9_tcm_cycles_##size, type); \
+			return; \
+		} \
+	} \
 	if (mem->nds->arm9->cp15.cr & (1 << 16)) \
 	{ \
 		uint32_t dtcm_base = mem->nds->arm9->cp15.dtcm & 0xFFFFF000; \
@@ -968,26 +982,6 @@ void mem_arm9_set##size(mem_t *mem, uint32_t addr, uint##size##_t v, enum mem_ty
 	} \
 	switch ((addr >> 24) & 0xF) \
 	{ \
-		case 0x0: /* TCM */ \
-		case 0x1: \
-			if (mem->nds->arm9->cp15.cr & (1 << 18)) \
-			{ \
-				uint32_t itcm_size = 0x200 << ((mem->nds->arm9->cp15.itcm & 0x3E) >> 1); \
-				if (addr < itcm_size) \
-				{ \
-					if (size == 16) \
-						addr &= ~1; \
-					if (size == 32) \
-						addr &= ~3; \
-					uint32_t a = addr; \
-					a &= itcm_size - 1; \
-					a &= 0x7FFF; \
-					*(uint##size##_t*)&mem->itcm[a] = v; \
-					arm9_instr_delay(mem, arm9_tcm_cycles_##size, type); \
-					return; \
-				} \
-			} \
-			break; \
 		case 0x2: /* main memory */ \
 			*(uint##size##_t*)&mem->mram[addr & 0x3FFFFF] = v; \
 			arm9_instr_delay(mem, arm9_mram_cycles_##size, type); \
