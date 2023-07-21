@@ -38,17 +38,21 @@
  *       2500:     SVC_GetCRC16(r0=0x245F, r1=0x037FA800, r2=0x0B2B0) = 0x0F1F
  *
  *
- * - 2388
- *   - *
- *   - 2330
- *     - 33A4
- *       - 22D6
- *         - 227C
- *     - 20BC (indirect)
+ * - 124A
+ *   - 2462 @ 1313
+ *     - 2A2A
+ *       - 2388
+ *         - *
+ *         - 2330
+ *           - 33A4
+ *             - 22D6
+ *               - 227C
+ *           - 20BC (indirect)
  *
- * - 2462
- *   - 2A2A
- *     - 2388
+ * 13BC: IPCSYNC = 0
+ * 13C6: IPCSYNC = 1
+ * 1424: IPCSYNC = 2
+ * 144C: IPCSYNC = 3 (unstuck ARM9 @ 0x3E4)
  */
 
 nds_t *nds_new(const void *rom_data, size_t rom_size)

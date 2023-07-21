@@ -264,7 +264,7 @@ void cpu_cycle(cpu_t *cpu)
 		cpu->debug = CPU_DEBUG_REGS | CPU_DEBUG_INSTR;
 #endif
 #if 0
-	if (cpu_get_reg(cpu, CPU_REG_PC) == 0x2500)
+	if (cpu_get_reg(cpu, CPU_REG_PC) == 0x144C)
 		cpu->debug = CPU_DEBUG_ALL;
 #endif
 
@@ -333,7 +333,7 @@ void cpu_update_mode(cpu_t *cpu)
 
 uint32_t cp15_read(cpu_t *cpu, uint8_t cn, uint8_t cm, uint8_t cp)
 {
-#if 1
+#if 0
 	printf("cp15[%" PRIx8 "%" PRIx8 "%" PRIx8 "] read\n", cn, cm, cp);
 #endif
 	switch ((cn << 8) | (cm << 4) | cp)
@@ -408,7 +408,7 @@ uint32_t cp15_read(cpu_t *cpu, uint8_t cn, uint8_t cm, uint8_t cp)
 
 void cp15_write(cpu_t *cpu, uint8_t cn, uint8_t cm, uint8_t cp, uint32_t v)
 {
-#if 1
+#if 0
 	printf("cp15[%" PRIx8 "%" PRIx8 "%" PRIx8 "] = %08" PRIx32 "\n", cn, cm, cp, v);
 #endif
 	switch ((cn << 8) | (cm << 4) | cp)
@@ -485,6 +485,11 @@ void cp15_write(cpu_t *cpu, uint8_t cn, uint8_t cm, uint8_t cp, uint32_t v)
 		case 0x671:
 			cpu->cp15.puir[7] = v;
 			break;
+		case 0x704:
+			cpu->state = CPU_STATE_HALT;
+			return;
+		case 0x761: /* invalidate data cache line */
+			return;
 		case 0x900:
 			cpu->cp15.dcl = v;
 			break;

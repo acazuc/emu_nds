@@ -51,6 +51,7 @@ mem_t *mem_new(nds_t *nds, mbc_t *mbc)
 	mem->arm9_wram_base = 0;
 	mem->arm9_wram_base = 0x7FFF;
 	mem->arm9_regs[MEM_ARM7_REG_ROMCTRL + 2] = 0x80;
+	mem_arm7_set_reg32(mem, MEM_ARM7_REG_SOUNDBIAS, 0x200);
 	return mem;
 }
 
@@ -168,13 +169,13 @@ static void firmware_write(mem_t *mem, uint8_t v)
 				mem->spi_firmware.cmd_data.read.posb++;
 				return;
 			}
-#if 1
-			printf("[%08x] firmware read: [%x] = %x\n",
+			mem->spi_firmware.cmd_data.read.v = mem->firmware[mem->spi_firmware.cmd_data.read.addr & 0x3FFFF];
+#if 0
+			printf("[%08" PRIx32 "] firmware read: [%05" PRIx32 "] = %" PRIx8 "\n",
 			       cpu_get_reg(mem->nds->arm7, CPU_REG_PC),
 			       mem->spi_firmware.cmd_data.read.addr,
-			       mem->firmware[mem->spi_firmware.cmd_data.read.addr & 0x3FFFF]);
+			       mem->spi_firmware.cmd_data.read.v);
 #endif
-			mem->spi_firmware.cmd_data.read.v = mem->firmware[mem->spi_firmware.cmd_data.read.addr & 0x3FFFF];
 			mem->spi_firmware.cmd_data.read.addr++;
 			return;
 	}
@@ -264,7 +265,7 @@ static void spi_write(mem_t *mem, uint8_t v)
 static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 {
 #if 0
-	printf("ARM7 register [%08" PRIx32 "] = %02x\n", addr, v);
+	printf("ARM7 register [%08" PRIx32 "] = %02" PRIx8 "\n", addr, v);
 #endif
 	switch (addr)
 	{
@@ -302,6 +303,10 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM7_REG_TM3CNT_L:
 		case MEM_ARM7_REG_TM3CNT_L + 1:
 		case MEM_ARM7_REG_TM3CNT_H + 1:
+		case MEM_ARM7_REG_SOUNDBIAS:
+		case MEM_ARM7_REG_SOUNDBIAS + 1:
+		case MEM_ARM7_REG_SOUNDBIAS + 2:
+		case MEM_ARM7_REG_SOUNDBIAS + 3:
 			mem->arm7_regs[addr] = v;
 			return;
 		case MEM_ARM7_REG_ROMCTRL:
@@ -371,11 +376,9 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 					assert(!"GBA mode not supported");
 					return;
 				case 2:
-					printf("HALT %08x %08x\n", mem_arm7_get_reg32(mem, MEM_ARM7_REG_IF), mem_arm7_get_reg32(mem, MEM_ARM7_REG_IE));
 					mem->nds->arm7->state = CPU_STATE_HALT;
 					return;
 				case 3:
-					printf("STOP %08x %08x\n", mem_arm7_get_reg32(mem, MEM_ARM7_REG_IF), mem_arm7_get_reg32(mem, MEM_ARM7_REG_IE));
 					mem->nds->arm7->state = CPU_STATE_STOP;
 					return;
 			}
@@ -394,7 +397,8 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM7_REG_WRAMSTAT:
 			return;
 		default:
-			printf("unknown ARM7 set register %08" PRIx32 " = %02x\n", addr, v);
+			printf("[%08" PRIx32 "] unknown ARM7 set register %08" PRIx32 " = %02" PRIx8 "\n",
+			       cpu_get_reg(mem->nds->arm7, CPU_REG_PC), addr, v);
 			break;
 	}
 }
@@ -442,6 +446,10 @@ static uint8_t get_arm7_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM7_REG_BIOSPROT + 1:
 		case MEM_ARM7_REG_BIOSPROT + 2:
 		case MEM_ARM7_REG_BIOSPROT + 3:
+		case MEM_ARM7_REG_SOUNDBIAS:
+		case MEM_ARM7_REG_SOUNDBIAS + 1:
+		case MEM_ARM7_REG_SOUNDBIAS + 2:
+		case MEM_ARM7_REG_SOUNDBIAS + 3:
 			return mem->arm7_regs[addr];
 		case MEM_ARM7_REG_ROMCTRL:
 		case MEM_ARM7_REG_ROMCTRL + 1:
@@ -486,7 +494,8 @@ static uint8_t get_arm7_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM7_REG_WRAMSTAT:
 			return mem->arm9_regs[MEM_ARM9_REG_WRAMCNT];
 		default:
-			printf("unknown ARM7 get register %08" PRIx32 "\n", addr);
+			printf("[%08" PRIx32 "] unknown ARM7 get register %08" PRIx32 "\n",
+			       cpu_get_reg(mem->nds->arm7, CPU_REG_PC), addr);
 			break;
 	}
 	return 0;
@@ -731,7 +740,8 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 			mem->arm9_regs[addr] = v;
 			return;
 		default:
-			printf("unknown ARM9 set register %08" PRIx32 "\n", addr);
+			printf("[%08" PRIx32 "] unknown ARM9 set register %08" PRIx32 "\n",
+			       cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr);
 			break;
 	}
 }
@@ -810,7 +820,8 @@ static uint8_t get_arm9_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM9_REG_TM3CNT_L + 1:
 			return mem->arm9_timers[3].v >> 8;
 		default:
-			printf("unknown ARM9 get register %08" PRIx32 "\n", addr);
+			printf("[%08" PRIx32 "] unknown ARM9 get register %08" PRIx32 "\n",
+			       cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr);
 			break;
 	}
 	return 0;
@@ -874,7 +885,19 @@ uint##size##_t mem_arm9_get##size(mem_t *mem, uint32_t addr, enum mem_type type)
 		case 0x1: \
 			if (mem->nds->arm9->cp15.cr & (1 << 18)) \
 			{ \
-				/* XXX test itcm */ \
+				uint32_t itcm_size = 0x200 << ((mem->nds->arm9->cp15.itcm & 0x3E) >> 1); \
+				if (addr < itcm_size) \
+				{ \
+					if (size == 16) \
+						addr &= ~1; \
+					if (size == 32) \
+						addr &= ~3; \
+					uint32_t a = addr; \
+					a &= itcm_size - 1; \
+					a &= 0x7FFF; \
+					arm9_instr_delay(mem, arm9_tcm_cycles_##size, type); \
+					return *(uint##size##_t*)&mem->itcm[a]; \
+				} \
 			} \
 			break; \
 		case 0x2: /* main memory */ \
@@ -949,7 +972,20 @@ void mem_arm9_set##size(mem_t *mem, uint32_t addr, uint##size##_t v, enum mem_ty
 		case 0x1: \
 			if (mem->nds->arm9->cp15.cr & (1 << 18)) \
 			{ \
-				/* XXX test itcm */ \
+				uint32_t itcm_size = 0x200 << ((mem->nds->arm9->cp15.itcm & 0x3E) >> 1); \
+				if (addr < itcm_size) \
+				{ \
+					if (size == 16) \
+						addr &= ~1; \
+					if (size == 32) \
+						addr &= ~3; \
+					uint32_t a = addr; \
+					a &= itcm_size - 1; \
+					a &= 0x7FFF; \
+					*(uint##size##_t*)&mem->itcm[a] = v; \
+					arm9_instr_delay(mem, arm9_tcm_cycles_##size, type); \
+					return; \
+				} \
 			} \
 			break; \
 		case 0x2: /* main memory */ \
