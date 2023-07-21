@@ -668,7 +668,9 @@ ARM_INSTR(opname##_##oparg, \
 		if (op == 1) \
 		{ \
 			uint32_t v = cpu->get16(cpu->mem, rn & ~1, MEM_DATA_NSEQ); \
-			cpu_set_reg(cpu, rdr, ARM_ROR(v, (rn & 1) * 8)); \
+			if ((rn & 1) && !cpu->arm9) \
+				v = ARM_ROR(v, 8); \
+			cpu_set_reg(cpu, rdr, v); \
 		} \
 		else if (op == 2) \
 		{ \
@@ -676,7 +678,7 @@ ARM_INSTR(opname##_##oparg, \
 		} \
 		else if (op == 3) \
 		{ \
-			if (rn & 1) \
+			if ((rn & 1) && !cpu->arm9) \
 				cpu_set_reg(cpu, rdr, (int8_t)cpu->get8(cpu->mem, rn, MEM_DATA_NSEQ)); \
 			else \
 				cpu_set_reg(cpu, rdr, (int16_t)cpu->get16(cpu->mem, rn, MEM_DATA_NSEQ)); \

@@ -757,7 +757,16 @@ THUMB_INSTR(n####next, \
 			sp += 4; \
 		if (st_ld) \
 		{ \
-			cpu_set_reg(cpu, CPU_REG_PC, cpu->get32(cpu->mem, sp, MEM_DATA_SEQ) & ~1); \
+			uint32_t v = cpu->get32(cpu->mem, sp, MEM_DATA_SEQ); \
+			if ((v & 1) || !cpu->arm9) \
+			{ \
+				cpu_set_reg(cpu, CPU_REG_PC, cpu->get32(cpu->mem, sp, MEM_DATA_SEQ) & ~1); \
+			} \
+			else \
+			{ \
+				cpu_set_reg(cpu, CPU_REG_PC, cpu->get32(cpu->mem, sp, MEM_DATA_SEQ) & ~3); \
+				CPU_SET_FLAG_T(cpu, 0); \
+			} \
 			pc_inc = false; \
 		} \
 		else \
