@@ -126,6 +126,7 @@ static uint8_t arm##armv##_dma(mem_t *mem) \
 		uint32_t step; \
 		if (cnt_h & (1 << 10)) \
 		{ \
+			/* printf("DMA 32 from 0x%" PRIx32 " to 0x%" PRIx32 "\n", dma->src, dma->dst); */ \
 			mem_arm##armv##_set32(mem, dma->dst, \
 			                      mem_arm##armv##_get32(mem, dma->src, MEM_DIRECT), \
 			                      MEM_DIRECT); \
@@ -133,8 +134,7 @@ static uint8_t arm##armv##_dma(mem_t *mem) \
 		} \
 		else \
 		{ \
-			printf("DMA 16 from 0x%" PRIx32 " to 0x%" PRIx32 "\n", \
-			       dma->src, dma->dst); \
+			/* printf("DMA 16 from 0x%" PRIx32 " to 0x%" PRIx32 "\n", dma->src, dma->dst); */ \
 			mem_arm##armv##_set16(mem, dma->dst, \
 			                      mem_arm##armv##_get16(mem, dma->src, MEM_DIRECT), \
 			                      MEM_DIRECT); \
@@ -180,8 +180,10 @@ static uint8_t arm##armv##_dma(mem_t *mem) \
 			{ \
 				dma->status = 0; \
 			} \
-			mem_arm##armv##_set_reg16(mem, MEM_ARM##armv##_REG_DMA0CNT_H + 0xC * i, \
-			                          mem_arm##armv##_get_reg16(mem, MEM_ARM##armv##_REG_DMA0CNT_H + 0xC * i) & ~(1 << 15)); \
+			dma->cnt = 0; \
+			if (!(dma->status & MEM_DMA_ACTIVE)) \
+				mem_arm##armv##_set_reg16(mem, MEM_ARM##armv##_REG_DMA0CNT_H + 0xC * i, \
+				                          mem_arm##armv##_get_reg16(mem, MEM_ARM##armv##_REG_DMA0CNT_H + 0xC * i) & ~(1 << 15)); \
 			if (cnt_h & (1 << 14)) \
 				mem_arm##armv##_if(mem, (1 << (8 + i))); \
 		} \
