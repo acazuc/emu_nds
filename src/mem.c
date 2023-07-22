@@ -11,6 +11,8 @@
 
 static const uint16_t timer_masks[4] = {0, 0x7E, 0x1FE, 0x7FE};
 
+static const uint32_t dma_len_max[4] = {0x4000, 0x4000, 0x4000, 0x10000};
+
 static const uint8_t arm7_mram_cycles_32[] = {0, 4, 20, 4, 18};
 static const uint8_t arm7_mram_cycles_16[] = {0, 2, 18, 2, 16};
 static const uint8_t arm7_mram_cycles_8[]  = {0, 2, 18, 2, 16};
@@ -110,6 +112,180 @@ void mem_timers(mem_t *mem)
 {
 	arm7_timers(mem);
 	arm9_timers(mem);
+}
+
+#define ARM_DMA(armv) \
+static uint8_t arm##armv##_dma(mem_t *mem) \
+{ \
+	for (size_t i = 0; i < 4; ++i) \
+	{ \
+		struct dma *dma = &mem->arm##armv##_dma[i]; \
+		if (dma->status != (MEM_DMA_ACTIVE | MEM_DMA_ENABLE) ) \
+			continue; \
+		uint16_t cnt_h = mem_arm##armv##_get_reg16(mem, MEM_ARM##armv##_REG_DMA0CNT_H + 0xC * i); \
+		uint32_t step; \
+		if (cnt_h & (1 << 10)) \
+		{ \
+			mem_arm##armv##_set32(mem, dma->dst, \
+			                      mem_arm##armv##_get32(mem, dma->src, MEM_DIRECT), \
+			                      MEM_DIRECT); \
+			step = 4; \
+		} \
+		else \
+		{ \
+			printf("DMA 16 from 0x%" PRIx32 " to 0x%" PRIx32 "\n", \
+			       dma->src, dma->dst); \
+			mem_arm##armv##_set16(mem, dma->dst, \
+			                      mem_arm##armv##_get16(mem, dma->src, MEM_DIRECT), \
+			                      MEM_DIRECT); \
+			step = 2; \
+		} \
+		switch ((cnt_h >> 5) & 3) \
+		{ \
+			case 0: \
+				dma->dst += step; \
+				break; \
+			case 1: \
+				dma->dst -= step; \
+				break; \
+			case 2: \
+				break; \
+			case 3: \
+				dma->dst += step; \
+				break; \
+		} \
+		switch ((cnt_h >> 7) & 3) \
+		{ \
+			case 0: \
+				dma->src += step; \
+				break; \
+			case 1: \
+				dma->src -= step; \
+				break; \
+			case 2: \
+				break; \
+			case 3: \
+				break; \
+		} \
+		dma->cnt++; \
+		if (dma->cnt == dma->len) \
+		{ \
+			if ((cnt_h & (1 << 9))) \
+			{ \
+				if (((cnt_h >> 12) & 0x3) != 0x2 \
+				 || !(mem->arm9_regs[MEM_ARM9_REG_ROMCTRL + 3] & (1 << 7))) \
+					dma->status &= ~MEM_DMA_ACTIVE; \
+			} \
+			else \
+			{ \
+				dma->status = 0; \
+			} \
+			mem_arm##armv##_set_reg16(mem, MEM_ARM##armv##_REG_DMA0CNT_H + 0xC * i, \
+			                          mem_arm##armv##_get_reg16(mem, MEM_ARM##armv##_REG_DMA0CNT_H + 0xC * i) & ~(1 << 15)); \
+			if (cnt_h & (1 << 14)) \
+				mem_arm##armv##_if(mem, (1 << (8 + i))); \
+		} \
+		return 1; \
+	} \
+	return 0; \
+} \
+static void arm##armv##_load_dma_length(mem_t *mem, size_t id) \
+{ \
+	struct dma *dma = &mem->arm##armv##_dma[id]; \
+	dma->len = mem_arm##armv##_get_reg16(mem, MEM_ARM##armv##_REG_DMA0CNT_L + 0xC * id); \
+	if (armv == 7) \
+	{ \
+		if (dma->len) \
+		{ \
+			if (dma->len > dma_len_max[id]) \
+				dma->len = dma_len_max[id]; \
+		} \
+		else \
+		{ \
+			dma->len = dma_len_max[id]; \
+		} \
+	} \
+	else \
+	{ \
+		assert(!"unimp"); \
+	} \
+} \
+static void arm##armv##_dma_control(mem_t *mem, uint8_t id) \
+{ \
+	struct dma *dma = &mem->arm##armv##_dma[id]; \
+	dma->src = mem_arm##armv##_get_reg32(mem, MEM_ARM##armv##_REG_DMA0SAD + 0xC * id); \
+	dma->dst = mem_arm##armv##_get_reg32(mem, MEM_ARM##armv##_REG_DMA0DAD + 0xC * id); \
+	dma->cnt = 0; \
+	arm##armv##_load_dma_length(mem, id); \
+	uint16_t cnt_h = mem_arm##armv##_get_reg16(mem, MEM_ARM##armv##_REG_DMA0CNT_H + 0xC * id); \
+	dma->status = 0; \
+	if (cnt_h & (1 << 15)) \
+		dma->status |= MEM_DMA_ENABLE; \
+	if (!(cnt_h & (3 << 12))) \
+		dma->status |= MEM_DMA_ACTIVE; \
+	if (0 && (dma->status & MEM_DMA_ENABLE)) \
+		printf("enable DMA %" PRIu8 " of %08" PRIx32 " words from %08" PRIx32 " to %08" PRIx32 ": %04" PRIx16 "\n", \
+		       id, dma->len, dma->src, dma->dst, cnt_h); \
+} \
+static void arm##armv##_dma_vblank(mem_t *mem) \
+{ \
+	for (unsigned i = 0; i < 4; ++i) \
+	{ \
+		struct dma *dma = &mem->arm##armv##_dma[i]; \
+		if (!(dma->status & MEM_DMA_ENABLE) \
+		 || (dma->status & MEM_DMA_ACTIVE)) \
+			continue; \
+		uint16_t cnt_h = mem_arm##armv##_get_reg16(mem, MEM_ARM##armv##_REG_DMA0CNT_H + 0xC * i); \
+		if (((cnt_h >> 12) & 0x3) != 1) \
+			continue; \
+		if (((cnt_h >> 5) & 0x3) == 0x3) \
+			dma->dst = mem_arm##armv##_get_reg32(mem, MEM_ARM##armv##_REG_DMA0DAD + 0xC * i); \
+		arm##armv##_load_dma_length(mem, i); \
+		dma->cnt = 0; \
+		dma->status |= MEM_DMA_ACTIVE; \
+		printf("start VDMA %u of %08" PRIx32 " words from %08" PRIx32 " to %08" PRIx32 "\n", \
+		       i, dma->len, dma->src, dma->dst); \
+	} \
+} \
+static void arm##armv##_dma_dscard(mem_t *mem) \
+{ \
+	for (unsigned i = 0; i < 4; ++i) \
+	{ \
+		struct dma *dma = &mem->arm##armv##_dma[i]; \
+		if (!(dma->status & MEM_DMA_ENABLE) \
+		 || (dma->status & MEM_DMA_ACTIVE)) \
+			continue; \
+		uint16_t cnt_h = mem_arm##armv##_get_reg16(mem, MEM_ARM##armv##_REG_DMA0CNT_H + 0xC * i); \
+		if (((cnt_h >> 12) & 0x3) != 2) \
+			continue; \
+		if (((cnt_h >> 5) & 0x3) == 0x3) \
+			dma->dst = mem_arm##armv##_get_reg32(mem, MEM_ARM##armv##_REG_DMA0DAD + 0xC * i); \
+		arm##armv##_load_dma_length(mem, i); \
+		dma->cnt = 0; \
+		dma->status |= MEM_DMA_ACTIVE; \
+		printf("start card DMA %u of %08" PRIx32 " words from %08" PRIx32 " to %08" PRIx32 "\n", \
+		       i, dma->len, dma->src, dma->dst); \
+	} \
+}
+
+ARM_DMA(7);
+ARM_DMA(9);
+
+uint8_t mem_dma(mem_t *mem)
+{
+	return arm7_dma(mem) | (arm9_dma(mem) << 1);
+}
+
+void mem_vblank(mem_t *mem)
+{
+	arm7_dma_vblank(mem);
+	arm9_dma_vblank(mem);
+}
+
+void mem_dscard(mem_t *mem)
+{
+	arm7_dma_dscard(mem);
+	arm9_dma_dscard(mem);
 }
 
 static uint8_t powerman_read(mem_t *mem)
@@ -461,6 +637,50 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM7_REG_SOUNDBIAS + 1:
 		case MEM_ARM7_REG_SOUNDBIAS + 2:
 		case MEM_ARM7_REG_SOUNDBIAS + 3:
+		case MEM_ARM7_REG_DMA0SAD:
+		case MEM_ARM7_REG_DMA0SAD + 1:
+		case MEM_ARM7_REG_DMA0SAD + 2:
+		case MEM_ARM7_REG_DMA0SAD + 3:
+		case MEM_ARM7_REG_DMA0DAD:
+		case MEM_ARM7_REG_DMA0DAD + 1:
+		case MEM_ARM7_REG_DMA0DAD + 2:
+		case MEM_ARM7_REG_DMA0DAD + 3:
+		case MEM_ARM7_REG_DMA0CNT_L:
+		case MEM_ARM7_REG_DMA0CNT_L + 1:
+		case MEM_ARM7_REG_DMA0CNT_H:
+		case MEM_ARM7_REG_DMA1SAD:
+		case MEM_ARM7_REG_DMA1SAD + 1:
+		case MEM_ARM7_REG_DMA1SAD + 2:
+		case MEM_ARM7_REG_DMA1SAD + 3:
+		case MEM_ARM7_REG_DMA1DAD:
+		case MEM_ARM7_REG_DMA1DAD + 1:
+		case MEM_ARM7_REG_DMA1DAD + 2:
+		case MEM_ARM7_REG_DMA1DAD + 3:
+		case MEM_ARM7_REG_DMA1CNT_L:
+		case MEM_ARM7_REG_DMA1CNT_L + 1:
+		case MEM_ARM7_REG_DMA1CNT_H:
+		case MEM_ARM7_REG_DMA2SAD:
+		case MEM_ARM7_REG_DMA2SAD + 1:
+		case MEM_ARM7_REG_DMA2SAD + 2:
+		case MEM_ARM7_REG_DMA2SAD + 3:
+		case MEM_ARM7_REG_DMA2DAD:
+		case MEM_ARM7_REG_DMA2DAD + 1:
+		case MEM_ARM7_REG_DMA2DAD + 2:
+		case MEM_ARM7_REG_DMA2DAD + 3:
+		case MEM_ARM7_REG_DMA2CNT_L:
+		case MEM_ARM7_REG_DMA2CNT_L + 1:
+		case MEM_ARM7_REG_DMA2CNT_H:
+		case MEM_ARM7_REG_DMA3SAD:
+		case MEM_ARM7_REG_DMA3SAD + 1:
+		case MEM_ARM7_REG_DMA3SAD + 2:
+		case MEM_ARM7_REG_DMA3SAD + 3:
+		case MEM_ARM7_REG_DMA3DAD:
+		case MEM_ARM7_REG_DMA3DAD + 1:
+		case MEM_ARM7_REG_DMA3DAD + 2:
+		case MEM_ARM7_REG_DMA3DAD + 3:
+		case MEM_ARM7_REG_DMA3CNT_L:
+		case MEM_ARM7_REG_DMA3CNT_L  +1:
+		case MEM_ARM7_REG_DMA3CNT_H:
 			mem->arm7_regs[addr] = v;
 			return;
 		case MEM_ARM7_REG_ROMCTRL:
@@ -553,6 +773,22 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM7_REG_RTC:
 			rtc_write(mem, v);
 			return;
+		case MEM_ARM7_REG_DMA0CNT_H + 1:
+			mem->arm7_regs[addr] = v;
+			arm7_dma_control(mem, 0);
+			return;
+		case MEM_ARM7_REG_DMA1CNT_H + 1:
+			mem->arm7_regs[addr] = v;
+			arm7_dma_control(mem, 1);
+			return;
+		case MEM_ARM7_REG_DMA2CNT_H + 1:
+			mem->arm7_regs[addr] = v;
+			arm7_dma_control(mem, 2);
+			return;
+		case MEM_ARM7_REG_DMA3CNT_H + 1:
+			mem->arm7_regs[addr] = v;
+			arm7_dma_control(mem, 3);
+			return;
 		default:
 			printf("[%08" PRIx32 "] unknown ARM7 set register %08" PRIx32 " = %02" PRIx8 "\n",
 			       cpu_get_reg(mem->nds->arm7, CPU_REG_PC), addr, v);
@@ -607,6 +843,54 @@ static uint8_t get_arm7_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM7_REG_SOUNDBIAS + 1:
 		case MEM_ARM7_REG_SOUNDBIAS + 2:
 		case MEM_ARM7_REG_SOUNDBIAS + 3:
+		case MEM_ARM7_REG_DMA0SAD:
+		case MEM_ARM7_REG_DMA0SAD + 1:
+		case MEM_ARM7_REG_DMA0SAD + 2:
+		case MEM_ARM7_REG_DMA0SAD + 3:
+		case MEM_ARM7_REG_DMA0DAD:
+		case MEM_ARM7_REG_DMA0DAD + 1:
+		case MEM_ARM7_REG_DMA0DAD + 2:
+		case MEM_ARM7_REG_DMA0DAD + 3:
+		case MEM_ARM7_REG_DMA0CNT_L:
+		case MEM_ARM7_REG_DMA0CNT_L + 1:
+		case MEM_ARM7_REG_DMA0CNT_H:
+		case MEM_ARM7_REG_DMA0CNT_H + 1:
+		case MEM_ARM7_REG_DMA1SAD:
+		case MEM_ARM7_REG_DMA1SAD + 1:
+		case MEM_ARM7_REG_DMA1SAD + 2:
+		case MEM_ARM7_REG_DMA1SAD + 3:
+		case MEM_ARM7_REG_DMA1DAD:
+		case MEM_ARM7_REG_DMA1DAD + 1:
+		case MEM_ARM7_REG_DMA1DAD + 2:
+		case MEM_ARM7_REG_DMA1DAD + 3:
+		case MEM_ARM7_REG_DMA1CNT_L:
+		case MEM_ARM7_REG_DMA1CNT_L + 1:
+		case MEM_ARM7_REG_DMA1CNT_H:
+		case MEM_ARM7_REG_DMA1CNT_H + 1:
+		case MEM_ARM7_REG_DMA2SAD:
+		case MEM_ARM7_REG_DMA2SAD + 1:
+		case MEM_ARM7_REG_DMA2SAD + 2:
+		case MEM_ARM7_REG_DMA2SAD + 3:
+		case MEM_ARM7_REG_DMA2DAD:
+		case MEM_ARM7_REG_DMA2DAD + 1:
+		case MEM_ARM7_REG_DMA2DAD + 2:
+		case MEM_ARM7_REG_DMA2DAD + 3:
+		case MEM_ARM7_REG_DMA2CNT_L:
+		case MEM_ARM7_REG_DMA2CNT_L + 1:
+		case MEM_ARM7_REG_DMA2CNT_H:
+		case MEM_ARM7_REG_DMA2CNT_H + 1:
+		case MEM_ARM7_REG_DMA3SAD:
+		case MEM_ARM7_REG_DMA3SAD + 1:
+		case MEM_ARM7_REG_DMA3SAD + 2:
+		case MEM_ARM7_REG_DMA3SAD + 3:
+		case MEM_ARM7_REG_DMA3DAD:
+		case MEM_ARM7_REG_DMA3DAD + 1:
+		case MEM_ARM7_REG_DMA3DAD + 2:
+		case MEM_ARM7_REG_DMA3DAD + 3:
+		case MEM_ARM7_REG_DMA3CNT_L:
+		case MEM_ARM7_REG_DMA3CNT_L  +1:
+		case MEM_ARM7_REG_DMA3CNT_H:
+		case MEM_ARM7_REG_DMA3CNT_H + 1:
 			return mem->arm7_regs[addr];
 		case MEM_ARM7_REG_ROMCTRL:
 		case MEM_ARM7_REG_ROMCTRL + 1:

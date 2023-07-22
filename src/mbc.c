@@ -114,11 +114,20 @@ static void init_keycode(mbc_t *mbc, uint32_t idcode, uint8_t level, uint8_t mod
 
 static void start_cmd(mbc_t *mbc)
 {
+#if 1
+	printf("start cmd with ROMCTRL=%08" PRIx32 ", AUXSPICNT=%04" PRIx32 "\n",
+	       mem_arm9_get_reg32(mbc->nds->mem, MEM_ARM9_REG_ROMCTRL),
+	       mem_arm9_get_reg16(mbc->nds->mem, MEM_ARM9_REG_AUXSPICNT));
+#endif
 	mbc->nds->mem->arm9_regs[MEM_ARM9_REG_ROMCTRL + 2] |= (1 << 7); /* XXX another way */
+	mem_dscard(mbc->nds->mem);
 }
 
 static void end_cmd(mbc_t *mbc)
 {
+#if 1
+	printf("end cmd %s interrupt\n", (mem_arm9_get_reg16(mbc->nds->mem, MEM_ARM9_REG_AUXSPICNT) & (1 << 14)) ? "with" : "without");
+#endif
 	mbc->cmd = MBC_CMD_NONE;
 	mbc->nds->mem->arm9_regs[MEM_ARM9_REG_ROMCTRL + 3] &= ~(1 << 7); /* XXX another way */
 	if (mem_arm9_get_reg16(mbc->nds->mem, MEM_ARM9_REG_AUXSPICNT) & (1 << 14))
@@ -332,6 +341,8 @@ uint8_t mbc_read(mbc_t *mbc)
 				v = 0;
 			}
 			mbc->cmd_count++;
+			if (mbc->cmd_count == 0x1000)
+				end_cmd(mbc);
 			return key2_byte(mbc, v);
 		}
 		default:

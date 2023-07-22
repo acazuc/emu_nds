@@ -190,6 +190,18 @@ struct timer
 	uint16_t v;
 };
 
+#define MEM_DMA_ACTIVE (1 << 0)
+#define MEM_DMA_ENABLE (1 << 1)
+
+struct dma
+{
+	uint8_t status;
+	uint32_t src;
+	uint32_t dst;
+	uint32_t len;
+	uint32_t cnt;
+};
+
 struct spi_firmware
 {
 	uint8_t cmd;
@@ -225,6 +237,8 @@ typedef struct mem
 	mbc_t *mbc;
 	struct timer arm7_timers[4];
 	struct timer arm9_timers[4];
+	struct dma arm7_dma[4];
+	struct dma arm9_dma[4];
 	struct spi_firmware spi_firmware;
 	struct rtc rtc;
 	uint8_t arm7_bios[0x4000];
@@ -248,6 +262,9 @@ mem_t *mem_new(nds_t *nds, mbc_t *mbc);
 void mem_del(mem_t *mem);
 
 void mem_timers(mem_t *mem);
+uint8_t mem_dma(mem_t *mem);
+void mem_vblank(mem_t *mem);
+void mem_dscard(mem_t *mem);
 
 uint8_t  mem_arm7_get8 (mem_t *mem, uint32_t addr, enum mem_type type);
 uint16_t mem_arm7_get16(mem_t *mem, uint32_t addr, enum mem_type type);

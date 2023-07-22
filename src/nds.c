@@ -142,18 +142,29 @@ static void nds_cycles(nds_t *nds, uint32_t cycles)
 	for (; cycles; --cycles)
 	{
 		nds->cycle++;
+		uint8_t has_dma;
+		if (!(nds->cycle & 7))
+			has_dma = mem_dma(nds->mem);
+		else
+			has_dma = 0;
 		if (nds->cycle & 1)
 		{
 			mem_timers(nds->mem);
-			if (!nds->arm7->instr_delay)
-				cpu_cycle(nds->arm7);
-			else
-				nds->arm7->instr_delay--;
+			if (!(has_dma & (1 << 0)))
+			{
+				if (!nds->arm7->instr_delay)
+					cpu_cycle(nds->arm7);
+				else
+					nds->arm7->instr_delay--;
+			}
 		}
-		if (!nds->arm9->instr_delay)
-			cpu_cycle(nds->arm9);
-		else
-			nds->arm9->instr_delay--;
+		if (!(has_dma & (1 << 1)))
+		{
+			if (!nds->arm9->instr_delay)
+				cpu_cycle(nds->arm9);
+			else
+				nds->arm9->instr_delay--;
+		}
 		apu_cycle(nds->apu);
 	}
 }
@@ -171,6 +182,8 @@ void nds_frame(nds_t *nds, uint8_t *video_buf, int16_t *audio_buf, uint32_t joyp
 
 		nds_cycles(nds, 99 * 12);
 	}
+
+	mem_vblank(nds->mem);
 
 	for (uint16_t y = 192; y < 263; ++y)
 	{
