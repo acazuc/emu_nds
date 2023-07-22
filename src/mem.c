@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <stdio.h>
+#include <time.h>
 
 static const uint16_t timer_masks[4] = {0, 0x7E, 0x1FE, 0x7FE};
 
@@ -129,6 +130,8 @@ static uint8_t firmware_read(mem_t *mem)
 			printf("firmware read %02x\n", mem->spi_firmware.cmd_data.read.v);
 #endif
 			return mem->spi_firmware.cmd_data.read.v;
+		case 0x5:
+			return 0;
 	}
 	return 0;
 }
@@ -159,6 +162,11 @@ static void firmware_write(mem_t *mem, uint8_t v)
 					mem->spi_firmware.cmd_data.read.posb = 0;
 					mem->spi_firmware.cmd_data.read.addr = 0;
 					break;
+				case 0x5:
+					break;
+				default:
+					printf("unknown SPI cmd: %02" PRIx8 "\n", v);
+					return;
 			}
 			return;
 		case 0x3:
@@ -170,13 +178,15 @@ static void firmware_write(mem_t *mem, uint8_t v)
 				return;
 			}
 			mem->spi_firmware.cmd_data.read.v = mem->firmware[mem->spi_firmware.cmd_data.read.addr & 0x3FFFF];
-#if 0
-			printf("[%08" PRIx32 "] firmware read: [%05" PRIx32 "] = %" PRIx8 "\n",
+#if 1
+			printf("[%08" PRIx32 "] firmware read: [%05" PRIx32 "] = %02" PRIx8 "\n",
 			       cpu_get_reg(mem->nds->arm7, CPU_REG_PC),
 			       mem->spi_firmware.cmd_data.read.addr,
 			       mem->spi_firmware.cmd_data.read.v);
 #endif
 			mem->spi_firmware.cmd_data.read.addr++;
+			return;
+		case 0x5:
 			return;
 	}
 }
@@ -260,6 +270,150 @@ static void spi_write(mem_t *mem, uint8_t v)
 				break;
 		}
 	}
+}
+
+static void rtc_write(mem_t *mem, uint8_t v)
+{
+#if 0
+	printf("rtc write %02" PRIx8 "\n", v);
+#endif
+	if (v & (1 << 4))
+	{
+		if (!(v & (1 << 2)))
+		{
+#if 0
+			printf("mem rtc buf reset\n");
+#endif
+			mem->rtc.inbuf = 0;
+			mem->rtc.inlen = 0;
+			mem->rtc.cmd_flip = 1;
+			mem->rtc.cmd = 0xFF;
+			return;
+		}
+		if (mem->rtc.cmd_flip)
+		{
+			mem->rtc.cmd_flip = 0;
+			return;
+		}
+		if (!(v & (1 << 1)))
+			return;
+		mem->rtc.inbuf |= (v & 1) << (mem->rtc.inlen % 8);
+		mem->rtc.inlen++;
+		if (mem->rtc.inlen != 8)
+			return;
+		mem->rtc.inlen = 0;
+		if (mem->rtc.cmd == 0xFF)
+		{
+			mem->rtc.cmd = mem->rtc.inbuf;
+#if 1
+			printf("rtc cmd %02" PRIx8 "\n", mem->rtc.cmd);
+#endif
+			if (mem->rtc.cmd & (1 << 7))
+			{
+				switch (mem->rtc.cmd)
+				{
+					case 0x86:
+						mem->rtc.outbuf[0] = mem->rtc.sr1;
+						mem->rtc.outpos = 0;
+						mem->rtc.outlen = 8;
+						break;
+					case 0xC6:
+						mem->rtc.outbuf[0] = mem->rtc.sr2;
+						mem->rtc.outpos = 0;
+						mem->rtc.outlen = 8;
+						break;
+					case 0xA6:
+					{
+						time_t t = time(NULL);
+						struct tm *tm = localtime(&t);
+						mem->rtc.outbuf[0] = tm->tm_year - 100;
+						mem->rtc.outbuf[1] = tm->tm_mon + 1;
+						mem->rtc.outbuf[2] = tm->tm_mday;
+						mem->rtc.outbuf[3] = tm->tm_wday;
+						mem->rtc.outbuf[4] = tm->tm_hour;
+						mem->rtc.outbuf[5] = tm->tm_min;
+						mem->rtc.outbuf[7] = tm->tm_sec;
+						mem->rtc.outpos = 0;
+						mem->rtc.outlen = 8 * 7;
+						break;
+					}
+					case 0xF6:
+						mem->rtc.outbuf[0] = mem->rtc.fr;
+						mem->rtc.outpos = 0;
+						mem->rtc.outlen = 8;
+						break;
+					default:
+						printf("unknown rtc read cmd: %02" PRIx8 "\n",
+						       mem->rtc.cmd);
+						break;
+				}
+			}
+			return;
+		}
+		if (mem->rtc.cmd & (1 << 7))
+		{
+			printf("rtc write data on read cmd!\n");
+			mem->rtc.inbuf = 0;
+			return;
+		}
+#if 0
+		printf("rtc byte %02" PRIx8 " for cmd %02" PRIx8 "\n",
+		       mem->rtc.inbuf, mem->rtc.cmd);
+#endif
+		switch (mem->rtc.cmd)
+		{
+			case 0x06:
+				mem->rtc.sr1 = mem->rtc.inbuf;
+				break;
+			case 0x46:
+				mem->rtc.sr2 = mem->rtc.inbuf;
+				break;
+			case 0x26:
+				printf("XXX rtc set date\n");
+				break;
+			case 0x66:
+				printf("XXX rtc set time\n");
+				break;
+			case 0x16:
+				printf("XXX rtc set int1 freq / alarm1\n");
+				break;
+			case 0x56:
+				printf("XXX rtc set int2\n");
+				break;
+			case 0x36:
+				printf("XXX rtc set clock adj\n");
+				break;
+			case 0x76:
+				mem->rtc.fr = mem->rtc.inbuf;
+				break;
+			default:
+				printf("unknown rtc write cmd: %02" PRIx8 "\n",
+				       mem->rtc.cmd);
+				break;
+		}
+		mem->rtc.inbuf = 0;
+		return;
+	}
+	else
+	{
+		uint8_t b = 0;
+		if (mem->rtc.outpos < mem->rtc.outlen)
+		{
+			b = mem->rtc.outbuf[mem->rtc.outpos / 8];
+			b >>= mem->rtc.outpos % 8;
+			b &= 1;
+			mem->rtc.outpos++;
+		}
+		mem->rtc.outbyte = 0x66 | b;
+	}
+}
+
+static uint8_t rtc_read(mem_t *mem)
+{
+#if 0
+	printf("rtc read %02" PRIx8 "\n", mem->rtc.outbyte);
+#endif
+	return mem->rtc.outbyte;
 }
 
 static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
@@ -396,6 +550,9 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 			return;
 		case MEM_ARM7_REG_WRAMSTAT:
 			return;
+		case MEM_ARM7_REG_RTC:
+			rtc_write(mem, v);
+			return;
 		default:
 			printf("[%08" PRIx32 "] unknown ARM7 set register %08" PRIx32 " = %02" PRIx8 "\n",
 			       cpu_get_reg(mem->nds->arm7, CPU_REG_PC), addr, v);
@@ -490,9 +647,14 @@ static uint8_t get_arm7_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM7_REG_SPIDATA:
 			return spi_read(mem);
 		case MEM_ARM7_REG_SPIDATA + 1:
+		case MEM_ARM7_REG_RTC + 1:
+		case MEM_ARM7_REG_RTC + 2:
+		case MEM_ARM7_REG_RTC + 3:
 			return 0;
 		case MEM_ARM7_REG_WRAMSTAT:
 			return mem->arm9_regs[MEM_ARM9_REG_WRAMCNT];
+		case MEM_ARM7_REG_RTC:
+			return rtc_read(mem);
 		default:
 			printf("[%08" PRIx32 "] unknown ARM7 get register %08" PRIx32 "\n",
 			       cpu_get_reg(mem->nds->arm7, CPU_REG_PC), addr);
@@ -517,7 +679,7 @@ static uint32_t get_arm7_reg32(mem_t *mem, uint32_t addr)
 
 static void arm7_instr_delay(mem_t *mem, const uint8_t *table, enum mem_type type)
 {
-	mem->nds->arm7->instr_delay += table[type] + 1;
+	mem->nds->arm7->instr_delay += table[type];
 }
 
 #define MEM_ARM7_GET(size) \
@@ -555,11 +717,6 @@ uint##size##_t mem_arm7_get##size(mem_t *mem, uint32_t addr, enum mem_type type)
 			return get_arm7_reg##size(mem, addr - 0x4000000); \
 		case 0x6: /* vram */ \
 			break; \
-		case 0x8: /* GBA rom */ \
-		case 0x9: \
-			break; \
-		case 0xA: /* GBA ram */ \
-			break; \
 		default: \
 			break; \
 	} \
@@ -578,13 +735,10 @@ void mem_arm7_set##size(mem_t *mem, uint32_t addr, uint##size##_t v, enum mem_ty
 { \
 	if (addr >= 0x10000000) \
 		goto end; \
-	if (((addr >> 24) & 0xF) < 0x8) \
-	{ \
-		if (size == 16) \
-			addr &= ~1; \
-		if (size == 32) \
-			addr &= ~3; \
-	} \
+	if (size == 16) \
+		addr &= ~1; \
+	if (size == 32) \
+		addr &= ~3; \
 	switch ((addr >> 24) & 0xF) \
 	{ \
 		case 0x0: /* ARM7 bios */ \
@@ -607,11 +761,6 @@ void mem_arm7_set##size(mem_t *mem, uint32_t addr, uint##size##_t v, enum mem_ty
 			arm7_instr_delay(mem, arm7_wram_cycles_##size, type); \
 			return; \
 		case 0x6: /* vram */ \
-			break; \
-		case 0x8: /* GBA rom */ \
-		case 0x9: \
-			break; \
-		case 0xA: /* GBA ram */ \
 			break; \
 		default: \
 			break; \
@@ -843,21 +992,21 @@ static uint32_t get_arm9_reg32(mem_t *mem, uint32_t addr)
 
 static void arm9_instr_delay(mem_t *mem, const uint8_t *table, enum mem_type type)
 {
-	mem->nds->arm9->instr_delay += table[type] + 1;
+	mem->nds->arm9->instr_delay += table[type];
 }
 
 #define MEM_ARM9_GET(size) \
 uint##size##_t mem_arm9_get##size(mem_t *mem, uint32_t addr, enum mem_type type) \
 { \
+	if (size == 16) \
+		addr &= ~1; \
+	if (size == 32) \
+		addr &= ~3; \
 	if (mem->nds->arm9->cp15.cr & (1 << 18)) \
 	{ \
 		uint32_t itcm_size = 0x200 << ((mem->nds->arm9->cp15.itcm & 0x3E) >> 1); \
 		if (addr < itcm_size) \
 		{ \
-			if (size == 16) \
-				addr &= ~1; \
-			if (size == 32) \
-				addr &= ~3; \
 			uint32_t a = addr; \
 			a &= itcm_size - 1; \
 			a &= 0x7FFF; \
@@ -871,10 +1020,6 @@ uint##size##_t mem_arm9_get##size(mem_t *mem, uint32_t addr, enum mem_type type)
 		uint32_t dtcm_size = 0x200 << ((mem->nds->arm9->cp15.dtcm & 0x3E) >> 1); \
 		if (addr >= dtcm_base && addr < dtcm_base + dtcm_size) \
 		{ \
-			if (size == 16) \
-				addr &= ~1; \
-			if (size == 32) \
-				addr &= ~3; \
 			uint32_t a = addr - dtcm_base; \
 			a &= dtcm_size - 1; \
 			a &= 0x3FFF; \
@@ -891,10 +1036,6 @@ uint##size##_t mem_arm9_get##size(mem_t *mem, uint32_t addr, enum mem_type type)
 	} \
 	if (addr >= 0x10000000) \
 		goto end; \
-	if (size == 16) \
-		addr &= ~1; \
-	if (size == 32) \
-		addr &= ~3; \
 	switch ((addr >> 24) & 0xFF) \
 	{ \
 		case 0x2: /* main memory */ \
@@ -915,11 +1056,6 @@ uint##size##_t mem_arm9_get##size(mem_t *mem, uint32_t addr, enum mem_type type)
 			break; \
 		case 0x7: /* oam */ \
 			break; \
-		case 0x8: /* GBA rom */ \
-		case 0x9: \
-			break; \
-		case 0xA: /* GBA ram */ \
-			break; \
 		default: \
 			break; \
 	} \
@@ -936,15 +1072,15 @@ MEM_ARM9_GET(32);
 #define MEM_ARM9_SET(size) \
 void mem_arm9_set##size(mem_t *mem, uint32_t addr, uint##size##_t v, enum mem_type type) \
 { \
+	if (size == 16) \
+		addr &= ~1; \
+	if (size == 32) \
+		addr &= ~3; \
 	if (mem->nds->arm9->cp15.cr & (1 << 18)) \
 	{ \
 		uint32_t itcm_size = 0x200 << ((mem->nds->arm9->cp15.itcm & 0x3E) >> 1); \
 		if (addr < itcm_size) \
 		{ \
-			if (size == 16) \
-				addr &= ~1; \
-			if (size == 32) \
-				addr &= ~3; \
 			uint32_t a = addr; \
 			a &= itcm_size - 1; \
 			a &= 0x7FFF; \
@@ -959,10 +1095,6 @@ void mem_arm9_set##size(mem_t *mem, uint32_t addr, uint##size##_t v, enum mem_ty
 		uint32_t dtcm_size = 0x200 << ((mem->nds->arm9->cp15.dtcm & 0x3E) >> 1); \
 		if (addr >= dtcm_base && addr < dtcm_base + dtcm_size) \
 		{ \
-			if (size == 16) \
-				addr &= ~1; \
-			if (size == 32) \
-				addr &= ~3; \
 			uint32_t a = addr - dtcm_base; \
 			a &= dtcm_size - 1; \
 			a &= 0x3FFF; \
@@ -973,13 +1105,6 @@ void mem_arm9_set##size(mem_t *mem, uint32_t addr, uint##size##_t v, enum mem_ty
 	} \
 	if (addr >= 0x10000000) \
 		goto end; \
-	if (((addr >> 24) & 0xF) < 0x8) \
-	{ \
-		if (size == 16) \
-			addr &= ~1; \
-		if (size == 32) \
-			addr &= ~3; \
-	} \
 	switch ((addr >> 24) & 0xF) \
 	{ \
 		case 0x2: /* main memory */ \
@@ -1002,11 +1127,6 @@ void mem_arm9_set##size(mem_t *mem, uint32_t addr, uint##size##_t v, enum mem_ty
 		case 0x6: /* vram */ \
 			break; \
 		case 0x7: /* oam */ \
-			break; \
-		case 0x8: /* GBA rom */ \
-		case 0x9: \
-			break; \
-		case 0xA: /* GBA ram */ \
 			break; \
 		default: \
 			break; \

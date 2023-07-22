@@ -138,6 +138,7 @@ static uint64_t bitswap39(uint64_t v)
 
 static uint8_t key2_byte(mbc_t *mbc, uint8_t v)
 {
+	return v; /* it looks like it's not required... is it a hw-only cipher ? */
 	mbc->key2_x = ((((mbc->key2_x >> 5) ^ (mbc->key2_x >> 17) ^ (mbc->key2_x >> 18) ^ (mbc->key2_x >> 31)) & 0xFF) | (mbc->key2_x << 8)) & 0x7FFFFFFFFF;
 	mbc->key2_y = ((((mbc->key2_y >> 5) ^ (mbc->key2_y >> 23) ^ (mbc->key2_y >> 18) ^ (mbc->key2_y >> 31)) & 0xFF) | (mbc->key2_y << 8)) & 0x7FFFFFFFFF;
 	return v ^ mbc->key2_x ^ mbc->key2_y;
@@ -165,19 +166,19 @@ void mbc_cmd(mbc_t *mbc)
 				case 0x9F:
 					assert(cmd == 0x9F00000000000000ULL);
 					mbc->cmd = MBC_CMD_DUMMY;
-					mbc->cmd_data.dummy.count = 0x2000;
+					mbc->cmd_count = 0x2000;
 					start_cmd(mbc);
 					return;
 				case 0x00:
 					assert(cmd == 0x0000000000000000ULL);
 					mbc->cmd = MBC_CMD_GETHDR;
-					mbc->cmd_data.gethdr.count = 0;
+					mbc->cmd_count = 0;
 					start_cmd(mbc);
 					return;
 				case 0x90:
 					assert(cmd == 0x9000000000000000ULL);
 					mbc->cmd = MBC_CMD_ROMID1;
-					mbc->cmd_data.romid1.count = 0;
+					mbc->cmd_count = 0;
 					start_cmd(mbc);
 					return;
 				case 0x3C:
@@ -214,11 +215,14 @@ void mbc_cmd(mbc_t *mbc)
 				}
 				case 0x1:
 					mbc->cmd = MBC_CMD_ROMID2;
-					mbc->cmd_data.romid2.count = 0;
+					mbc->cmd_count = 0;
 					start_cmd(mbc);
 					return;
 				case 0x2:
-					/* XXX secure area block */
+					mbc->cmd = MBC_CMD_SECBLK;
+					mbc->cmd_count = 0;
+					mbc->secblk_off = 0x1000 * ((cmd >> 48) & 0xFFF);
+					start_cmd(mbc);
 					return;
 				case 0x6:
 					/* XXX key2 disable */
@@ -251,39 +255,39 @@ uint8_t mbc_read(mbc_t *mbc)
 			return 0;
 		case MBC_CMD_DUMMY:
 #if 0
-			printf("dummy 0x%" PRIx32 "\n", mbc->cmd_data.dummy.count);
+			printf("dummy 0x%" PRIx32 "\n", mbc->cmd_count);
 #endif
-			if (!--mbc->cmd_data.dummy.count)
+			if (!--mbc->cmd_count)
 				end_cmd(mbc);
 			return 0xFF;
 		case MBC_CMD_GETHDR:
 		{
 #if 1
-			printf("gethdr 0x%" PRIx32 "\n", mbc->cmd_data.gethdr.count);
+			printf("gethdr 0x%" PRIx32 "\n", mbc->cmd_count);
 #endif
 			uint8_t v;
-			if (mbc->cmd_data.gethdr.count < mbc->data_size)
-				v = mbc->data[mbc->cmd_data.gethdr.count];
+			if (mbc->cmd_count < mbc->data_size)
+				v = mbc->data[mbc->cmd_count];
 			else
 				v = 0;
-			if (++mbc->cmd_data.gethdr.count == 0x200)
+			if (++mbc->cmd_count == 0x200)
 				end_cmd(mbc);
 			return v;
 		}
 		case MBC_CMD_ROMID1:
 #if 1
-			printf("romid1 0x%" PRIx32 "\n", mbc->cmd_data.romid1.count);
+			printf("romid1 0x%" PRIx32 "\n", mbc->cmd_count);
 #endif
-			switch (mbc->cmd_data.romid1.count)
+			switch (mbc->cmd_count)
 			{
 				case 0:
-					mbc->cmd_data.romid1.count++;
+					mbc->cmd_count++;
 					return 0xC2;
 				case 1:
-					mbc->cmd_data.romid1.count++;
+					mbc->cmd_count++;
 					return 0x00;
 				case 2:
-					mbc->cmd_data.romid1.count++;
+					mbc->cmd_count++;
 					return 0x00;
 				case 3:
 					end_cmd(mbc);
@@ -293,18 +297,18 @@ uint8_t mbc_read(mbc_t *mbc)
 			return 0;
 		case MBC_CMD_ROMID2:
 #if 1
-			printf("romid2 0x%" PRIx32 "\n", mbc->cmd_data.romid2.count);
+			printf("romid2 0x%" PRIx32 "\n", mbc->cmd_count);
 #endif
-			switch (mbc->cmd_data.romid2.count)
+			switch (mbc->cmd_count)
 			{
 				case 0:
-					mbc->cmd_data.romid2.count++;
+					mbc->cmd_count++;
 					return key2_byte(mbc, 0xC2);
 				case 1:
-					mbc->cmd_data.romid2.count++;
+					mbc->cmd_count++;
 					return key2_byte(mbc, 0x00);
 				case 2:
-					mbc->cmd_data.romid2.count++;
+					mbc->cmd_count++;
 					return key2_byte(mbc, 0x00);
 				case 3:
 					end_cmd(mbc);
@@ -312,6 +316,24 @@ uint8_t mbc_read(mbc_t *mbc)
 			}
 			assert(!"dead");
 			return key2_byte(mbc, 0);
+		case MBC_CMD_SECBLK:
+		{
+#if 1
+			printf("secblk 0x%" PRIx32 "\n", mbc->cmd_count);
+#endif
+			uint8_t v;
+			if (mbc->cmd_count + mbc->secblk_off < mbc->data_size)
+			{
+				v = mbc->data[mbc->cmd_count + mbc->secblk_off];
+			}
+			else
+			{
+				printf("secblk read too far!\n");
+				v = 0;
+			}
+			mbc->cmd_count++;
+			return key2_byte(mbc, v);
+		}
 		default:
 			assert(!"unknown cmd");
 	}

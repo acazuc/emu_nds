@@ -12,6 +12,7 @@ typedef struct mem mem_t;
 #define CPU_DEBUG_REGS    (1 << 2) /* print registers */
 #define CPU_DEBUG_REGS_ML (1 << 3) /* multiline registers dump */
 #define CPU_DEBUG_ALL     (CPU_DEBUG_BASE | CPU_DEBUG_INSTR | CPU_DEBUG_REGS)
+#define CPU_DEBUG_ALL_ML  (CPU_DEBUG_ALL | CPU_DEBUG_REGS_ML)
 
 #define CPU_FLAG_N (1 << 31)
 #define CPU_FLAG_Z (1 << 30)

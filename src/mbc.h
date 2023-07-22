@@ -13,6 +13,7 @@ enum mbc_cmd
 	MBC_CMD_GETHDR,
 	MBC_CMD_ROMID1,
 	MBC_CMD_ROMID2,
+	MBC_CMD_SECBLK,
 };
 
 typedef struct mbc
@@ -25,25 +26,8 @@ typedef struct mbc
 	uint32_t keybuf[0x412];
 	uint64_t key2_x;
 	uint64_t key2_y;
-	union
-	{
-		struct
-		{
-			uint32_t count;
-		} dummy;
-		struct
-		{
-			uint32_t count;
-		} gethdr;
-		struct
-		{
-			uint32_t count;
-		} romid1;
-		struct
-		{
-			uint32_t count;
-		} romid2;
-	} cmd_data;
+	uint32_t cmd_count;
+	uint32_t secblk_off;
 } mbc_t;
 
 mbc_t *mbc_new(nds_t *nds, const void *data, size_t size);

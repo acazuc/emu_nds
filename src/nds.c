@@ -53,6 +53,42 @@
  * 13C6: IPCSYNC = 1
  * 1424: IPCSYNC = 2
  * 144C: IPCSYNC = 3 (unstuck ARM9 @ 0x3E4)
+ *
+ *
+ * 13B6:
+ *       stuff
+ *       calls 137A
+ *       calls 245A
+ * 245A: 2436(r0=0, r1=0x027FF830, r2=0x20)
+ * 2436: 2388(r0=passthrough, r1=0, r2=0)
+ *       33A4(r0=arg_r1, r1=arg_r2, r2=1)
+ * 2388: stuff
+ * 137A: store 1910 result in *0x027FF800
+ * 1910: call 1888 (return chipid in r0)
+ * dst = 0x0380fecc
+ * struct cmd
+ * {
+ *     uint32_t result;
+ *     uint32_t ROMCTRL_MASK (to be ored with 0xA7000000);
+ *     uint32_t unk2;
+ *     uint64_t cmd;
+ * };
+ * 1888: get ROMID ? (r0 = struct cmd*)
+ *       1890: struct->result = -1;
+ *       1896: call 1698 (with r0 = dst)
+ *       18A2: start ROMCTRL transfer
+ *       18A4: wait for ROMCTRL ready
+ *       18AE: load result
+ * 1698: (r0 = struct cmd*)
+ *       16A0: call 166A
+ *       16A8: enable AUXSPICNT IRQ / slot enable
+ *       16B2: loop two times:
+ *             r1 = dst[(i - 1) * 4]
+ *             ROM_CMDOUT[i * 4] = r1
+ * 166A:
+ *       166C: wait for ROMCTRL ready
+ * 1DC4: (irq vector) do stuff
+ *       call 1888
  */
 
 nds_t *nds_new(const void *rom_data, size_t rom_size)

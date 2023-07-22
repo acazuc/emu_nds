@@ -264,7 +264,7 @@ void cpu_cycle(cpu_t *cpu)
 		cpu->debug = CPU_DEBUG_REGS | CPU_DEBUG_INSTR;
 #endif
 #if 0
-	if (cpu_get_reg(cpu, CPU_REG_PC) == 0x144C)
+	if (cpu_get_reg(cpu, CPU_REG_PC) == 0x02327ad6)
 		cpu->debug = CPU_DEBUG_ALL;
 #endif
 

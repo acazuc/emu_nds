@@ -185,10 +185,10 @@ enum mem_type
 	MEM_CODE_NSEQ,
 };
 
-typedef struct mem_timer
+struct timer
 {
 	uint16_t v;
-} mem_timer_t;
+};
 
 struct spi_firmware
 {
@@ -204,13 +204,29 @@ struct spi_firmware
 	} cmd_data;
 };
 
+struct rtc
+{
+	int cmd_flip;
+	uint8_t cmd;
+	uint8_t inbuf;
+	uint8_t inlen; /* in bits */
+	uint8_t outbuf[8];
+	uint8_t outlen; /* in bits */
+	uint8_t outpos; /* in bits */
+	uint8_t outbyte;
+	uint8_t sr1;
+	uint8_t sr2;
+	uint8_t fr;
+};
+
 typedef struct mem
 {
 	nds_t *nds;
 	mbc_t *mbc;
-	mem_timer_t arm7_timers[4];
-	mem_timer_t arm9_timers[4];
+	struct timer arm7_timers[4];
+	struct timer arm9_timers[4];
 	struct spi_firmware spi_firmware;
+	struct rtc rtc;
 	uint8_t arm7_bios[0x4000];
 	uint8_t arm9_bios[0x1000];
 	uint8_t firmware[0x40000];
