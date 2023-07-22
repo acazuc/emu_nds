@@ -922,7 +922,10 @@ THUMB_INSTR(swi,
 	CPU_SET_FLAG_I(cpu, 1);
 	CPU_SET_FLAG_T(cpu, 0);
 	cpu_set_reg(cpu, CPU_REG_LR, cpu_get_reg(cpu, CPU_REG_PC) + 2);
-	cpu_set_reg(cpu, CPU_REG_PC, 0x8);
+	if (cpu->arm9 && (cpu->cp15.cr & 0x2000))
+		cpu_set_reg(cpu, CPU_REG_PC, 0xFFFF0008);
+	else
+		cpu_set_reg(cpu, CPU_REG_PC, 0x8);
 },
 {
 	uint32_t nn = cpu->instr_opcode & 0xFF;
