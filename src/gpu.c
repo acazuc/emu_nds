@@ -823,6 +823,40 @@ static void compose(gpu_t *gpu, struct gpu_eng *eng, struct line_buff *line, uin
 			}
 		}
 	}
+	uint16_t master_bright = mem_arm9_get_reg16(gpu->mem, MEM_ARM9_REG_MASTER_BRIGHT + eng->regoff);
+	switch ((master_bright >> 14) & 0x3)
+	{
+		case 0:
+			break;
+		case 1:
+		{
+			uint16_t factor = master_bright & 0x1F;
+			if (factor > 16)
+				factor = 16;
+			for (size_t i = 0; i < 256 * 4; ++i)
+			{
+				uint8_t *ptr = &eng->data[y * 256 * 4 + i];
+				ptr[0] += ~ptr[0] * factor / 16;
+				ptr[1] += ~ptr[1] * factor / 16;
+				ptr[2] += ~ptr[2] * factor / 16;
+			}
+			break;
+		}
+		case 2:
+		{
+			uint16_t factor = master_bright & 0x1F;
+			if (factor > 16)
+				factor = 16;
+			for (size_t i = 0; i < 256 * 4; ++i)
+			{
+				uint8_t *ptr = &eng->data[y * 256 * 4 + i];
+				ptr[0] -= ptr[0] * factor / 16;
+				ptr[1] -= ptr[1] * factor / 16;
+				ptr[2] -= ptr[2] * factor / 16;
+			}
+			break;
+		}
+	}
 }
 
 static void draw_eng(gpu_t *gpu, struct gpu_eng *eng, uint8_t y)
