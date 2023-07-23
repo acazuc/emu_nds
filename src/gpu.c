@@ -84,7 +84,7 @@ static void draw_background_text(gpu_t *gpu, struct gpu_eng *eng, uint8_t y, uin
 	uint16_t bghofs = mem_arm9_get_reg16(gpu->mem, MEM_ARM9_REG_BG0HOFS + eng->regoff + bg * 4) & 0x1FF;
 	uint16_t bgvofs = mem_arm9_get_reg16(gpu->mem, MEM_ARM9_REG_BG0VOFS + eng->regoff + bg * 4) & 0x1FF;
 	uint8_t size = (bgcnt >> 14) & 0x3;
-	uint32_t tilebase = eng->bgoff + ((bgcnt >> 2) & 0x3) * 0x4000 + ((dispcnt >> 24) & 0x3) * 0x10000;
+	uint32_t tilebase = eng->bgoff + ((bgcnt >> 2) & 0xF) * 0x4000 + ((dispcnt >> 24) & 0x3) * 0x10000;
 	uint32_t mapbase = eng->bgoff + ((bgcnt >> 8) & 0x1F) * 0x800 + ((dispcnt >> 27) & 0x3) * 0x10000;
 	uint32_t mapw = mapwidths[size];
 	uint32_t maph = mapheights[size];
@@ -159,7 +159,7 @@ static void draw_background_affine(gpu_t *gpu, struct gpu_eng *eng, uint8_t y, u
 	uint16_t bgcnt = mem_arm9_get_reg16(gpu->mem, MEM_ARM9_REG_BG0CNT + eng->regoff + bg * 2);
 	uint8_t size = (bgcnt >> 14) & 0x3;
 	uint32_t dispcnt = mem_arm9_get_reg32(gpu->mem, MEM_ARM9_REG_DISPCNT + eng->regoff);
-	uint32_t tilebase = eng->bgoff + ((bgcnt >> 2) & 0x3) * 0x4000 + ((dispcnt >> 24) & 0x3) * 0x10000;
+	uint32_t tilebase = eng->bgoff + ((bgcnt >> 2) & 0xF) * 0x4000 + ((dispcnt >> 24) & 0x3) * 0x10000;
 	uint32_t mapbase = eng->bgoff + ((bgcnt >> 8) & 0x1F) * 0x800 + ((dispcnt >> 27) & 0x3) * 0x10000;
 	uint32_t mapsize = mapsizes[size];
 	uint8_t overflow = (bgcnt >> 13) & 1;
