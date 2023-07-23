@@ -214,13 +214,13 @@ struct fifo
 struct spi_firmware
 {
 	uint8_t cmd;
+	uint8_t read_latch;
 	union
 	{
 		struct
 		{
 			uint8_t posb;
 			uint32_t addr;
-			uint8_t v;
 		} read;
 	} cmd_data;
 };

@@ -299,19 +299,10 @@ static uint8_t powerman_read(mem_t *mem)
 
 static uint8_t firmware_read(mem_t *mem)
 {
-	switch (mem->spi_firmware.cmd)
-	{
-		case 0x0:
-			return 0;
-		case 0x3:
 #if 0
-			printf("firmware read %02x\n", mem->spi_firmware.cmd_data.read.v);
+	printf("SPI firmware read %02" PRIx8 "\n", mem->spi_firmware.read_latch);
 #endif
-			return mem->spi_firmware.cmd_data.read.v;
-		case 0x5:
-			return 0;
-	}
-	return 0;
+	return mem->spi_firmware.read_latch;
 }
 
 static uint8_t touchscreen_read(mem_t *mem)
@@ -355,16 +346,17 @@ static void firmware_write(mem_t *mem, uint8_t v)
 				mem->spi_firmware.cmd_data.read.posb++;
 				return;
 			}
-			mem->spi_firmware.cmd_data.read.v = mem->firmware[mem->spi_firmware.cmd_data.read.addr & 0x3FFFF];
+			mem->spi_firmware.read_latch = mem->firmware[mem->spi_firmware.cmd_data.read.addr & 0x3FFFF];
 #if 1
 			printf("[%08" PRIx32 "] firmware read: [%05" PRIx32 "] = %02" PRIx8 "\n",
 			       cpu_get_reg(mem->nds->arm7, CPU_REG_PC),
 			       mem->spi_firmware.cmd_data.read.addr,
-			       mem->spi_firmware.cmd_data.read.v);
+			       mem->spi_firmware.read_latch);
 #endif
 			mem->spi_firmware.cmd_data.read.addr++;
 			return;
 		case 0x5:
+			mem->spi_firmware.read_latch = 0;
 			return;
 	}
 }
@@ -750,6 +742,8 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM7_REG_RCNT + 1:
 		case MEM_ARM7_REG_SOUNDCNT:
 		case MEM_ARM7_REG_SOUNDCNT + 1:
+		case MEM_ARM7_REG_WIFIWAITCNT:
+		case MEM_ARM7_REG_WIFIWAITCNT + 1:
 			mem->arm7_regs[addr] = v;
 			return;
 		case MEM_ARM7_REG_ROMCTRL:
@@ -1024,6 +1018,8 @@ static uint8_t get_arm7_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM7_REG_RCNT + 1:
 		case MEM_ARM7_REG_SOUNDCNT:
 		case MEM_ARM7_REG_SOUNDCNT + 1:
+		case MEM_ARM7_REG_WIFIWAITCNT:
+		case MEM_ARM7_REG_WIFIWAITCNT + 1:
 			return mem->arm7_regs[addr];
 		case MEM_ARM7_REG_ROMCTRL:
 		case MEM_ARM7_REG_ROMCTRL + 1:
