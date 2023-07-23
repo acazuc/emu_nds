@@ -1436,6 +1436,22 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM9_REG_DMA3CNT_L:
 		case MEM_ARM9_REG_DMA3CNT_L  +1:
 		case MEM_ARM9_REG_DMA3CNT_H:
+		case MEM_ARM9_REG_DMA0FILL:
+		case MEM_ARM9_REG_DMA0FILL + 1:
+		case MEM_ARM9_REG_DMA0FILL + 2:
+		case MEM_ARM9_REG_DMA0FILL + 3:
+		case MEM_ARM9_REG_DMA1FILL:
+		case MEM_ARM9_REG_DMA1FILL + 1:
+		case MEM_ARM9_REG_DMA1FILL + 2:
+		case MEM_ARM9_REG_DMA1FILL + 3:
+		case MEM_ARM9_REG_DMA2FILL:
+		case MEM_ARM9_REG_DMA2FILL + 1:
+		case MEM_ARM9_REG_DMA2FILL + 2:
+		case MEM_ARM9_REG_DMA2FILL + 3:
+		case MEM_ARM9_REG_DMA3FILL:
+		case MEM_ARM9_REG_DMA3FILL + 1:
+		case MEM_ARM9_REG_DMA3FILL + 2:
+		case MEM_ARM9_REG_DMA3FILL + 3:
 			mem->arm9_regs[addr] = v;
 			return;
 		case MEM_ARM9_REG_ROMCTRL + 2:
@@ -1672,6 +1688,22 @@ static uint8_t get_arm9_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM9_REG_DMA3CNT_L  +1:
 		case MEM_ARM9_REG_DMA3CNT_H:
 		case MEM_ARM9_REG_DMA3CNT_H + 1:
+		case MEM_ARM9_REG_DMA0FILL:
+		case MEM_ARM9_REG_DMA0FILL + 1:
+		case MEM_ARM9_REG_DMA0FILL + 2:
+		case MEM_ARM9_REG_DMA0FILL + 3:
+		case MEM_ARM9_REG_DMA1FILL:
+		case MEM_ARM9_REG_DMA1FILL + 1:
+		case MEM_ARM9_REG_DMA1FILL + 2:
+		case MEM_ARM9_REG_DMA1FILL + 3:
+		case MEM_ARM9_REG_DMA2FILL:
+		case MEM_ARM9_REG_DMA2FILL + 1:
+		case MEM_ARM9_REG_DMA2FILL + 2:
+		case MEM_ARM9_REG_DMA2FILL + 3:
+		case MEM_ARM9_REG_DMA3FILL:
+		case MEM_ARM9_REG_DMA3FILL + 1:
+		case MEM_ARM9_REG_DMA3FILL + 2:
+		case MEM_ARM9_REG_DMA3FILL + 3:
 			return mem->arm9_regs[addr];
 		case MEM_ARM9_REG_ROMDATA:
 		case MEM_ARM9_REG_ROMDATA + 1:
