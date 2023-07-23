@@ -7,7 +7,19 @@ typedef struct mem mem_t;
 
 typedef struct gpu
 {
-	uint8_t data[256 * 192 * 2 * 4];
+	struct gpu_eng
+	{
+		uint8_t data[256 * 192 * 4];
+		uint32_t regoff;
+		uint32_t paloff;
+		uint32_t oamoff;
+		uint32_t bgoff;
+		uint32_t objoff;
+		int32_t bg2x;
+		int32_t bg2y;
+		int32_t bg3x;
+		int32_t bg3y;
+	} enga, engb;
 	mem_t *mem;
 } gpu_t;
 

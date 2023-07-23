@@ -125,7 +125,7 @@ void mem_timers(mem_t *mem)
 }
 
 #define ARM_DMA(armv) \
-static uint8_t arm##armv##_dma(mem_t *mem) \
+static void arm##armv##_dma(mem_t *mem) \
 { \
 	for (size_t i = 0; i < 4; ++i) \
 	{ \
@@ -197,9 +197,8 @@ static uint8_t arm##armv##_dma(mem_t *mem) \
 			if (cnt_h & (1 << 14)) \
 				mem_arm##armv##_if(mem, (1 << (8 + i))); \
 		} \
-		return 1; \
+		return; \
 	} \
-	return 0; \
 } \
 static void arm##armv##_load_dma_length(mem_t *mem, size_t id) \
 { \
@@ -242,7 +241,7 @@ static void arm##armv##_dma_control(mem_t *mem, uint8_t id) \
 		dma->status |= MEM_DMA_ENABLE; \
 	if (!(cnt_h & (3 << 12))) \
 		dma->status |= MEM_DMA_ACTIVE; \
-	if ((dma->status & MEM_DMA_ENABLE)) \
+	if (0 && (dma->status & MEM_DMA_ENABLE)) \
 		printf("enable DMA %" PRIu8 " of %08" PRIx32 " words from %08" PRIx32 " to %08" PRIx32 ": %04" PRIx16 "\n", \
 		       id, dma->len, dma->src, dma->dst, cnt_h); \
 } \
@@ -278,9 +277,10 @@ static void arm##armv##_dma_start(mem_t *mem, uint8_t cond) \
 ARM_DMA(7);
 ARM_DMA(9);
 
-uint8_t mem_dma(mem_t *mem)
+void mem_dma(mem_t *mem)
 {
-	return arm7_dma(mem) | (arm9_dma(mem) << 1);
+	arm7_dma(mem);
+	arm9_dma(mem);
 }
 
 void mem_vblank(mem_t *mem)
@@ -357,7 +357,7 @@ static void firmware_write(mem_t *mem, uint8_t v)
 				return;
 			}
 			mem->spi_firmware.read_latch = mem->firmware[mem->spi_firmware.cmd_data.read.addr & 0x3FFFF];
-#if 1
+#if 0
 			printf("[%08" PRIx32 "] firmware read: [%05" PRIx32 "] = %02" PRIx8 "\n",
 			       cpu_get_reg(mem->nds->arm7, CPU_REG_PC),
 			       mem->spi_firmware.cmd_data.read.addr,
@@ -674,7 +674,9 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 			if ((v & (1 << 13))
 			 && (mem->arm9_regs[MEM_ARM9_REG_IPCSYNC] & (1 << 14)))
 				mem_arm9_if(mem, 1 << 16);
+#if 0
 			printf("ARM7 IPCSYNC write 0x%02" PRIx8 "\n", v);
+#endif
 			return;
 		case MEM_ARM7_REG_IPCSYNC + 2:
 		case MEM_ARM7_REG_IPCSYNC + 3:
@@ -911,10 +913,14 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 			nds_test_keypad_int(mem->nds);
 			return;
 		case MEM_ARM7_REG_IPCFIFOCNT:
+#if 0
 			printf("ARM7 FIFOCNT[0] write %02" PRIx8 "\n", v);
+#endif
 			if (v & (1 << 3))
 			{
+#if 0
 				printf("ARM9 FIFO clean\n");
+#endif
 				mem->arm9_fifo.len = 0;
 				mem->arm9_fifo.latch[0] = 0;
 				mem->arm9_fifo.latch[1] = 0;
@@ -925,7 +931,9 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 			mem->arm7_regs[addr] |= v & (1 << 2);
 			return;
 		case MEM_ARM7_REG_IPCFIFOCNT + 1:
+#if 0
 			printf("ARM7 FIFOCNT[1] write %02" PRIx8 "\n", v);
+#endif
 			mem->arm7_regs[addr] &= ~0x84;
 			mem->arm7_regs[addr] |= v & 0x84;
 			if (v & (1 << 6))
@@ -939,7 +947,9 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 				return;
 			if (mem->arm9_fifo.len == 64)
 			{
+#if 0
 				printf("ARM9 FIFO full\n");
+#endif
 				mem->arm7_regs[MEM_ARM7_REG_IPCFIFOCNT + 1] |= (1 << 6);
 				return;
 			}
@@ -948,7 +958,9 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 			if (mem->arm9_fifo.len == 4
 			 && (mem->arm9_regs[MEM_ARM9_REG_IPCFIFOCNT + 1] & (1 << 2)))
 				mem_arm9_if(mem, 1 << 18);
+#if 0
 			printf("ARM7 IPCFIFO write (now %" PRIu8 ")\n", mem->arm9_fifo.len);
+#endif
 			return;
 		default:
 			printf("[%08" PRIx32 "] unknown ARM7 set register %08" PRIx32 " = %02" PRIx8 "\n",
@@ -1252,7 +1264,9 @@ static uint8_t get_arm7_reg8(mem_t *mem, uint32_t addr)
 				v |= (1 << 0);
 			if (mem->arm9_fifo.len == 64)
 				v |= (1 << 1);
+#if 0
 			printf("ARM7 FIFOCNT[0] read %02" PRIx8 "\n", v);
+#endif
 			return v;
 		}
 		case MEM_ARM7_REG_IPCFIFOCNT + 1:
@@ -1262,7 +1276,9 @@ static uint8_t get_arm7_reg8(mem_t *mem, uint32_t addr)
 				v |= (1 << 0);
 			if (mem->arm7_fifo.len == 64)
 				v |= (1 << 1);
+#if 0
 			printf("ARM7 FIFOCNT[1] read %02" PRIx8 "\n", v);
+#endif
 			return v;
 		}
 		case MEM_ARM7_REG_IPCFIFORECV:
@@ -1270,7 +1286,9 @@ static uint8_t get_arm7_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM7_REG_IPCFIFORECV + 2:
 		case MEM_ARM7_REG_IPCFIFORECV + 3:
 		{
+#if 0
 			printf("ARM7 IPCFIFO read\n");
+#endif
 			if (!(mem->arm7_regs[MEM_ARM7_REG_IPCFIFOCNT + 1] & (1 << 7)))
 				return mem->arm7_fifo.latch[addr - MEM_ARM7_REG_IPCFIFORECV];
 			if (!mem->arm7_fifo.len)
@@ -1537,7 +1555,9 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 			if ((v & (1 << 13))
 			 && (mem->arm7_regs[MEM_ARM7_REG_IPCSYNC] & (1 << 14)))
 				mem_arm7_if(mem, 1 << 16);
+#if 0
 			printf("ARM9 IPCSYNC write 0x%02" PRIx8 "\n", v);
+#endif
 			return;
 		case MEM_ARM9_REG_IPCSYNC + 2:
 		case MEM_ARM9_REG_IPCSYNC + 3:
@@ -1651,6 +1671,182 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM9_REG_POWCNT1 + 1:
 		case MEM_ARM9_REG_POWCNT1 + 2:
 		case MEM_ARM9_REG_POWCNT1 + 3:
+		case MEM_ARM9_REG_DISPCNT:
+		case MEM_ARM9_REG_DISPCNT + 1:
+		case MEM_ARM9_REG_DISPCNT + 2:
+		case MEM_ARM9_REG_DISPCNT + 3:
+		case MEM_ARM9_REG_DISPCNT + 0x1000:
+		case MEM_ARM9_REG_DISPCNT + 0x1000 + 1:
+		case MEM_ARM9_REG_DISPCNT + 0x1000 + 2:
+		case MEM_ARM9_REG_DISPCNT + 0x1000 + 3:
+		case MEM_ARM9_REG_MASTER_BRIGHT:
+		case MEM_ARM9_REG_MASTER_BRIGHT + 1:
+		case MEM_ARM9_REG_MASTER_BRIGHT + 2:
+		case MEM_ARM9_REG_MASTER_BRIGHT + 3:
+		case MEM_ARM9_REG_MASTER_BRIGHT + 0x1000:
+		case MEM_ARM9_REG_MASTER_BRIGHT + 0x1000 + 1:
+		case MEM_ARM9_REG_MASTER_BRIGHT + 0x1000 + 2:
+		case MEM_ARM9_REG_MASTER_BRIGHT + 0x1000 + 3:
+		case MEM_ARM9_REG_BG0CNT:
+		case MEM_ARM9_REG_BG0CNT + 1:
+		case MEM_ARM9_REG_BG0CNT + 0x1000:
+		case MEM_ARM9_REG_BG0CNT + 0x1000 + 1:
+		case MEM_ARM9_REG_BG1CNT:
+		case MEM_ARM9_REG_BG1CNT + 1:
+		case MEM_ARM9_REG_BG1CNT + 0x1000:
+		case MEM_ARM9_REG_BG1CNT + 0x1000 + 1:
+		case MEM_ARM9_REG_BG2CNT:
+		case MEM_ARM9_REG_BG2CNT + 1:
+		case MEM_ARM9_REG_BG2CNT + 0x1000:
+		case MEM_ARM9_REG_BG2CNT + 0x1000 + 1:
+		case MEM_ARM9_REG_BG3CNT:
+		case MEM_ARM9_REG_BG3CNT + 1:
+		case MEM_ARM9_REG_BG3CNT + 0x1000:
+		case MEM_ARM9_REG_BG3CNT + 0x1000 + 1:
+		case MEM_ARM9_REG_BG0HOFS:
+		case MEM_ARM9_REG_BG0HOFS + 1:
+		case MEM_ARM9_REG_BG0HOFS + 0x1000:
+		case MEM_ARM9_REG_BG0HOFS + 0x1000 + 1:
+		case MEM_ARM9_REG_BG0VOFS:
+		case MEM_ARM9_REG_BG0VOFS + 1:
+		case MEM_ARM9_REG_BG0VOFS + 0x1000:
+		case MEM_ARM9_REG_BG0VOFS + 0x1000 + 1:
+		case MEM_ARM9_REG_BG1HOFS:
+		case MEM_ARM9_REG_BG1HOFS + 1:
+		case MEM_ARM9_REG_BG1HOFS + 0x1000:
+		case MEM_ARM9_REG_BG1HOFS + 0x1000 + 1:
+		case MEM_ARM9_REG_BG1VOFS:
+		case MEM_ARM9_REG_BG1VOFS + 1:
+		case MEM_ARM9_REG_BG1VOFS + 0x1000:
+		case MEM_ARM9_REG_BG1VOFS + 0x1000 + 1:
+		case MEM_ARM9_REG_BG2HOFS:
+		case MEM_ARM9_REG_BG2HOFS + 1:
+		case MEM_ARM9_REG_BG2HOFS + 0x1000:
+		case MEM_ARM9_REG_BG2HOFS + 0x1000 + 1:
+		case MEM_ARM9_REG_BG2VOFS:
+		case MEM_ARM9_REG_BG2VOFS + 1:
+		case MEM_ARM9_REG_BG2VOFS + 0x1000:
+		case MEM_ARM9_REG_BG2VOFS + 0x1000 + 1:
+		case MEM_ARM9_REG_BG3HOFS:
+		case MEM_ARM9_REG_BG3HOFS + 1:
+		case MEM_ARM9_REG_BG3HOFS + 0x1000:
+		case MEM_ARM9_REG_BG3HOFS + 0x1000 + 1:
+		case MEM_ARM9_REG_BG3VOFS:
+		case MEM_ARM9_REG_BG3VOFS + 1:
+		case MEM_ARM9_REG_BG3VOFS + 0x1000:
+		case MEM_ARM9_REG_BG3VOFS + 0x1000 + 1:
+		case MEM_ARM9_REG_BG2PA:
+		case MEM_ARM9_REG_BG2PA + 1:
+		case MEM_ARM9_REG_BG2PA + 0x1000:
+		case MEM_ARM9_REG_BG2PA + 0x1000 + 1:
+		case MEM_ARM9_REG_BG2PB:
+		case MEM_ARM9_REG_BG2PB + 1:
+		case MEM_ARM9_REG_BG2PB + 0x1000:
+		case MEM_ARM9_REG_BG2PB + 0x1000 + 1:
+		case MEM_ARM9_REG_BG2PC:
+		case MEM_ARM9_REG_BG2PC + 1:
+		case MEM_ARM9_REG_BG2PC + 0x1000:
+		case MEM_ARM9_REG_BG2PC + 0x1000 + 1:
+		case MEM_ARM9_REG_BG2PD:
+		case MEM_ARM9_REG_BG2PD + 1:
+		case MEM_ARM9_REG_BG2PD + 0x1000:
+		case MEM_ARM9_REG_BG2PD + 0x1000 + 1:
+		case MEM_ARM9_REG_BG2X:
+		case MEM_ARM9_REG_BG2X + 1:
+		case MEM_ARM9_REG_BG2X + 2:
+		case MEM_ARM9_REG_BG2X + 3:
+		case MEM_ARM9_REG_BG2X + 0x1000:
+		case MEM_ARM9_REG_BG2X + 0x1000 + 1:
+		case MEM_ARM9_REG_BG2X + 0x1000 + 2:
+		case MEM_ARM9_REG_BG2X + 0x1000 + 3:
+		case MEM_ARM9_REG_BG2Y:
+		case MEM_ARM9_REG_BG2Y + 1:
+		case MEM_ARM9_REG_BG2Y + 2:
+		case MEM_ARM9_REG_BG2Y + 3:
+		case MEM_ARM9_REG_BG2Y + 0x1000:
+		case MEM_ARM9_REG_BG2Y + 0x1000 + 1:
+		case MEM_ARM9_REG_BG2Y + 0x1000 + 2:
+		case MEM_ARM9_REG_BG2Y + 0x1000 + 3:
+		case MEM_ARM9_REG_BG3PA:
+		case MEM_ARM9_REG_BG3PA + 1:
+		case MEM_ARM9_REG_BG3PA + 0x1000:
+		case MEM_ARM9_REG_BG3PA + 0x1000 + 1:
+		case MEM_ARM9_REG_BG3PB:
+		case MEM_ARM9_REG_BG3PB + 1:
+		case MEM_ARM9_REG_BG3PB + 0x1000:
+		case MEM_ARM9_REG_BG3PB + 0x1000 + 1:
+		case MEM_ARM9_REG_BG3PC:
+		case MEM_ARM9_REG_BG3PC + 1:
+		case MEM_ARM9_REG_BG3PC + 0x1000:
+		case MEM_ARM9_REG_BG3PC + 0x1000 + 1:
+		case MEM_ARM9_REG_BG3PD:
+		case MEM_ARM9_REG_BG3PD + 1:
+		case MEM_ARM9_REG_BG3PD + 0x1000:
+		case MEM_ARM9_REG_BG3PD + 0x1000 + 1:
+		case MEM_ARM9_REG_BG3X:
+		case MEM_ARM9_REG_BG3X + 1:
+		case MEM_ARM9_REG_BG3X + 2:
+		case MEM_ARM9_REG_BG3X + 3:
+		case MEM_ARM9_REG_BG3X + 0x1000:
+		case MEM_ARM9_REG_BG3X + 0x1000 + 1:
+		case MEM_ARM9_REG_BG3X + 0x1000 + 2:
+		case MEM_ARM9_REG_BG3X + 0x1000 + 3:
+		case MEM_ARM9_REG_BG3Y:
+		case MEM_ARM9_REG_BG3Y + 1:
+		case MEM_ARM9_REG_BG3Y + 2:
+		case MEM_ARM9_REG_BG3Y + 3:
+		case MEM_ARM9_REG_BG3Y + 0x1000:
+		case MEM_ARM9_REG_BG3Y + 0x1000 + 1:
+		case MEM_ARM9_REG_BG3Y + 0x1000 + 2:
+		case MEM_ARM9_REG_BG3Y + 0x1000 + 3:
+		case MEM_ARM9_REG_WIN0H:
+		case MEM_ARM9_REG_WIN0H + 1:
+		case MEM_ARM9_REG_WIN0H + 0x1000:
+		case MEM_ARM9_REG_WIN0H + 0x1000 + 1:
+		case MEM_ARM9_REG_WIN1H:
+		case MEM_ARM9_REG_WIN1H + 1:
+		case MEM_ARM9_REG_WIN1H + 0x1000:
+		case MEM_ARM9_REG_WIN1H + 0x1000 + 1:
+		case MEM_ARM9_REG_WIN0V:
+		case MEM_ARM9_REG_WIN0V + 1:
+		case MEM_ARM9_REG_WIN0V + 0x1000:
+		case MEM_ARM9_REG_WIN0V + 0x1000 + 1:
+		case MEM_ARM9_REG_WIN1V:
+		case MEM_ARM9_REG_WIN1V + 1:
+		case MEM_ARM9_REG_WIN1V + 0x1000:
+		case MEM_ARM9_REG_WIN1V + 0x1000 + 1:
+		case MEM_ARM9_REG_WININ:
+		case MEM_ARM9_REG_WININ + 1:
+		case MEM_ARM9_REG_WININ + 0x1000:
+		case MEM_ARM9_REG_WININ + 0x1000 + 1:
+		case MEM_ARM9_REG_WINOUT:
+		case MEM_ARM9_REG_WINOUT + 1:
+		case MEM_ARM9_REG_WINOUT + 0x1000:
+		case MEM_ARM9_REG_WINOUT + 0x1000 + 1:
+		case MEM_ARM9_REG_MOSAIC:
+		case MEM_ARM9_REG_MOSAIC + 1:
+		case MEM_ARM9_REG_MOSAIC + 2:
+		case MEM_ARM9_REG_MOSAIC + 3:
+		case MEM_ARM9_REG_MOSAIC + 0x1000:
+		case MEM_ARM9_REG_MOSAIC + 0x1000 + 1:
+		case MEM_ARM9_REG_MOSAIC + 0x1000 + 2:
+		case MEM_ARM9_REG_MOSAIC + 0x1000 + 3:
+		case MEM_ARM9_REG_BLDCNT:
+		case MEM_ARM9_REG_BLDCNT + 1:
+		case MEM_ARM9_REG_BLDCNT + 0x1000:
+		case MEM_ARM9_REG_BLDCNT + 0x1000 + 1:
+		case MEM_ARM9_REG_BLDALPHA:
+		case MEM_ARM9_REG_BLDALPHA + 1:
+		case MEM_ARM9_REG_BLDALPHA + 0x1000:
+		case MEM_ARM9_REG_BLDALPHA + 0x1000 + 1:
+		case MEM_ARM9_REG_BLDY:
+		case MEM_ARM9_REG_BLDY + 1:
+		case MEM_ARM9_REG_BLDY + 2:
+		case MEM_ARM9_REG_BLDY + 3:
+		case MEM_ARM9_REG_BLDY + 0x1000:
+		case MEM_ARM9_REG_BLDY + 0x1000 + 1:
+		case MEM_ARM9_REG_BLDY + 0x1000 + 2:
+		case MEM_ARM9_REG_BLDY + 0x1000 + 3:
 			mem->arm9_regs[addr] = v;
 			return;
 		case MEM_ARM9_REG_ROMCTRL + 2:
@@ -1723,10 +1919,14 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 			nds_test_keypad_int(mem->nds);
 			return;
 		case MEM_ARM9_REG_IPCFIFOCNT:
+#if 0
 			printf("ARM9 FIFOCNT[0] write %02" PRIx8 "\n", v);
+#endif
 			if (v & (1 << 3))
 			{
+#if 0
 				printf("ARM7 FIFO clean\n");
+#endif
 				mem->arm7_fifo.len = 0;
 				mem->arm7_fifo.latch[0] = 0;
 				mem->arm7_fifo.latch[1] = 0;
@@ -1737,7 +1937,9 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 			mem->arm9_regs[addr] |= v & (1 << 2);
 			return;
 		case MEM_ARM9_REG_IPCFIFOCNT + 1:
+#if 0
 			printf("ARM9 FIFOCNT[1] write %02" PRIx8 "\n", v);
+#endif
 			mem->arm9_regs[addr] &= ~0x84;
 			mem->arm9_regs[addr] |= v & 0x84;
 			if (v & (1 << 6))
@@ -1751,7 +1953,9 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 				return;
 			if (mem->arm7_fifo.len == 64)
 			{
+#if 0
 				printf("ARM7 FIFO full\n");
+#endif
 				mem->arm9_regs[MEM_ARM9_REG_IPCFIFOCNT + 1] |= (1 << 6);
 				return;
 			}
@@ -1760,7 +1964,9 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 			if (mem->arm7_fifo.len == 4
 			 && (mem->arm7_regs[MEM_ARM7_REG_IPCFIFOCNT + 1] & (1 << 2)))
 				mem_arm7_if(mem, 1 << 18);
+#if 0
 			printf("ARM9 IPCFIFO write (now %" PRIu8 ")\n", mem->arm7_fifo.len);
+#endif
 			return;
 		case MEM_ARM9_REG_DMA0CNT_H + 1:
 			mem->arm9_regs[addr] = v;
@@ -1938,15 +2144,6 @@ static uint8_t get_arm9_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM9_REG_POWCNT1 + 1:
 		case MEM_ARM9_REG_POWCNT1 + 2:
 		case MEM_ARM9_REG_POWCNT1 + 3:
-		case MEM_ARM9_REG_VRAMCNT_A:
-		case MEM_ARM9_REG_VRAMCNT_B:
-		case MEM_ARM9_REG_VRAMCNT_C:
-		case MEM_ARM9_REG_VRAMCNT_D:
-		case MEM_ARM9_REG_VRAMCNT_E:
-		case MEM_ARM9_REG_VRAMCNT_F:
-		case MEM_ARM9_REG_VRAMCNT_G:
-		case MEM_ARM9_REG_VRAMCNT_H:
-		case MEM_ARM9_REG_VRAMCNT_I:
 		case MEM_ARM9_REG_DIVCNT:
 		case MEM_ARM9_REG_DIVCNT + 1:
 		case MEM_ARM9_REG_DIVCNT + 2:
@@ -1983,6 +2180,54 @@ static uint8_t get_arm9_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM9_REG_DIVREM_RESULT + 5:
 		case MEM_ARM9_REG_DIVREM_RESULT + 6:
 		case MEM_ARM9_REG_DIVREM_RESULT + 7:
+		case MEM_ARM9_REG_DISPCNT:
+		case MEM_ARM9_REG_DISPCNT + 1:
+		case MEM_ARM9_REG_DISPCNT + 2:
+		case MEM_ARM9_REG_DISPCNT + 3:
+		case MEM_ARM9_REG_DISPCNT + 0x1000:
+		case MEM_ARM9_REG_DISPCNT + 0x1000 + 1:
+		case MEM_ARM9_REG_DISPCNT + 0x1000 + 2:
+		case MEM_ARM9_REG_DISPCNT + 0x1000 + 3:
+		case MEM_ARM9_REG_MASTER_BRIGHT:
+		case MEM_ARM9_REG_MASTER_BRIGHT + 1:
+		case MEM_ARM9_REG_MASTER_BRIGHT + 2:
+		case MEM_ARM9_REG_MASTER_BRIGHT + 3:
+		case MEM_ARM9_REG_MASTER_BRIGHT + 0x1000:
+		case MEM_ARM9_REG_MASTER_BRIGHT + 0x1000 + 1:
+		case MEM_ARM9_REG_MASTER_BRIGHT + 0x1000 + 2:
+		case MEM_ARM9_REG_MASTER_BRIGHT + 0x1000 + 3:
+		case MEM_ARM9_REG_BG0CNT:
+		case MEM_ARM9_REG_BG0CNT + 1:
+		case MEM_ARM9_REG_BG1CNT:
+		case MEM_ARM9_REG_BG1CNT + 1:
+		case MEM_ARM9_REG_BG2CNT:
+		case MEM_ARM9_REG_BG2CNT + 1:
+		case MEM_ARM9_REG_BG3CNT:
+		case MEM_ARM9_REG_BG3CNT + 1:
+		case MEM_ARM9_REG_WININ:
+		case MEM_ARM9_REG_WININ + 1:
+		case MEM_ARM9_REG_WINOUT:
+		case MEM_ARM9_REG_WINOUT + 1:
+		case MEM_ARM9_REG_BLDCNT:
+		case MEM_ARM9_REG_BLDCNT + 1:
+		case MEM_ARM9_REG_BLDALPHA:
+		case MEM_ARM9_REG_BLDALPHA + 1:
+		case MEM_ARM9_REG_BG0CNT + 0x1000:
+		case MEM_ARM9_REG_BG0CNT + 0x1000 + 1:
+		case MEM_ARM9_REG_BG1CNT + 0x1000:
+		case MEM_ARM9_REG_BG1CNT + 0x1000 + 1:
+		case MEM_ARM9_REG_BG2CNT + 0x1000:
+		case MEM_ARM9_REG_BG2CNT + 0x1000 + 1:
+		case MEM_ARM9_REG_BG3CNT + 0x1000:
+		case MEM_ARM9_REG_BG3CNT + 0x1000 + 1:
+		case MEM_ARM9_REG_WININ + 0x1000:
+		case MEM_ARM9_REG_WININ + 0x1000 + 1:
+		case MEM_ARM9_REG_WINOUT + 0x1000:
+		case MEM_ARM9_REG_WINOUT + 0x1000 + 1:
+		case MEM_ARM9_REG_BLDCNT + 0x1000:
+		case MEM_ARM9_REG_BLDCNT + 0x1000 + 1:
+		case MEM_ARM9_REG_BLDALPHA + 0x1000:
+		case MEM_ARM9_REG_BLDALPHA + 0x1000 + 1:
 			return mem->arm9_regs[addr];
 		case MEM_ARM9_REG_ROMDATA:
 		case MEM_ARM9_REG_ROMDATA + 1:
@@ -2042,7 +2287,9 @@ static uint8_t get_arm9_reg8(mem_t *mem, uint32_t addr)
 				v |= (1 << 0);
 			if (mem->arm7_fifo.len == 64)
 				v |= (1 << 1);
+#if 0
 			printf("ARM9 FIFOCNT[0] read %02" PRIx8 "\n", v);
+#endif
 			return v;
 		}
 		case MEM_ARM9_REG_IPCFIFOCNT + 1:
@@ -2052,7 +2299,9 @@ static uint8_t get_arm9_reg8(mem_t *mem, uint32_t addr)
 				v |= (1 << 0);
 			if (mem->arm9_fifo.len == 64)
 				v |= (1 << 1);
+#if 0
 			printf("ARM9 FIFOCNT[1] read %02" PRIx8 "\n", v);
+#endif
 			return v;
 		}
 		case MEM_ARM9_REG_IPCFIFORECV:
@@ -2060,7 +2309,9 @@ static uint8_t get_arm9_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM9_REG_IPCFIFORECV + 2:
 		case MEM_ARM9_REG_IPCFIFORECV + 3:
 		{
+#if 0
 			printf("ARM9 IPCFIFO read\n");
+#endif
 			if (!(mem->arm9_regs[MEM_ARM9_REG_IPCFIFOCNT + 1] & (1 << 7)))
 				return mem->arm9_fifo.latch[addr - MEM_ARM9_REG_IPCFIFORECV];
 			if (!mem->arm9_fifo.len)
@@ -2109,13 +2360,13 @@ static void *get_vram_ptr(mem_t *mem, uint32_t addr)
 	switch ((addr >> 20) & 0xF)
 	{
 		case 0x0:
-			break;
+			return &mem->vram_lcdc_a[addr & 0x1FFFF];
 		case 0x2:
-			break;
+			return &mem->vram_lcdc_c[addr & 0x1FFFF];
 		case 0x4:
-			break;
+			return &mem->vram_lcdc_b[addr & 0x1FFFF];
 		case 0x6:
-			break;
+			return &mem->vram_lcdc_d[addr & 0x1FFFF];
 		case 0x8:
 			switch ((addr >> 16) & 0xF)
 			{
@@ -2123,42 +2374,42 @@ static void *get_vram_ptr(mem_t *mem, uint32_t addr)
 				case 0x1:
 					if (!mem->vram_lcdc_a)
 						return NULL;
-					return &mem->vram_lcdc_a[addr - 0x800000];
+					return &mem->vram_lcdc_a[addr & 0x1FFFF];
 				case 0x2:
 				case 0x3:
 					if (!mem->vram_lcdc_b)
 						return NULL;
-					return &mem->vram_lcdc_b[addr - 0x820000];
+					return &mem->vram_lcdc_b[addr & 0x1FFFF];
 				case 0x4:
 				case 0x5:
 					if (!mem->vram_lcdc_c)
 						return NULL;
-					return &mem->vram_lcdc_c[addr - 0x840000];
+					return &mem->vram_lcdc_c[addr & 0x1FFFF];
 				case 0x6:
 				case 0x7:
 					if (!mem->vram_lcdc_d)
 						return NULL;
-					return &mem->vram_lcdc_d[addr - 0x860000];
+					return &mem->vram_lcdc_d[addr & 0x1FFFF];
 				case 0x8:
 					if (!mem->vram_lcdc_e)
 						return NULL;
-					return &mem->vram_lcdc_e[addr - 0x880000];
+					return &mem->vram_lcdc_e[addr & 0xFFFF];
 				case 0x9:
 					switch ((addr >> 14) & 0x3)
 					{
 						case 0x0:
 							if (!mem->vram_lcdc_f)
 								return NULL;
-							return &mem->vram_lcdc_f[addr - 0x890000];
+							return &mem->vram_lcdc_f[addr & 0x3FFF];
 						case 0x1:
 							if (!mem->vram_lcdc_g)
 								return NULL;
-							return &mem->vram_lcdc_g[addr - 0x894000];
+							return &mem->vram_lcdc_g[addr & 0x3FFF];
 						case 0x2:
 						case 0x3:
 							if (!mem->vram_lcdc_h)
 								return NULL;
-							return &mem->vram_lcdc_h[addr - 0x898000];
+							return &mem->vram_lcdc_h[addr & 0x7FFF];
 					}
 					break;
 				case 0xA:
@@ -2228,8 +2479,8 @@ uint##size##_t mem_arm9_get##size(mem_t *mem, uint32_t addr, enum mem_type type)
 		case 0x4: /* io ports */ \
 			arm9_instr_delay(mem, arm9_wram_cycles_##size, type); \
 			return get_arm9_reg##size(mem, addr - 0x4000000); \
-		case 0x5: /* palettes */ \
-			return *(uint##size##_t*)&mem->palettes[addr & 0x7FF]; \
+		case 0x5: /* palette */ \
+			return *(uint##size##_t*)&mem->palette[addr & 0x7FF]; \
 		case 0x6: /* vram */ \
 		{ \
 			void *ptr = get_vram_ptr(mem, addr & 0xFFFFFF); \
@@ -2311,17 +2562,20 @@ void mem_arm9_set##size(mem_t *mem, uint32_t addr, uint##size##_t v, enum mem_ty
 			set_arm9_reg##size(mem, addr - 0x4000000, v); \
 			arm9_instr_delay(mem, arm9_wram_cycles_##size, type); \
 			return; \
-		case 0x5: /* palettes */ \
-			*(uint##size##_t*)&mem->palettes[addr & 0x7FF] = v; \
+		case 0x5: /* palette */ \
+			/* printf("palette write [%08" PRIx32 "] = %x\n", addr, v); */ \
+			*(uint##size##_t*)&mem->palette[addr & 0x7FF] = v; \
 			return; \
 		case 0x6: /* vram */ \
 		{ \
+			/* printf("vram write [%08" PRIx32 "] = %x\n", addr, v); */ \
 			void *ptr = get_vram_ptr(mem, addr & 0xFFFFFF); \
 			if (ptr) \
 				*(uint##size##_t*)ptr = v; \
 			return; \
 		} \
 		case 0x7: /* oam */ \
+			/* printf("oam write [%08" PRIx32 "] = %x\n", addr, v); */ \
 			*(uint##size##_t*)&mem->oam[addr & 0x7FF] = v; \
 			return; \
 		case 0x8: /* GBA */ \

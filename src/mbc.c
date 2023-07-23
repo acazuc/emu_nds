@@ -288,7 +288,7 @@ uint8_t mbc_read(mbc_t *mbc)
 			return 0xFF;
 		case MBC_CMD_GETHDR:
 		{
-#if 1
+#if 0
 			printf("gethdr 0x%" PRIx32 "\n", mbc->cmd_count);
 #endif
 			uint8_t v;
@@ -301,7 +301,7 @@ uint8_t mbc_read(mbc_t *mbc)
 			return v;
 		}
 		case MBC_CMD_ROMID1:
-#if 1
+#if 0
 			printf("romid1 0x%" PRIx32 "\n", mbc->cmd_count);
 #endif
 			switch (mbc->cmd_count)
@@ -322,7 +322,7 @@ uint8_t mbc_read(mbc_t *mbc)
 			assert(!"dead");
 			return 0;
 		case MBC_CMD_ROMID2:
-#if 1
+#if 0
 			printf("romid2 0x%" PRIx32 "\n", mbc->cmd_count);
 #endif
 			switch (mbc->cmd_count)
@@ -344,7 +344,7 @@ uint8_t mbc_read(mbc_t *mbc)
 			return key2_byte(mbc, 0);
 		case MBC_CMD_SECBLK:
 		{
-#if 1
+#if 0
 			printf("secblk 0x%" PRIx32 "\n", mbc->cmd_count);
 #endif
 			uint8_t v;
@@ -364,7 +364,7 @@ uint8_t mbc_read(mbc_t *mbc)
 		}
 		case MBC_CMD_ENCREAD:
 		{
-#if 1
+#if 0
 			printf("encread 0x%" PRIx32 "\n", mbc->cmd_count);
 #endif
 			uint8_t v;

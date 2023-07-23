@@ -510,6 +510,8 @@ void cp15_write(cpu_t *cpu, uint8_t cn, uint8_t cm, uint8_t cp, uint32_t v)
 			return;
 		case 0x7A1: /* clean data cache line */
 			return;
+		case 0x7A4: /* drain write buffer */
+			return;
 		case 0x7E1: /* clean and invalidate cache line */
 			return;
 		case 0x7E2: /* clean and invalidate cache line */
