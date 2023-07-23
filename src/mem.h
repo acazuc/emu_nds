@@ -91,8 +91,8 @@
 #define MEM_ARM9_REG_POSTFLG       0x300
 #define MEM_ARM9_REG_POWCNT1       0x304
 
+#define MEM_ARM9_REG_IPCFIFORECV   0x100000
 #define MEM_ARM9_REG_ROMDATA       0x100010
-
 
 
 #define MEM_ARM7_REG_DISPSTAT      0x004
@@ -171,6 +171,7 @@
 #define MEM_ARM7_REG_SNDCAP1DAD    0x518
 #define MEM_ARM7_REG_SNDCAP1LEN    0x51C
 
+#define MEM_ARM7_REG_IPCFIFORECV   0x100000
 #define MEM_ARM7_REG_ROMDATA       0x100010
 
 typedef struct mbc mbc_t;
@@ -207,6 +208,7 @@ struct fifo
 	uint8_t data[64];
 	uint8_t len;
 	uint8_t pos;
+	uint8_t latch[4];
 };
 
 struct spi_firmware
@@ -278,6 +280,7 @@ void mem_del(mem_t *mem);
 void mem_timers(mem_t *mem);
 uint8_t mem_dma(mem_t *mem);
 void mem_vblank(mem_t *mem);
+void mem_hblank(mem_t *mem);
 void mem_dscard(mem_t *mem);
 
 uint8_t  mem_arm7_get8 (mem_t *mem, uint32_t addr, enum mem_type type);

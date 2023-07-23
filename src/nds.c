@@ -196,6 +196,7 @@ void nds_frame(nds_t *nds, uint8_t *video_buf, int16_t *audio_buf, uint32_t joyp
 			mem_arm7_if(nds->mem, 1 << 1);
 			mem_arm9_if(nds->mem, 1 << 1);
 		}
+		mem_hblank(nds->mem);
 
 		nds_cycles(nds, 99 * 12);
 	}
