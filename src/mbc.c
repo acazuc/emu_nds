@@ -230,7 +230,7 @@ void mbc_cmd(mbc_t *mbc)
 				case 0x2:
 					mbc->cmd = MBC_CMD_SECBLK;
 					mbc->cmd_count = 0;
-					mbc->secblk_off = 0x1000 * ((cmd >> 48) & 0xFFF);
+					mbc->cmd_off = 0x1000 * ((cmd >> 48) & 0xFFF);
 					start_cmd(mbc);
 					return;
 				case 0x6:
@@ -249,9 +249,26 @@ void mbc_cmd(mbc_t *mbc)
 		case 2:
 		{
 			uint64_t cmd_dec = 0;
-			for (size_t i = 0 ; i < 64; i += 8)
-				cmd_dec |= key2_byte(mbc, (cmd >> i) & 0xFF) << i;
+			for (size_t i = 0; i < 64; i += 8)
+				cmd_dec |= ((uint64_t)key2_byte(mbc, cmd >> i)) << i;
 			printf("CMD KEY2 %016" PRIx64 "\n", cmd_dec);
+			switch ((cmd >> 56) & 0xFF)
+			{
+				case 0xB7:
+					mbc->cmd = MBC_CMD_ENCREAD;
+					mbc->cmd_count = 0;
+					mbc->cmd_off = (cmd >> 24) & 0xFFFFFFFF;
+					start_cmd(mbc);
+					return;
+				case 0xB8:
+					mbc->cmd = MBC_CMD_ROMID2;
+					mbc->cmd_count = 0;
+					start_cmd(mbc);
+					return;
+				default:
+					assert(!"unknown command");
+					return;
+			}
 		}
 	}
 }
@@ -331,9 +348,9 @@ uint8_t mbc_read(mbc_t *mbc)
 			printf("secblk 0x%" PRIx32 "\n", mbc->cmd_count);
 #endif
 			uint8_t v;
-			if (mbc->cmd_count + mbc->secblk_off < mbc->data_size)
+			if (mbc->cmd_count + mbc->cmd_off < mbc->data_size)
 			{
-				v = mbc->data[mbc->cmd_count + mbc->secblk_off];
+				v = mbc->data[mbc->cmd_count + mbc->cmd_off];
 			}
 			else
 			{
@@ -342,6 +359,22 @@ uint8_t mbc_read(mbc_t *mbc)
 			}
 			mbc->cmd_count++;
 			if (mbc->cmd_count == 0x1000)
+				end_cmd(mbc);
+			return key2_byte(mbc, v);
+		}
+		case MBC_CMD_ENCREAD:
+		{
+#if 1
+			printf("encread 0x%" PRIx32 "\n", mbc->cmd_count);
+#endif
+			uint8_t v;
+			uint32_t off = mbc->cmd_off + mbc->cmd_count;
+			off %= mbc->data_size;
+			if (off < 0x8000)
+				off = 0x8000 + (off & 0x1FF);
+			v = mbc->data[off];
+			mbc->cmd_count++;
+			if (mbc->cmd_count == 0x200)
 				end_cmd(mbc);
 			return key2_byte(mbc, v);
 		}

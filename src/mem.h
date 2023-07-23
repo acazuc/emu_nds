@@ -245,6 +245,16 @@ struct rtc
 	uint8_t alarm2[3];
 };
 
+#define MEM_VRAM_A_OFF 0x00000
+#define MEM_VRAM_B_OFF 0x20000
+#define MEM_VRAM_C_OFF 0x40000
+#define MEM_VRAM_D_OFF 0x60000
+#define MEM_VRAM_E_OFF 0x80000
+#define MEM_VRAM_F_OFF 0x90000
+#define MEM_VRAM_G_OFF 0x94000
+#define MEM_VRAM_H_OFF 0x98000
+#define MEM_VRAM_I_OFF 0xA0000
+
 typedef struct mem
 {
 	nds_t *nds;
@@ -271,7 +281,19 @@ typedef struct mem
 	uint32_t arm9_wram_mask;
 	uint8_t dtcm[0x4000];
 	uint8_t itcm[0x8000];
+	uint8_t vram[0xA4000];
+	uint8_t oam[0x800];
+	uint8_t palettes[0x800];
 	int biosprot;
+	uint8_t *vram_lcdc_a;
+	uint8_t *vram_lcdc_b;
+	uint8_t *vram_lcdc_c;
+	uint8_t *vram_lcdc_d;
+	uint8_t *vram_lcdc_e;
+	uint8_t *vram_lcdc_f;
+	uint8_t *vram_lcdc_g;
+	uint8_t *vram_lcdc_h;
+	uint8_t *vram_lcdc_i;
 } mem_t;
 
 mem_t *mem_new(nds_t *nds, mbc_t *mbc);

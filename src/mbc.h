@@ -14,6 +14,7 @@ enum mbc_cmd
 	MBC_CMD_ROMID1,
 	MBC_CMD_ROMID2,
 	MBC_CMD_SECBLK,
+	MBC_CMD_ENCREAD,
 };
 
 typedef struct mbc
@@ -27,7 +28,7 @@ typedef struct mbc
 	uint64_t key2_x;
 	uint64_t key2_y;
 	uint32_t cmd_count;
-	uint32_t secblk_off;
+	uint32_t cmd_off;
 } mbc_t;
 
 mbc_t *mbc_new(nds_t *nds, const void *data, size_t size);

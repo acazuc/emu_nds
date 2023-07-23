@@ -1,5 +1,6 @@
 #include "cpu.h"
 #include "mem.h"
+#include "nds.h"
 #include "cpu/instr.h"
 
 #include <inttypes.h>
@@ -205,7 +206,7 @@ static bool handle_interrupt(cpu_t *cpu)
 	{
 		if (!(ints & (1 << i)))
 			continue;
-#if 1
+#if 0
 		printf("IRQ %02" PRIx8 "\n", i);
 #endif
 		cpu->regs.spsr_modes[3] = cpu->regs.cpsr;
@@ -274,7 +275,7 @@ void cpu_cycle(cpu_t *cpu)
 		cpu->debug = CPU_DEBUG_REGS | CPU_DEBUG_INSTR;
 #endif
 #if 0
-	if (cpu_get_reg(cpu, CPU_REG_PC) == 0x0232d0bc)
+	if (cpu_get_reg(cpu, CPU_REG_PC) == 0x01ff8130)
 		cpu->debug = CPU_DEBUG_ALL;
 #endif
 
@@ -508,6 +509,10 @@ void cp15_write(cpu_t *cpu, uint8_t cn, uint8_t cm, uint8_t cp, uint32_t v)
 		case 0x761: /* invalidate data cache line */
 			return;
 		case 0x7A1: /* clean data cache line */
+			return;
+		case 0x7E1: /* clean and invalidate cache line */
+			return;
+		case 0x7E2: /* clean and invalidate cache line */
 			return;
 		case 0x900:
 			cpu->cp15.dcl = v;
