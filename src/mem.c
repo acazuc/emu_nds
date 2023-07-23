@@ -466,6 +466,7 @@ static void rtc_write(mem_t *mem, uint8_t v)
 			mem->rtc.inlen = 0;
 			mem->rtc.cmd_flip = 1;
 			mem->rtc.cmd = 0xFF;
+			mem->rtc.wpos = 0;
 			return;
 		}
 		if (mem->rtc.cmd_flip)
@@ -510,11 +511,57 @@ static void rtc_write(mem_t *mem, uint8_t v)
 						mem->rtc.outbuf[3] = tm->tm_wday;
 						mem->rtc.outbuf[4] = tm->tm_hour;
 						mem->rtc.outbuf[5] = tm->tm_min;
-						mem->rtc.outbuf[7] = tm->tm_sec;
+						mem->rtc.outbuf[6] = tm->tm_sec;
 						mem->rtc.outpos = 0;
 						mem->rtc.outlen = 8 * 7;
 						break;
 					}
+					case 0xE6:
+					{
+						time_t t = time(NULL);
+						struct tm *tm = localtime(&t);
+						mem->rtc.outbuf[0] = tm->tm_hour;
+						mem->rtc.outbuf[1] = tm->tm_min;
+						mem->rtc.outbuf[2] = tm->tm_sec;
+						mem->rtc.outpos = 0;
+						mem->rtc.outlen = 8 * 3;
+						break;
+					}
+					case 0x96:
+						switch (mem->rtc.sr2 & 0xF)
+						{
+							case 0x1:
+							case 0x5:
+								mem->rtc.outbuf[0] = mem->rtc.int1_steady_freq;
+								mem->rtc.outpos = 0;
+								mem->rtc.outlen = 8;
+								break;
+							case 0x4:
+								mem->rtc.outbuf[0] = mem->rtc.alarm1[0];
+								mem->rtc.outbuf[1] = mem->rtc.alarm1[1];
+								mem->rtc.outbuf[2] = mem->rtc.alarm1[2];
+								mem->rtc.outpos = 0;
+								mem->rtc.outlen = 8 * 3;
+								break;
+							default:
+								printf("unknown rtc read sr2 pos: %02" PRIx8 "\n", mem->rtc.sr2 & 0xF);
+								mem->rtc.outpos = 0;
+								mem->rtc.outlen = 0;
+								break;
+						}
+						break;
+					case 0xD6:
+						mem->rtc.outbuf[0] = mem->rtc.alarm2[0];
+						mem->rtc.outbuf[1] = mem->rtc.alarm2[1];
+						mem->rtc.outbuf[2] = mem->rtc.alarm2[2];
+						mem->rtc.outpos = 0;
+						mem->rtc.outlen = 8 * 3;
+						break;
+					case 0xB6:
+						mem->rtc.outbuf[0] = mem->rtc.car;
+						mem->rtc.outpos = 0;
+						mem->rtc.outlen = 8;
+						break;
 					case 0xF6:
 						mem->rtc.outbuf[0] = mem->rtc.fr;
 						mem->rtc.outpos = 0;
@@ -553,13 +600,25 @@ static void rtc_write(mem_t *mem, uint8_t v)
 				printf("XXX rtc set time\n");
 				break;
 			case 0x16:
-				printf("XXX rtc set int1 freq / alarm1\n");
+				switch (mem->rtc.sr2 & 0xF)
+				{
+					case 0x1:
+					case 0x5:
+						mem->rtc.int1_steady_freq = mem->rtc.inbuf;
+						break;
+					case 0x4:
+						mem->rtc.alarm1[mem->rtc.wpos++] = mem->rtc.inbuf;
+						break;
+					default:
+						printf("unknown rtc write sr2 pos: %02" PRIx8 "\n", mem->rtc.sr2 & 0xF);
+						break;
+				}
 				break;
 			case 0x56:
-				printf("XXX rtc set int2\n");
+				mem->rtc.alarm2[mem->rtc.wpos++] = mem->rtc.inbuf;
 				break;
 			case 0x36:
-				printf("XXX rtc set clock adj\n");
+				mem->rtc.car = mem->rtc.inbuf;
 				break;
 			case 0x76:
 				mem->rtc.fr = mem->rtc.inbuf;
@@ -683,6 +742,14 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM7_REG_DMA3CNT_L:
 		case MEM_ARM7_REG_DMA3CNT_L  +1:
 		case MEM_ARM7_REG_DMA3CNT_H:
+		case MEM_ARM7_REG_POWCNT2:
+		case MEM_ARM7_REG_POWCNT2 + 1:
+		case MEM_ARM7_REG_POWCNT2 + 2:
+		case MEM_ARM7_REG_POWCNT2 + 3:
+		case MEM_ARM7_REG_RCNT:
+		case MEM_ARM7_REG_RCNT + 1:
+		case MEM_ARM7_REG_SOUNDCNT:
+		case MEM_ARM7_REG_SOUNDCNT + 1:
 			mem->arm7_regs[addr] = v;
 			return;
 		case MEM_ARM7_REG_ROMCTRL:
@@ -697,6 +764,8 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM7_REG_ROMCMD + 7:
 		case MEM_ARM7_REG_AUXSPICNT:
 		case MEM_ARM7_REG_AUXSPICNT + 1:
+		case MEM_ARM7_REG_DISPSTAT:
+		case MEM_ARM7_REG_DISPSTAT + 1:
 			mem->arm9_regs[addr] = v;
 			return;
 		case MEM_ARM7_REG_ROMDATA:
@@ -741,8 +810,6 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM7_REG_SPIDATA:
 			spi_write(mem, v);
 			return;
-		case MEM_ARM7_REG_SPIDATA + 1:
-			return;
 		case MEM_ARM7_REG_HALTCNT:
 			switch ((v >> 6) & 0x3)
 			{
@@ -770,8 +837,6 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 				mem->arm7_regs[addr] = v;
 			mem->biosprot = 1;
 			return;
-		case MEM_ARM7_REG_WRAMSTAT:
-			return;
 		case MEM_ARM7_REG_RTC:
 			rtc_write(mem, v);
 			return;
@@ -790,6 +855,27 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM7_REG_DMA3CNT_H + 1:
 			mem->arm7_regs[addr] = v;
 			arm7_dma_control(mem, 3);
+			return;
+		case MEM_ARM7_REG_SPIDATA + 1:
+		case MEM_ARM7_REG_RTC + 1:
+		case MEM_ARM7_REG_RTC + 2:
+		case MEM_ARM7_REG_RTC + 3:
+		case MEM_ARM7_REG_WRAMSTAT:
+		case MEM_ARM7_REG_SIODATA32:
+		case MEM_ARM7_REG_SIODATA32 + 1:
+		case MEM_ARM7_REG_SIODATA32 + 2:
+		case MEM_ARM7_REG_SIODATA32 + 3:
+		case MEM_ARM7_REG_SIOCNT:
+		case MEM_ARM7_REG_SIOCNT + 1:
+		case MEM_ARM7_REG_SIOCNT + 2:
+		case MEM_ARM7_REG_SIOCNT + 3:
+		case MEM_ARM7_REG_EXMEMSTAT:
+		case MEM_ARM7_REG_EXMEMSTAT + 1:
+			return;
+		case MEM_ARM7_REG_KEYCNT:
+		case MEM_ARM7_REG_KEYCNT + 1:
+			mem->arm7_regs[addr] = v;
+			nds_test_keypad_int(mem->nds);
 			return;
 		default:
 			printf("[%08" PRIx32 "] unknown ARM7 set register %08" PRIx32 " = %02" PRIx8 "\n",
@@ -893,6 +979,14 @@ static uint8_t get_arm7_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM7_REG_DMA3CNT_L  +1:
 		case MEM_ARM7_REG_DMA3CNT_H:
 		case MEM_ARM7_REG_DMA3CNT_H + 1:
+		case MEM_ARM7_REG_POWCNT2:
+		case MEM_ARM7_REG_POWCNT2 + 1:
+		case MEM_ARM7_REG_POWCNT2 + 2:
+		case MEM_ARM7_REG_POWCNT2 + 3:
+		case MEM_ARM7_REG_RCNT:
+		case MEM_ARM7_REG_RCNT + 1:
+		case MEM_ARM7_REG_SOUNDCNT:
+		case MEM_ARM7_REG_SOUNDCNT + 1:
 			return mem->arm7_regs[addr];
 		case MEM_ARM7_REG_ROMCTRL:
 		case MEM_ARM7_REG_ROMCTRL + 1:
@@ -908,6 +1002,14 @@ static uint8_t get_arm7_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM7_REG_ROMCMD + 7:
 		case MEM_ARM7_REG_AUXSPICNT:
 		case MEM_ARM7_REG_AUXSPICNT + 1:
+		case MEM_ARM7_REG_EXMEMSTAT:
+		case MEM_ARM7_REG_EXMEMSTAT + 1:
+		case MEM_ARM7_REG_KEYCNT:
+		case MEM_ARM7_REG_KEYCNT + 1:
+		case MEM_ARM7_REG_DISPSTAT:
+		case MEM_ARM7_REG_DISPSTAT + 1:
+		case MEM_ARM7_REG_VCOUNT:
+		case MEM_ARM7_REG_VCOUNT + 1:
 			return mem->arm9_regs[addr];
 		case MEM_ARM7_REG_ROMDATA:
 		case MEM_ARM7_REG_ROMDATA + 1:
@@ -936,11 +1038,64 @@ static uint8_t get_arm7_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM7_REG_RTC + 1:
 		case MEM_ARM7_REG_RTC + 2:
 		case MEM_ARM7_REG_RTC + 3:
+		case MEM_ARM7_REG_SIODATA32:
+		case MEM_ARM7_REG_SIODATA32 + 1:
+		case MEM_ARM7_REG_SIODATA32 + 2:
+		case MEM_ARM7_REG_SIODATA32 + 3:
+		case MEM_ARM7_REG_SIOCNT:
+		case MEM_ARM7_REG_SIOCNT + 1:
+		case MEM_ARM7_REG_SIOCNT + 2:
+		case MEM_ARM7_REG_SIOCNT + 3:
+		case MEM_ARM7_REG_EXTKEYIN + 1:
 			return 0;
 		case MEM_ARM7_REG_WRAMSTAT:
 			return mem->arm9_regs[MEM_ARM9_REG_WRAMCNT];
 		case MEM_ARM7_REG_RTC:
 			return rtc_read(mem);
+		case MEM_ARM7_REG_KEYINPUT:
+		{
+			uint8_t v = 0;
+			if (!(mem->nds->joypad & NDS_BUTTON_A))
+				v |= (1 << 0);
+			if (!(mem->nds->joypad & NDS_BUTTON_B))
+				v |= (1 << 1);
+			if (!(mem->nds->joypad & NDS_BUTTON_SELECT))
+				v |= (1 << 2);
+			if (!(mem->nds->joypad & NDS_BUTTON_START))
+				v |= (1 << 3);
+			if (!(mem->nds->joypad & NDS_BUTTON_RIGHT))
+				v |= (1 << 4);
+			if (!(mem->nds->joypad & NDS_BUTTON_LEFT))
+				v |= (1 << 5);
+			if (!(mem->nds->joypad & NDS_BUTTON_UP))
+				v |= (1 << 6);
+			if (!(mem->nds->joypad & NDS_BUTTON_DOWN))
+				v |= (1 << 7);
+			return v;
+		}
+		case MEM_ARM7_REG_KEYINPUT + 1:
+		{
+			uint8_t v = 0;
+			if (!(mem->nds->joypad & NDS_BUTTON_R))
+				v |= (1 << 0);
+			if (!(mem->nds->joypad & NDS_BUTTON_L))
+				v |= (1 << 1);
+			return v;
+		}
+		case MEM_ARM7_REG_EXTKEYIN:
+		{
+			uint8_t v = 0;
+			if (!(mem->nds->joypad & NDS_BUTTON_X))
+				v |= (1 << 0);
+			if (!(mem->nds->joypad & NDS_BUTTON_Y))
+				v |= (1 << 1);
+			v |= (1 << 2);
+			v |= (1 << 3);
+			v |= (1 << 4);
+			v |= (1 << 5);
+			v |= (1 << 6); /* XXX pen down */
+			return v;
+		}
 		default:
 			printf("[%08" PRIx32 "] unknown ARM7 get register %08" PRIx32 "\n",
 			       cpu_get_reg(mem->nds->arm7, CPU_REG_PC), addr);
@@ -1003,6 +1158,10 @@ uint##size##_t mem_arm7_get##size(mem_t *mem, uint32_t addr, enum mem_type type)
 			return get_arm7_reg##size(mem, addr - 0x4000000); \
 		case 0x6: /* vram */ \
 			break; \
+		case 0x8: /* GBA */ \
+		case 0x9: \
+		case 0xA: \
+			return 0xFF; \
 		default: \
 			break; \
 	} \
@@ -1048,6 +1207,10 @@ void mem_arm7_set##size(mem_t *mem, uint32_t addr, uint##size##_t v, enum mem_ty
 			return; \
 		case 0x6: /* vram */ \
 			break; \
+		case 0x8: /* GBA */ \
+		case 0x9: \
+		case 0xA: \
+			return; \
 		default: \
 			break; \
 	} \
@@ -1108,6 +1271,10 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM9_REG_TM3CNT_H + 1:
 		case MEM_ARM9_REG_AUXSPICNT:
 		case MEM_ARM9_REG_AUXSPICNT + 1:
+		case MEM_ARM9_REG_EXMEMCNT:
+		case MEM_ARM9_REG_EXMEMCNT + 1:
+		case MEM_ARM9_REG_DISPSTAT:
+		case MEM_ARM9_REG_DISPSTAT + 1:
 			mem->arm9_regs[addr] = v;
 			return;
 		case MEM_ARM9_REG_ROMCTRL + 2:
@@ -1174,6 +1341,11 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 			}
 			mem->arm9_regs[addr] = v;
 			return;
+		case MEM_ARM9_REG_KEYCNT:
+		case MEM_ARM9_REG_KEYCNT + 1:
+			mem->arm9_regs[addr] = v;
+			nds_test_keypad_int(mem->nds);
+			return;
 		default:
 			printf("[%08" PRIx32 "] unknown ARM9 set register %08" PRIx32 " = %02" PRIx8 "\n",
 			       cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr, v);
@@ -1232,6 +1404,14 @@ static uint8_t get_arm9_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM9_REG_AUXSPICNT:
 		case MEM_ARM9_REG_AUXSPICNT + 1:
 		case MEM_ARM9_REG_WRAMCNT:
+		case MEM_ARM9_REG_EXMEMCNT:
+		case MEM_ARM9_REG_EXMEMCNT + 1:
+		case MEM_ARM9_REG_KEYCNT:
+		case MEM_ARM9_REG_KEYCNT + 1:
+		case MEM_ARM9_REG_DISPSTAT:
+		case MEM_ARM9_REG_DISPSTAT + 1:
+		case MEM_ARM9_REG_VCOUNT:
+		case MEM_ARM9_REG_VCOUNT + 1:
 			return mem->arm9_regs[addr];
 		case MEM_ARM9_REG_ROMDATA:
 		case MEM_ARM9_REG_ROMDATA + 1:
@@ -1254,6 +1434,36 @@ static uint8_t get_arm9_reg8(mem_t *mem, uint32_t addr)
 			return mem->arm9_timers[3].v;
 		case MEM_ARM9_REG_TM3CNT_L + 1:
 			return mem->arm9_timers[3].v >> 8;
+		case MEM_ARM9_REG_KEYINPUT:
+		{
+			uint8_t v = 0;
+			if (!(mem->nds->joypad & NDS_BUTTON_A))
+				v |= (1 << 0);
+			if (!(mem->nds->joypad & NDS_BUTTON_B))
+				v |= (1 << 1);
+			if (!(mem->nds->joypad & NDS_BUTTON_SELECT))
+				v |= (1 << 2);
+			if (!(mem->nds->joypad & NDS_BUTTON_START))
+				v |= (1 << 3);
+			if (!(mem->nds->joypad & NDS_BUTTON_RIGHT))
+				v |= (1 << 4);
+			if (!(mem->nds->joypad & NDS_BUTTON_LEFT))
+				v |= (1 << 5);
+			if (!(mem->nds->joypad & NDS_BUTTON_UP))
+				v |= (1 << 6);
+			if (!(mem->nds->joypad & NDS_BUTTON_DOWN))
+				v |= (1 << 7);
+			return v;
+		}
+		case MEM_ARM9_REG_KEYINPUT + 1:
+		{
+			uint8_t v = 0;
+			if (!(mem->nds->joypad & NDS_BUTTON_R))
+				v |= (1 << 0);
+			if (!(mem->nds->joypad & NDS_BUTTON_L))
+				v |= (1 << 1);
+			return v;
+		}
 		default:
 			printf("[%08" PRIx32 "] unknown ARM9 get register %08" PRIx32 "\n",
 			       cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr);
@@ -1342,6 +1552,10 @@ uint##size##_t mem_arm9_get##size(mem_t *mem, uint32_t addr, enum mem_type type)
 			break; \
 		case 0x7: /* oam */ \
 			break; \
+		case 0x8: /* GBA */ \
+		case 0x9: \
+		case 0xA: \
+			return 0xFF; \
 		default: \
 			break; \
 	} \
@@ -1414,6 +1628,10 @@ void mem_arm9_set##size(mem_t *mem, uint32_t addr, uint##size##_t v, enum mem_ty
 			break; \
 		case 0x7: /* oam */ \
 			break; \
+		case 0x8: /* GBA */ \
+		case 0x9: \
+		case 0xA: \
+			return; \
 		default: \
 			break; \
 	} \

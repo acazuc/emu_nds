@@ -148,7 +148,7 @@
 #define MEM_ARM7_REG_SPICNT        0x1C0
 #define MEM_ARM7_REG_SPIDATA       0x1C2
 
-#define MEM_ARM7_REG_EXMEMCNT      0x204
+#define MEM_ARM7_REG_EXMEMSTAT     0x204
 #define MEM_ARM7_REG_WIFIWAITCNT   0x206
 #define MEM_ARM7_REG_IME           0x208
 #define MEM_ARM7_REG_IE            0x210
@@ -202,6 +202,13 @@ struct dma
 	uint32_t cnt;
 };
 
+struct fifo
+{
+	uint8_t data[64];
+	uint8_t len;
+	uint8_t pos;
+};
+
 struct spi_firmware
 {
 	uint8_t cmd;
@@ -226,9 +233,14 @@ struct rtc
 	uint8_t outlen; /* in bits */
 	uint8_t outpos; /* in bits */
 	uint8_t outbyte;
+	uint8_t wpos;
 	uint8_t sr1;
 	uint8_t sr2;
 	uint8_t fr;
+	uint8_t car;
+	uint8_t int1_steady_freq;
+	uint8_t alarm1[3];
+	uint8_t alarm2[3];
 };
 
 typedef struct mem
@@ -239,6 +251,8 @@ typedef struct mem
 	struct timer arm9_timers[4];
 	struct dma arm7_dma[4];
 	struct dma arm9_dma[4];
+	struct fifo arm7_fifo;
+	struct fifo arm9_fifo;
 	struct spi_firmware spi_firmware;
 	struct rtc rtc;
 	uint8_t arm7_bios[0x4000];

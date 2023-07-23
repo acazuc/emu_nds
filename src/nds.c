@@ -174,23 +174,62 @@ void nds_frame(nds_t *nds, uint8_t *video_buf, int16_t *audio_buf, uint32_t joyp
 	nds->joypad = joypad;
 	for (uint8_t y = 0; y < 192; ++y)
 	{
+		mem_arm9_set_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT, (mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) & 0xFFFC) | 0x0);
+		mem_arm9_set_reg16(nds->mem, MEM_ARM9_REG_VCOUNT, y);
+
+		if ((mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) & (1 << 5))
+		 && y == (((mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) >> 8) & 0xFF)
+		        | ((mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) << 1) & 0x100)))
+		{
+			mem_arm7_if(nds->mem, 1 << 2);
+			mem_arm9_if(nds->mem, 1 << 2);
+		}
+
 		/* draw */
 		gpu_draw(nds->gpu, y);
 		nds_cycles(nds, 256 * 12);
 
 		/* hblank */
+		mem_arm9_set_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT, (mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) & 0xFFFC) | 0x2);
+		if (mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) & (1 << 4))
+		{
+			mem_arm7_if(nds->mem, 1 << 1);
+			mem_arm9_if(nds->mem, 1 << 1);
+		}
 
 		nds_cycles(nds, 99 * 12);
 	}
 
+	if (mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) & (1 << 3))
+	{
+		mem_arm7_if(nds->mem, 1 << 0);
+		mem_arm9_if(nds->mem, 1 << 0);
+	}
 	mem_vblank(nds->mem);
 
 	for (uint16_t y = 192; y < 263; ++y)
 	{
+		mem_arm9_set_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT, (mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) & 0xFFFC) | 0x1);
+		mem_arm9_set_reg16(nds->mem, MEM_ARM9_REG_VCOUNT, y);
+
+		if ((mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) & (1 << 5))
+		 && y == (((mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) >> 8) & 0xFF)
+		        | ((mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) << 1) & 0x100)))
+		{
+			mem_arm7_if(nds->mem, 1 << 2);
+			mem_arm9_if(nds->mem, 1 << 2);
+		}
+
 		/* vblank */
 		nds_cycles(nds, 256 * 12);
 
 		/* hblank */
+		mem_arm9_set_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT, (mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) & 0xFFFC) | 0x3);
+		if (mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) & (1 << 4))
+		{
+			mem_arm7_if(nds->mem, 1 << 1);
+			mem_arm9_if(nds->mem, 1 << 1);
+		}
 
 		nds_cycles(nds, 99 * 12);
 	}
@@ -226,4 +265,42 @@ void nds_get_mbc_rtc(nds_t *nds, uint8_t **data, size_t *size)
 	(void)nds;
 	*data = NULL;
 	*size = 0;
+}
+
+void nds_test_keypad_int(nds_t *nds)
+{
+	uint16_t keycnt = mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_KEYCNT);
+	if (!(keycnt & (1 << 14)))
+		return;
+	uint16_t keys = 0;
+	if (nds->joypad & NDS_BUTTON_A)
+		keys |= (1 << 0);
+	if (nds->joypad & NDS_BUTTON_B)
+		keys |= (1 << 1);
+	if (nds->joypad & NDS_BUTTON_SELECT)
+		keys |= (1 << 2);
+	if (nds->joypad & NDS_BUTTON_START)
+		keys |= (1 << 3);
+	if (nds->joypad & NDS_BUTTON_RIGHT)
+		keys |= (1 << 4);
+	if (nds->joypad & NDS_BUTTON_LEFT)
+		keys |= (1 << 5);
+	if (nds->joypad & NDS_BUTTON_UP)
+		keys |= (1 << 6);
+	if (nds->joypad & NDS_BUTTON_DOWN)
+		keys |= (1 << 7);
+	if (nds->joypad & NDS_BUTTON_L)
+		keys |= (1 << 8);
+	if (nds->joypad & NDS_BUTTON_R)
+		keys |= (1 << 9);
+	bool enabled;
+	if (keycnt & (1 << 15))
+		enabled = (keys & (keycnt & 0x3FF)) == (keycnt & 0x3FF);
+	else
+		enabled = keys & keycnt;
+	if (enabled)
+	{
+		mem_arm7_if(nds->mem, 1 << 12);
+		mem_arm9_if(nds->mem, 1 << 12);
+	}
 }

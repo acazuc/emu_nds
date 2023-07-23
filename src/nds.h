@@ -50,4 +50,6 @@ void nds_set_firmware(nds_t *nds, const uint8_t *data);
 void nds_get_mbc_ram(nds_t *nds, uint8_t **data, size_t *size);
 void nds_get_mbc_rtc(nds_t *nds, uint8_t **data, size_t *size);
 
+void nds_test_keypad_int(nds_t *nds);
+
 #endif

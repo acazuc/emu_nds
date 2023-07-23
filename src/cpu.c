@@ -486,9 +486,18 @@ void cp15_write(cpu_t *cpu, uint8_t cn, uint8_t cm, uint8_t cp, uint32_t v)
 			cpu->cp15.puir[7] = v;
 			break;
 		case 0x704:
+		case 0x782:
 			cpu->state = CPU_STATE_HALT;
 			return;
+		case 0x750: /* invalidate instruction cache */
+			return;
+		case 0x751: /* invalidate instruction cache line */
+			return;
+		case 0x760: /* invalidate data cache */
+			return;
 		case 0x761: /* invalidate data cache line */
+			return;
+		case 0x7A1: /* clean data cache line */
 			return;
 		case 0x900:
 			cpu->cp15.dcl = v;
