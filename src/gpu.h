@@ -7,7 +7,7 @@ typedef struct mem mem_t;
 
 typedef struct gpu
 {
-	uint8_t data[256 * 192 * 4];
+	uint8_t data[256 * 192 * 2 * 4];
 	mem_t *mem;
 } gpu_t;
 

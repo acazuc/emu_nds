@@ -9,7 +9,7 @@
 #include "../nds.h"
 
 #define VIDEO_WIDTH 256
-#define VIDEO_HEIGHT 192
+#define VIDEO_HEIGHT (192 * 2)
 #define VIDEO_PIXELS VIDEO_WIDTH * VIDEO_HEIGHT
 
 #define VIDEO_FPS (59.826101858)
