@@ -1079,6 +1079,7 @@ ARM_INSTR(clz,
 		nzero++;
 	}
 	cpu_set_reg(cpu, rd, nzero);
+	cpu_inc_pc(cpu, 4);
 },
 {
 	uint32_t rd = (cpu->instr_opcode >> 12) & 0xF;
@@ -1105,7 +1106,7 @@ ARM_INSTR(mrs_##n, \
 		v = cpu->regs.cpsr; \
 	uint32_t rd = (cpu->instr_opcode >> 12) & 0xF; \
 	cpu_set_reg(cpu, rd, v); \
-	cpu_inc_pc(cpu,  4); \
+	cpu_inc_pc(cpu, 4); \
 	cpu->instr_delay += 1; \
 }, \
 { \
