@@ -232,31 +232,11 @@ static void arm##armv##_dma_control(mem_t *mem, uint8_t id) \
 		dma->status |= MEM_DMA_ENABLE; \
 	if (!(cnt_h & (3 << 12))) \
 		dma->status |= MEM_DMA_ACTIVE; \
-	if (0 && (dma->status & MEM_DMA_ENABLE)) \
+	if ((dma->status & MEM_DMA_ENABLE)) \
 		printf("enable DMA %" PRIu8 " of %08" PRIx32 " words from %08" PRIx32 " to %08" PRIx32 ": %04" PRIx16 "\n", \
 		       id, dma->len, dma->src, dma->dst, cnt_h); \
 } \
-static void arm##armv##_dma_vblank(mem_t *mem) \
-{ \
-	for (unsigned i = 0; i < 4; ++i) \
-	{ \
-		struct dma *dma = &mem->arm##armv##_dma[i]; \
-		if (!(dma->status & MEM_DMA_ENABLE) \
-		 || (dma->status & MEM_DMA_ACTIVE)) \
-			continue; \
-		uint16_t cnt_h = mem_arm##armv##_get_reg16(mem, MEM_ARM##armv##_REG_DMA0CNT_H + 0xC * i); \
-		if (((cnt_h >> 12) & 0x3) != 1) \
-			continue; \
-		if (((cnt_h >> 5) & 0x3) == 0x3) \
-			dma->dst = mem_arm##armv##_get_reg32(mem, MEM_ARM##armv##_REG_DMA0DAD + 0xC * i); \
-		arm##armv##_load_dma_length(mem, i); \
-		dma->cnt = 0; \
-		dma->status |= MEM_DMA_ACTIVE; \
-		printf("start VDMA %u of %08" PRIx32 " words from %08" PRIx32 " to %08" PRIx32 "\n", \
-		       i, dma->len, dma->src, dma->dst); \
-	} \
-} \
-static void arm##armv##_dma_dscard(mem_t *mem) \
+static void arm##armv##_dma_start(mem_t *mem, uint8_t cond) \
 { \
 	for (unsigned i = 0; i < 4; ++i) \
 	{ \
@@ -267,12 +247,12 @@ static void arm##armv##_dma_dscard(mem_t *mem) \
 		uint16_t cnt_h = mem_arm##armv##_get_reg16(mem, MEM_ARM##armv##_REG_DMA0CNT_H + 0xC * i); \
 		if (armv == 7) \
 		{ \
-			if (((cnt_h >> 12) & 0x3) != 1) \
+			if (((cnt_h >> 12) & 0x3) != cond) \
 				continue; \
 		} \
 		else \
 		{ \
-			if (((cnt_h >> 12) & 0x7) != 5) \
+			if (((cnt_h >> 11) & 0x7) != cond) \
 				continue; \
 		} \
 		if (((cnt_h >> 5) & 0x3) == 0x3) \
@@ -280,34 +260,13 @@ static void arm##armv##_dma_dscard(mem_t *mem) \
 		arm##armv##_load_dma_length(mem, i); \
 		dma->cnt = 0; \
 		dma->status |= MEM_DMA_ACTIVE; \
-		printf("start VDMA %u of %08" PRIx32 " words from %08" PRIx32 " to %08" PRIx32 "\n", \
+		printf("start DMA %u of %08" PRIx32 " words from %08" PRIx32 " to %08" PRIx32 "\n", \
 		       i, dma->len, dma->src, dma->dst); \
 	} \
 }
 
 ARM_DMA(7);
 ARM_DMA(9);
-
-static void arm9_dma_hblank(mem_t *mem)
-{
-	for (unsigned i = 0; i < 4; ++i)
-	{
-		struct dma *dma = &mem->arm9_dma[i];
-		if (!(dma->status & MEM_DMA_ENABLE)
-		 || (dma->status & MEM_DMA_ACTIVE))
-			continue;
-		uint16_t cnt_h = mem_arm9_get_reg16(mem, MEM_ARM9_REG_DMA0CNT_H + 0xC * i);
-		if (((cnt_h >> 12) & 0x3) != 1)
-			continue;
-		if (((cnt_h >> 5) & 0x3) == 0x3)
-			dma->dst = mem_arm9_get_reg32(mem, MEM_ARM9_REG_DMA0DAD + 0xC * i);
-		arm9_load_dma_length(mem, i);
-		dma->cnt = 0;
-		dma->status |= MEM_DMA_ACTIVE;
-		printf("start HDMA %u of %08" PRIx32 " words from %08" PRIx32 " to %08" PRIx32 "\n",
-		       i, dma->len, dma->src, dma->dst);
-	}
-}
 
 uint8_t mem_dma(mem_t *mem)
 {
@@ -316,19 +275,19 @@ uint8_t mem_dma(mem_t *mem)
 
 void mem_vblank(mem_t *mem)
 {
-	arm7_dma_vblank(mem);
-	arm9_dma_vblank(mem);
+	arm7_dma_start(mem, 1);
+	arm9_dma_start(mem, 1);
 }
 
 void mem_hblank(mem_t *mem)
 {
-	arm9_dma_hblank(mem);
+	arm9_dma_start(mem, 2);
 }
 
 void mem_dscard(mem_t *mem)
 {
-	arm7_dma_dscard(mem);
-	arm9_dma_dscard(mem);
+	arm7_dma_start(mem, 2);
+	arm9_dma_start(mem, 55);
 }
 
 static uint8_t powerman_read(mem_t *mem)
@@ -1452,6 +1411,10 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM9_REG_DMA3FILL + 1:
 		case MEM_ARM9_REG_DMA3FILL + 2:
 		case MEM_ARM9_REG_DMA3FILL + 3:
+		case MEM_ARM9_REG_POWCNT1:
+		case MEM_ARM9_REG_POWCNT1 + 1:
+		case MEM_ARM9_REG_POWCNT1 + 2:
+		case MEM_ARM9_REG_POWCNT1 + 3:
 			mem->arm9_regs[addr] = v;
 			return;
 		case MEM_ARM9_REG_ROMCTRL + 2:
@@ -1704,6 +1667,10 @@ static uint8_t get_arm9_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM9_REG_DMA3FILL + 1:
 		case MEM_ARM9_REG_DMA3FILL + 2:
 		case MEM_ARM9_REG_DMA3FILL + 3:
+		case MEM_ARM9_REG_POWCNT1:
+		case MEM_ARM9_REG_POWCNT1 + 1:
+		case MEM_ARM9_REG_POWCNT1 + 2:
+		case MEM_ARM9_REG_POWCNT1 + 3:
 			return mem->arm9_regs[addr];
 		case MEM_ARM9_REG_ROMDATA:
 		case MEM_ARM9_REG_ROMDATA + 1:

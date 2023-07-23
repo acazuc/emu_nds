@@ -205,6 +205,9 @@ static bool handle_interrupt(cpu_t *cpu)
 	{
 		if (!(ints & (1 << i)))
 			continue;
+#if 1
+		printf("IRQ %02" PRIx8 "\n", i);
+#endif
 		cpu->regs.spsr_modes[3] = cpu->regs.cpsr;
 		CPU_SET_MODE(cpu, CPU_MODE_IRQ);
 		cpu_update_mode(cpu);
