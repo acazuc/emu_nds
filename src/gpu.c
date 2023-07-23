@@ -121,7 +121,7 @@ static void draw_background_text(gpu_t *gpu, struct gpu_eng *eng, uint8_t y, uin
 #if 0
 		printf("[BG0] %03ux%03u, tileid: %03x\n", x, y, tileid);
 #endif
-		tileid = mapy * 32 + mapx;
+		//tileid = mapy * 32 + mapx;
 		if (map & (1 << 10))
 			tilex = 7 - tilex;
 		if (map & (1 << 11))
@@ -197,7 +197,7 @@ static void draw_background_affine(gpu_t *gpu, struct gpu_eng *eng, uint8_t y, u
 #if 0
 		printf("[BG1] %03ux%03u, tileid: %03x\n", x, y, tileid);
 #endif
-		tileid = mapy * 32 + mapx;
+		//tileid = mapy * 32 + mapx;
 		uint8_t paladdr;
 		uint16_t tileaddr = tilebase + tileid * 0x40;
 		paladdr = mem_get_vram8(gpu->mem, tileaddr + tilex + tiley * 8);
@@ -828,11 +828,25 @@ static void compose(gpu_t *gpu, struct gpu_eng *eng, struct line_buff *line, uin
 static void draw_eng(gpu_t *gpu, struct gpu_eng *eng, uint8_t y)
 {
 	struct line_buff line;
-	memset(&line, 0, sizeof(line));
 	uint32_t dispcnt = mem_arm9_get_reg32(gpu->mem, MEM_ARM9_REG_DISPCNT + eng->regoff);
+	switch ((dispcnt >> 16) & 0x3)
+	{
+		case 0:
+			memset(eng->data, 0xFF, sizeof(eng->data));
+			break;
+		case 1:
+			break;
+		case 2:
+			assert(!"unimp");
+			break;
+		case 3:
+			assert(!"unimp");
+			break;
+	}
 #if 0
 	printf("DISPCNT: %08" PRIx32 "\n", dispcnt);
 #endif
+	memset(&line, 0, sizeof(line));
 	switch (dispcnt & 0x7)
 	{
 		case 0:
