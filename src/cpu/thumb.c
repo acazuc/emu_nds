@@ -448,6 +448,7 @@ THUMB_HI(movh);
 
 THUMB_INSTR(bx,
 {
+	uint32_t msbd = (cpu->instr_opcode >> 7) & 0x1;
 	uint32_t msbs = (cpu->instr_opcode >> 6) & 0x1;
 	uint32_t rsr = ((cpu->instr_opcode >> 3) & 0x7) | (msbs << 3);
 	uint32_t rs = cpu_get_reg(cpu, rsr);
@@ -461,6 +462,8 @@ THUMB_INSTR(bx,
 	{
 		rs &= ~1;
 	}
+	if (msbd)
+		cpu_set_reg(cpu, CPU_REG_LR, (cpu_get_reg(cpu, CPU_REG_PC) + 2) | 1);
 	cpu_set_reg(cpu, CPU_REG_PC, rs);
 	cpu->instr_delay += 3;
 },
