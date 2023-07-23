@@ -80,7 +80,7 @@
 #define MEM_ARM9_REG_VRAMCNT_I     0x249
 
 #define MEM_ARM9_REG_DIVCNT        0x280
-#define MEM_ARM9_REG_DIV_NUMBER    0x290
+#define MEM_ARM9_REG_DIV_NUMER     0x290
 #define MEM_ARM9_REG_DIV_DENOM     0x298
 #define MEM_ARM9_REG_DIV_RESULT    0x2A0
 #define MEM_ARM9_REG_DIVREM_RESULT 0x2A8
@@ -347,6 +347,16 @@ static inline uint32_t mem_arm9_get_reg32(mem_t *mem, uint32_t reg)
 static inline void mem_arm9_set_reg32(mem_t *mem, uint32_t reg, uint32_t val)
 {
 	*(uint32_t*)&mem->arm9_regs[reg] = val;
+}
+
+static inline uint64_t mem_arm9_get_reg64(mem_t *mem, uint32_t reg)
+{
+	return *(uint64_t*)&mem->arm9_regs[reg];
+}
+
+static inline void mem_arm9_set_reg64(mem_t *mem, uint32_t reg, uint64_t val)
+{
+	*(uint64_t*)&mem->arm9_regs[reg] = val;
 }
 
 static inline uint8_t mem_arm7_get_reg8(mem_t *mem, uint32_t reg)
