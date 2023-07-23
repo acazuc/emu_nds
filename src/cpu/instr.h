@@ -15,4 +15,6 @@ struct cpu_instr
 extern const struct cpu_instr *cpu_instr_thumb[0x400];
 extern const struct cpu_instr *cpu_instr_arm[0x1000];
 
+extern const struct cpu_instr *cpu_instr_blx_imm;
+
 #endif

@@ -1391,6 +1391,25 @@ ARM_INSTR(undef,
 	snprintf(data, size, "undef");
 });
 
+ARM_INSTR(blx_imm,
+{
+	int32_t v = cpu->instr_opcode & 0x7FFFFF;
+	if (cpu->instr_opcode & 0x800000)
+		v = -(~v & 0x7FFFFF) - 1;
+	cpu_set_reg(cpu, CPU_REG_LR, cpu_get_reg(cpu, CPU_REG_PC) + 4);
+	v *= 4;
+	v += ((cpu->instr_opcode >> 23) & 0x2);
+	cpu_inc_pc(cpu, 8 + v);
+	CPU_SET_FLAG_T(cpu, 1);
+	cpu->instr_delay += 3;
+},
+{
+	int32_t v = cpu->instr_opcode & 0x7FFFFF;
+	if (cpu->instr_opcode & 0x800000)
+		v = -(~v & 0x7FFFFF) - 1;
+	snprintf(data, size, "blx %c0x%" PRIx32, v < 0 ? '-' : '+', v < 0 ? -v * 4 : v * 4);
+});
+
 #define REPEAT1(v) &arm_##v
 #define REPEAT2(v) REPEAT1(v), REPEAT1(v)
 #define REPEAT4(v) REPEAT2(v), REPEAT2(v)
@@ -1645,3 +1664,5 @@ const struct cpu_instr *cpu_instr_arm[0x1000] =
 	/* 0xEF0 */ CDP_LINE(mrc),
 	/* 0xF00 */ REPEAT256(swi),
 };
+
+const struct cpu_instr *cpu_instr_blx_imm = &arm_blx_imm;

@@ -175,7 +175,7 @@ static void print_instr(cpu_t *cpu, const char *msg, const struct cpu_instr *ins
 
 static bool handle_interrupt(cpu_t *cpu)
 {
-	if (CPU_GET_FLAG_I(cpu))
+	if (cpu->state == CPU_STATE_RUN && CPU_GET_FLAG_I(cpu))
 		return false;
 	uint32_t reg_if;
 	uint32_t reg_ie;
@@ -246,15 +246,22 @@ static bool decode_instruction(cpu_t *cpu)
 		if (pc < 0x4000)
 			cpu->last_bios_decode = pc + 8;
 		cpu->instr_opcode = cpu->get32(cpu->mem, pc, cpu->arm9 ? MEM_CODE_NSEQ : MEM_CODE_SEQ);
-		if (!check_arm_cond(cpu, cpu->instr_opcode >> 28))
+		if (cpu->instr_opcode >> 25 == 0x7D) /* come on arm ISA.... wtf ? */
 		{
-			if (cpu->debug)
-				print_instr(cpu, "SKIP", cpu_instr_arm[((cpu->instr_opcode >> 16) & 0xFF0) | ((cpu->instr_opcode >> 4) & 0xF)]);
-			cpu_inc_pc(cpu, 4);
-			cpu->instr = NULL;
-			return false;
+			cpu->instr = cpu_instr_blx_imm;
 		}
-		cpu->instr = cpu_instr_arm[((cpu->instr_opcode >> 16) & 0xFF0) | ((cpu->instr_opcode >> 4) & 0xF)];
+		else
+		{
+			if (!check_arm_cond(cpu, cpu->instr_opcode >> 28))
+			{
+				if (cpu->debug)
+					print_instr(cpu, "SKIP", cpu_instr_arm[((cpu->instr_opcode >> 16) & 0xFF0) | ((cpu->instr_opcode >> 4) & 0xF)]);
+				cpu_inc_pc(cpu, 4);
+				cpu->instr = NULL;
+				return false;
+			}
+			cpu->instr = cpu_instr_arm[((cpu->instr_opcode >> 16) & 0xFF0) | ((cpu->instr_opcode >> 4) & 0xF)];
+		}
 	}
 
 	return true;
@@ -267,7 +274,7 @@ void cpu_cycle(cpu_t *cpu)
 		cpu->debug = CPU_DEBUG_REGS | CPU_DEBUG_INSTR;
 #endif
 #if 0
-	if (cpu_get_reg(cpu, CPU_REG_PC) == 0x02327ad6)
+	if (cpu_get_reg(cpu, CPU_REG_PC) == 0x0232d0bc)
 		cpu->debug = CPU_DEBUG_ALL;
 #endif
 
@@ -510,9 +517,19 @@ void cp15_write(cpu_t *cpu, uint8_t cn, uint8_t cm, uint8_t cp, uint32_t v)
 			break;
 		case 0x910:
 			cpu->cp15.dtcm = v;
+#if 0
+			printf("DTCM 0x%08" PRIx32 " @ 0x%08" PRIx32 "\n",
+			       (uint32_t)(0x200 << ((cpu->cp15.dtcm & 0x3E) >> 1)),
+			       (uint32_t)(cpu->cp15.dtcm & 0xFFFFF000));
+#endif
 			break;
 		case 0x911:
 			cpu->cp15.itcm = v;
+#if 0
+			printf("ITCM 0x%08" PRIx32 " @ 0x%08" PRIx32 "\n",
+			       (uint32_t)(0x200 << ((cpu->cp15.itcm & 0x3E) >> 1)),
+			       (uint32_t)(cpu->cp15.itcm & 0xFFFFF000));
+#endif
 			break;
 		default:
 			printf("unknown cp15 write reg: %" PRIx8 "%" PRIx8 "%" PRIx8 ": %" PRIx32 "\n", cn, cm, cp, v);
