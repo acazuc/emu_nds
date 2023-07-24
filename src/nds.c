@@ -171,8 +171,12 @@ static void nds_cycles(nds_t *nds, uint32_t cycles)
 	}
 }
 
-void nds_frame(nds_t *nds, uint8_t *video_buf, int16_t *audio_buf, uint32_t joypad)
+void nds_frame(nds_t *nds, uint8_t *video_buf, int16_t *audio_buf, uint32_t joypad,
+               uint8_t touch_x, uint8_t touch_y, uint8_t touch)
 {
+#if 0
+	printf("touch: %d @ %dx%d\n", touch, touch_x, touch_y);
+#endif
 	nds->apu->sample = 0;
 	nds->apu->next_sample = nds->apu->clock;
 	nds->joypad = joypad;

@@ -156,8 +156,16 @@ void retro_run(void)
 	joypad |= NDS_BUTTON_R      * (!!input_state_cb(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_R));
 	joypad |= NDS_BUTTON_START  * (!!input_state_cb(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_START));
 	joypad |= NDS_BUTTON_SELECT * (!!input_state_cb(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_SELECT));
+	int32_t x = input_state_cb(0, RETRO_DEVICE_POINTER, 0, RETRO_DEVICE_ID_POINTER_X);
+	int32_t y = input_state_cb(0, RETRO_DEVICE_POINTER, 0, RETRO_DEVICE_ID_POINTER_Y);
+	if (y < 0)
+		y = 0;
+	int pressed = input_state_cb(0, RETRO_DEVICE_POINTER, 0, RETRO_DEVICE_ID_POINTER_PRESSED);
 
-	nds_frame(g_nds, video_buf, audio_buf, joypad);
+	nds_frame(g_nds, video_buf, audio_buf, joypad,
+	          (x - INT16_MIN) * VIDEO_WIDTH / UINT16_MAX,
+	          y * (VIDEO_HEIGHT / 2) / INT16_MAX,
+	          pressed);
 
 	video_cb(video_buf, VIDEO_WIDTH, VIDEO_HEIGHT, VIDEO_WIDTH * 4);
 
@@ -203,7 +211,9 @@ bool retro_load_game(const struct retro_game_info *info)
 		{0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_L,      "L"     },
 		{0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_R,      "R"     },
 		{0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_SELECT, "Select"},
-		{0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_START,  "Start" },
+		{0, RETRO_DEVICE_JOYPAD , 0, RETRO_DEVICE_ID_JOYPAD_START,  "Start" },
+		{0, RETRO_DEVICE_POINTER, 0, RETRO_DEVICE_ID_POINTER_X  ,  "Touch X"},
+		{0, RETRO_DEVICE_POINTER, 0, RETRO_DEVICE_ID_POINTER_Y  ,  "Touch Y"},
 		{0},
 	};
 

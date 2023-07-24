@@ -41,7 +41,8 @@ typedef struct nds
 nds_t *nds_new(const void *rom_data, size_t rom_size);
 void nds_del(nds_t *nds);
 
-void nds_frame(nds_t *nds, uint8_t *video_buf, int16_t *audio_buf, uint32_t joypad);
+void nds_frame(nds_t *nds, uint8_t *video_buf, int16_t *audio_buf, uint32_t joypad,
+               uint8_t touch_x, uint8_t touch_y, uint8_t touch);
 
 void nds_set_arm7_bios(nds_t *nds, const uint8_t *data);
 void nds_set_arm9_bios(nds_t *nds, const uint8_t *data);
