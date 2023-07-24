@@ -29,6 +29,7 @@ typedef struct mbc
 	uint64_t key2_y;
 	uint32_t cmd_count;
 	uint32_t cmd_off;
+	uint8_t secure_area[0x800];
 } mbc_t;
 
 mbc_t *mbc_new(nds_t *nds, const void *data, size_t size);

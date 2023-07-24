@@ -36,10 +36,10 @@ void mbc_del(mbc_t *mbc)
 	free(mbc);
 }
 
-static void encrypt(mbc_t *mbc, uint32_t *data)
+static void encrypt(mbc_t *mbc, void *data)
 {
-	uint32_t x = data[1];
-	uint32_t y = data[0];
+	uint32_t x = ((uint32_t*)data)[1];
+	uint32_t y = ((uint32_t*)data)[0];
 	for (size_t i = 0; i < 0x10; ++i)
 	{
 		uint32_t z = mbc->keybuf[i] ^ x;
@@ -50,8 +50,8 @@ static void encrypt(mbc_t *mbc, uint32_t *data)
 		x ^= y;
 		y = z;
 	}
-	data[0] = x ^ mbc->keybuf[0x10];
-	data[1] = y ^ mbc->keybuf[0x11];
+	((uint32_t*)data)[0] = x ^ mbc->keybuf[0x10];
+	((uint32_t*)data)[1] = y ^ mbc->keybuf[0x11];
 }
 
 static void decrypt(mbc_t *mbc, uint32_t *data)
@@ -192,6 +192,11 @@ void mbc_cmd(mbc_t *mbc)
 					return;
 				case 0x3C:
 					mbc->enc = 1;
+					init_keycode(mbc, ((uint32_t*)mbc->data)[0x3], 3, 2);
+					memcpy(mbc->secure_area, "encryObj", 8);
+					memcpy(&mbc->secure_area[0x8], &mbc->data[0x4008], 0x7F8);
+					for (size_t i = 0; i < 0x800; i += 8)
+						encrypt(mbc, &mbc->secure_area[i]);
 					init_keycode(mbc, ((uint32_t*)mbc->data)[0x3], 2, 2);
 					end_cmd(mbc);
 					return;
@@ -232,7 +237,10 @@ void mbc_cmd(mbc_t *mbc)
 				case 0x2:
 					mbc->cmd = MBC_CMD_SECBLK;
 					mbc->cmd_count = 0;
-					mbc->cmd_off = 0x1000 * ((cmd >> 48) & 0xFFF);
+					mbc->cmd_off = 0x1000 * ((cmd >> 44) & 0xFFF);
+#if 1
+					printf("secblk %08" PRIx32 "\n", mbc->cmd_off);
+#endif
 					start_cmd(mbc);
 					return;
 				case 0x6:
@@ -352,9 +360,20 @@ uint8_t mbc_read(mbc_t *mbc)
 			printf("secblk 0x%" PRIx32 "\n", mbc->cmd_count);
 #endif
 			uint8_t v;
-			if (mbc->cmd_count + mbc->cmd_off < mbc->data_size)
+			uint32_t off = mbc->cmd_count + mbc->cmd_off;
+			if (off >= 0x4000 && off < 0x4800)
 			{
-				v = mbc->data[mbc->cmd_count + mbc->cmd_off];
+#if 0
+				printf("secure area %08" PRIx32 "\n", off - 0x4000);
+#endif
+				v = mbc->secure_area[off - 0x4000];
+			}
+			else if (off < mbc->data_size)
+			{
+#if 0
+				printf("regular data %08" PRIx32 "\n", off);
+#endif
+				v = mbc->data[off];
 			}
 			else
 			{
