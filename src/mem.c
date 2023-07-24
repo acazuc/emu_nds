@@ -295,7 +295,7 @@ void mem_hblank(mem_t *mem)
 void mem_dscard(mem_t *mem)
 {
 	arm7_dma_start(mem, 2);
-	arm9_dma_start(mem, 55);
+	arm9_dma_start(mem, 5);
 }
 
 static uint8_t powerman_read(mem_t *mem)
