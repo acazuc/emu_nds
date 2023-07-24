@@ -2848,6 +2848,10 @@ void mem_arm9_set##size(mem_t *mem, uint32_t addr, uint##size##_t v, enum mem_ty
 				arm9_instr_delay(mem, arm9_vram_cycles_##size, type); \
 				*(uint##size##_t*)ptr = v; \
 			} \
+			else \
+			{ \
+				break; \
+			} \
 			return; \
 		} \
 		case 0x7: /* oam */ \

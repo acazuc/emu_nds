@@ -66,8 +66,8 @@ static void gen_sample(apu_t *apu, int16_t *dst)
 		l >>= divider;
 		r >>= divider;
 		//printf("l: %d, r: %d\n", l, r);
-		dst[0] += l;
-		dst[1] += r;
+		//dst[0] += l;
+		//dst[1] += r;
 	}
 }
 

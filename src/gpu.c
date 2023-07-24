@@ -97,6 +97,10 @@ static void draw_background_text(gpu_t *gpu, struct gpu_eng *eng, uint8_t y, uin
 		tilebase += ((dispcnt >> 24) & 0x3) * 0x10000;
 		mapbase += ((dispcnt >> 27) & 0x3) * 0x10000;
 	}
+#if 0
+	printf("BGCNT: %04" PRIx16 ", tilebase: %08" PRIx32 ", mapbase: %08" PRIx32 "\n",
+	       bgcnt, tilebase, mapbase);
+#endif
 	uint32_t mapw = mapwidths[size];
 	uint32_t maph = mapheights[size];
 	for (int32_t x = 0; x < 256; ++x)
@@ -131,14 +135,15 @@ static void draw_background_text(gpu_t *gpu, struct gpu_eng *eng, uint8_t y, uin
 		uint16_t map = mem_get_vram16(gpu->mem, eng->bg_base + (mapaddr & eng->bg_mask));
 		uint16_t tileid = map & 0x3FF;
 #if 0
-		printf("[BG0] %03ux%03u, tile: %04x (%08x)\n", x, y, map, eng->bg_base + (mapaddr & eng->bg_mask));
+		printf("[BG0] %03ux%03u, tile: %04x (%08x)\n",
+		       x, y, map, eng->bg_base + (mapaddr & eng->bg_mask));
 #endif
 		if (map & (1 << 10))
 			tilex = 7 - tilex;
 		if (map & (1 << 11))
 			tiley = 7 - tiley;
 		uint8_t paladdr;
-		uint16_t tileaddr = tilebase;
+		uint32_t tileaddr = tilebase;
 		if (bgcnt & (1 << 7))
 		{
 			tileaddr += tileid * 0x40;
@@ -152,6 +157,10 @@ static void draw_background_text(gpu_t *gpu, struct gpu_eng *eng, uint8_t y, uin
 			tileaddr += tileid * 0x20;
 			tileaddr += tilex / 2 + tiley * 4;
 			paladdr = mem_get_vram8(gpu->mem, eng->bg_base + (tileaddr & eng->bg_mask));
+#if 0
+			printf("[BG0] %03ux%03u, pixel: %02x (%08x)\n",
+			       x, y, paladdr, eng->bg_base + (tileaddr & eng->bg_mask));
+#endif
 			if (tilex & 1)
 				paladdr >>= 4;
 			else
@@ -205,15 +214,15 @@ static void draw_background_affine(gpu_t *gpu, struct gpu_eng *eng, uint8_t y, u
 		uint32_t mapy = vy / 8;
 		uint32_t tilex = vx % 8;
 		uint32_t tiley = vy % 8;
-		uint32_t mapaddr = mapx + mapy * (mapsize / 8);
-		uint16_t tileid = mem_get_vram8(gpu->mem, eng->bg_base + ((mapbase + mapaddr) & eng->bg_mask));
+		uint32_t mapaddr = mapbase + mapx + mapy * (mapsize / 8);
+		uint16_t tileid = mem_get_vram8(gpu->mem, eng->bg_base + (mapaddr & eng->bg_mask));
 #if 0
 		printf("[BG1] %03ux%03u, tileid: %03x\n", x, y, tileid);
 #endif
-		//tileid = mapy * 32 + mapx;
 		uint8_t paladdr;
-		uint16_t tileaddr = tilebase + tileid * 0x40;
-		paladdr = mem_get_vram8(gpu->mem, eng->bg_base + ((tileaddr + tilex + tiley * 8) & eng->bg_mask));
+		uint32_t tileaddr = tilebase + tileid * 0x40;
+		tileaddr += tilex + tiley * 8;
+		paladdr = mem_get_vram8(gpu->mem, eng->bg_base + (tileaddr & eng->bg_mask));
 		if (!paladdr)
 			continue;
 		uint16_t val = mem_get_bg_palette(gpu->mem, eng->pal_base + paladdr * 2);
