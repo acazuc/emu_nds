@@ -287,15 +287,24 @@ struct rtc
 	uint8_t alarm2[3];
 };
 
-#define MEM_VRAM_A_OFF 0x00000
-#define MEM_VRAM_B_OFF 0x20000
-#define MEM_VRAM_C_OFF 0x40000
-#define MEM_VRAM_D_OFF 0x60000
-#define MEM_VRAM_E_OFF 0x80000
-#define MEM_VRAM_F_OFF 0x90000
-#define MEM_VRAM_G_OFF 0x94000
-#define MEM_VRAM_H_OFF 0x98000
-#define MEM_VRAM_I_OFF 0xA0000
+#define MEM_VRAM_A_BASE 0x00000
+#define MEM_VRAM_A_MASK 0x1FFFF
+#define MEM_VRAM_B_BASE 0x20000
+#define MEM_VRAM_B_MASK 0x1FFFF
+#define MEM_VRAM_C_BASE 0x40000
+#define MEM_VRAM_C_MASK 0x1FFFF
+#define MEM_VRAM_D_BASE 0x60000
+#define MEM_VRAM_D_MASK 0x1FFFF
+#define MEM_VRAM_E_BASE 0x80000
+#define MEM_VRAM_E_MASK 0x0FFFF
+#define MEM_VRAM_F_BASE 0x90000
+#define MEM_VRAM_F_MASK 0x03FFF
+#define MEM_VRAM_G_BASE 0x94000
+#define MEM_VRAM_G_MASK 0x03FFF
+#define MEM_VRAM_H_BASE 0x98000
+#define MEM_VRAM_H_MASK 0x07FFF
+#define MEM_VRAM_I_BASE 0xA0000
+#define MEM_VRAM_I_MASK 0x03FFF
 
 typedef struct mem
 {
@@ -327,15 +336,14 @@ typedef struct mem
 	uint8_t oam[0x800];
 	uint8_t palette[0x800];
 	int biosprot;
-	uint8_t *vram_lcdc_a;
-	uint8_t *vram_lcdc_b;
-	uint8_t *vram_lcdc_c;
-	uint8_t *vram_lcdc_d;
-	uint8_t *vram_lcdc_e;
-	uint8_t *vram_lcdc_f;
-	uint8_t *vram_lcdc_g;
-	uint8_t *vram_lcdc_h;
-	uint8_t *vram_lcdc_i;
+	uint32_t vram_bga_base;
+	uint32_t vram_bga_mask;
+	uint32_t vram_bgb_base;
+	uint32_t vram_bgb_mask;
+	uint32_t vram_obja_base;
+	uint32_t vram_obja_mask;
+	uint32_t vram_objb_base;
+	uint32_t vram_objb_mask;
 } mem_t;
 
 mem_t *mem_new(nds_t *nds, mbc_t *mbc);

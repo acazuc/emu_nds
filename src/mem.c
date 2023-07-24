@@ -55,15 +55,14 @@ mem_t *mem_new(nds_t *nds, mbc_t *mbc)
 	mem->arm9_wram_base = 0x7FFF;
 	mem->arm9_regs[MEM_ARM7_REG_ROMCTRL + 2] = 0x80;
 	mem_arm7_set_reg32(mem, MEM_ARM7_REG_SOUNDBIAS, 0x200);
-	mem->vram_lcdc_a = &mem->vram[MEM_VRAM_A_OFF];
-	mem->vram_lcdc_b = &mem->vram[MEM_VRAM_B_OFF];
-	mem->vram_lcdc_c = &mem->vram[MEM_VRAM_C_OFF];
-	mem->vram_lcdc_d = &mem->vram[MEM_VRAM_D_OFF];
-	mem->vram_lcdc_e = &mem->vram[MEM_VRAM_E_OFF];
-	mem->vram_lcdc_f = &mem->vram[MEM_VRAM_F_OFF];
-	mem->vram_lcdc_g = &mem->vram[MEM_VRAM_G_OFF];
-	mem->vram_lcdc_h = &mem->vram[MEM_VRAM_H_OFF];
-	mem->vram_lcdc_i = &mem->vram[MEM_VRAM_I_OFF];
+	mem->vram_bga_base = MEM_VRAM_A_BASE;
+	mem->vram_bga_mask = MEM_VRAM_A_MASK;
+	mem->vram_bgb_base = MEM_VRAM_C_BASE;
+	mem->vram_bgb_mask = MEM_VRAM_C_MASK;
+	mem->vram_obja_base = MEM_VRAM_B_BASE;
+	mem->vram_obja_mask = MEM_VRAM_B_MASK;
+	mem->vram_objb_base = MEM_VRAM_D_BASE;
+	mem->vram_objb_mask = MEM_VRAM_D_MASK;
 	return mem;
 }
 
@@ -269,8 +268,7 @@ static void arm##armv##_dma_start(mem_t *mem, uint8_t cond) \
 		arm##armv##_load_dma_length(mem, i); \
 		dma->cnt = 0; \
 		dma->status |= MEM_DMA_ACTIVE; \
-		printf("start DMA %u of %08" PRIx32 " words from %08" PRIx32 " to %08" PRIx32 "\n", \
-		       i, dma->len, dma->src, dma->dst); \
+		/* printf("start DMA %u of %08" PRIx32 " words from %08" PRIx32 " to %08" PRIx32 "\n", i, dma->len, dma->src, dma->dst); */ \
 	} \
 }
 
@@ -456,6 +454,9 @@ static void spi_write(mem_t *mem, uint8_t v)
 	}
 }
 
+/* the fact that every single RTC on earth uses BCD scares me */
+#define BCD(n) (((n) % 10) + (((n) / 10) * 16))
+
 static void rtc_write(mem_t *mem, uint8_t v)
 {
 #if 0
@@ -512,13 +513,23 @@ static void rtc_write(mem_t *mem, uint8_t v)
 					{
 						time_t t = time(NULL);
 						struct tm *tm = localtime(&t);
-						mem->rtc.outbuf[0] = tm->tm_year - 100;
-						mem->rtc.outbuf[1] = tm->tm_mon + 1;
-						mem->rtc.outbuf[2] = tm->tm_mday;
-						mem->rtc.outbuf[3] = tm->tm_wday;
-						mem->rtc.outbuf[4] = tm->tm_hour;
-						mem->rtc.outbuf[5] = tm->tm_min;
-						mem->rtc.outbuf[6] = tm->tm_sec;
+						mem->rtc.outbuf[0] = BCD(tm->tm_year - 100);
+						mem->rtc.outbuf[1] = BCD(tm->tm_mon + 1);
+						mem->rtc.outbuf[2] = BCD(tm->tm_mday);
+						mem->rtc.outbuf[3] = BCD(tm->tm_wday);
+						mem->rtc.outbuf[4] = BCD(tm->tm_hour);
+						mem->rtc.outbuf[5] = BCD(tm->tm_min);
+						mem->rtc.outbuf[6] = BCD(tm->tm_sec);
+#if 0
+						printf("RTC read %x %x %x %x %x %x %x\n",
+						       mem->rtc.outbuf[0],
+						       mem->rtc.outbuf[1],
+						       mem->rtc.outbuf[2],
+						       mem->rtc.outbuf[3],
+						       mem->rtc.outbuf[4],
+						       mem->rtc.outbuf[5],
+						       mem->rtc.outbuf[6]);
+#endif
 						mem->rtc.outpos = 0;
 						mem->rtc.outlen = 8 * 7;
 						break;
@@ -527,9 +538,9 @@ static void rtc_write(mem_t *mem, uint8_t v)
 					{
 						time_t t = time(NULL);
 						struct tm *tm = localtime(&t);
-						mem->rtc.outbuf[0] = tm->tm_hour;
-						mem->rtc.outbuf[1] = tm->tm_min;
-						mem->rtc.outbuf[2] = tm->tm_sec;
+						mem->rtc.outbuf[0] = BCD(tm->tm_hour);
+						mem->rtc.outbuf[1] = BCD(tm->tm_min);
+						mem->rtc.outbuf[2] = BCD(tm->tm_sec);
 						mem->rtc.outpos = 0;
 						mem->rtc.outlen = 8 * 3;
 						break;
@@ -641,12 +652,16 @@ static void rtc_write(mem_t *mem, uint8_t v)
 	else
 	{
 		uint8_t b = 0;
+#if 0
+		printf("rtc read %u / %u\n", mem->rtc.outpos, mem->rtc.outlen);
+#endif
 		if (mem->rtc.outpos < mem->rtc.outlen)
 		{
 			b = mem->rtc.outbuf[mem->rtc.outpos / 8];
 			b >>= mem->rtc.outpos % 8;
 			b &= 1;
-			mem->rtc.outpos++;
+			if (v & (1 << 1))
+				mem->rtc.outpos++;
 		}
 		mem->rtc.outbyte = 0x66 | b;
 	}
@@ -655,7 +670,8 @@ static void rtc_write(mem_t *mem, uint8_t v)
 static uint8_t rtc_read(mem_t *mem)
 {
 #if 0
-	printf("rtc read %02" PRIx8 "\n", mem->rtc.outbyte);
+	printf("[%08" PRIx32 "] rtc read %02" PRIx8 "\n",
+	       cpu_get_reg(mem->nds->arm7, CPU_REG_PC), mem->rtc.outbyte);
 #endif
 	return mem->rtc.outbyte;
 }
@@ -671,8 +687,8 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 			return;
 		case MEM_ARM7_REG_IPCSYNC + 1:
 			mem->arm7_regs[addr] = v & 0x47;
-			if ((v & (1 << 13))
-			 && (mem->arm9_regs[MEM_ARM9_REG_IPCSYNC] & (1 << 14)))
+			if ((v & (1 << 5))
+			 && (mem->arm9_regs[MEM_ARM9_REG_IPCSYNC + 1] & (1 << 6)))
 				mem_arm9_if(mem, 1 << 16);
 #if 0
 			printf("ARM7 IPCSYNC write 0x%02" PRIx8 "\n", v);
@@ -783,6 +799,267 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM7_REG_SNDCAP1LEN + 1:
 		case MEM_ARM7_REG_SNDCAP1LEN + 2:
 		case MEM_ARM7_REG_SNDCAP1LEN + 3:
+			mem->arm7_regs[addr] = v;
+			return;
+		case MEM_ARM7_REG_SOUNDXCNT(0):
+		case MEM_ARM7_REG_SOUNDXCNT(0) + 1:
+		case MEM_ARM7_REG_SOUNDXCNT(0) + 2:
+		case MEM_ARM7_REG_SOUNDXCNT(0) + 3:
+		case MEM_ARM7_REG_SOUNDXCNT(1):
+		case MEM_ARM7_REG_SOUNDXCNT(1) + 1:
+		case MEM_ARM7_REG_SOUNDXCNT(1) + 2:
+		case MEM_ARM7_REG_SOUNDXCNT(1) + 3:
+		case MEM_ARM7_REG_SOUNDXCNT(2):
+		case MEM_ARM7_REG_SOUNDXCNT(2) + 1:
+		case MEM_ARM7_REG_SOUNDXCNT(2) + 2:
+		case MEM_ARM7_REG_SOUNDXCNT(2) + 3:
+		case MEM_ARM7_REG_SOUNDXCNT(3):
+		case MEM_ARM7_REG_SOUNDXCNT(3) + 1:
+		case MEM_ARM7_REG_SOUNDXCNT(3) + 2:
+		case MEM_ARM7_REG_SOUNDXCNT(3) + 3:
+		case MEM_ARM7_REG_SOUNDXCNT(4):
+		case MEM_ARM7_REG_SOUNDXCNT(4) + 1:
+		case MEM_ARM7_REG_SOUNDXCNT(4) + 2:
+		case MEM_ARM7_REG_SOUNDXCNT(4) + 3:
+		case MEM_ARM7_REG_SOUNDXCNT(5):
+		case MEM_ARM7_REG_SOUNDXCNT(5) + 1:
+		case MEM_ARM7_REG_SOUNDXCNT(5) + 2:
+		case MEM_ARM7_REG_SOUNDXCNT(5) + 3:
+		case MEM_ARM7_REG_SOUNDXCNT(6):
+		case MEM_ARM7_REG_SOUNDXCNT(6) + 1:
+		case MEM_ARM7_REG_SOUNDXCNT(6) + 2:
+		case MEM_ARM7_REG_SOUNDXCNT(6) + 3:
+		case MEM_ARM7_REG_SOUNDXCNT(7):
+		case MEM_ARM7_REG_SOUNDXCNT(7) + 1:
+		case MEM_ARM7_REG_SOUNDXCNT(7) + 2:
+		case MEM_ARM7_REG_SOUNDXCNT(7) + 3:
+		case MEM_ARM7_REG_SOUNDXCNT(8):
+		case MEM_ARM7_REG_SOUNDXCNT(8) + 1:
+		case MEM_ARM7_REG_SOUNDXCNT(8) + 2:
+		case MEM_ARM7_REG_SOUNDXCNT(8) + 3:
+		case MEM_ARM7_REG_SOUNDXCNT(9):
+		case MEM_ARM7_REG_SOUNDXCNT(9) + 1:
+		case MEM_ARM7_REG_SOUNDXCNT(9) + 2:
+		case MEM_ARM7_REG_SOUNDXCNT(9) + 3:
+		case MEM_ARM7_REG_SOUNDXCNT(10):
+		case MEM_ARM7_REG_SOUNDXCNT(10) + 1:
+		case MEM_ARM7_REG_SOUNDXCNT(10) + 2:
+		case MEM_ARM7_REG_SOUNDXCNT(10) + 3:
+		case MEM_ARM7_REG_SOUNDXCNT(11):
+		case MEM_ARM7_REG_SOUNDXCNT(11) + 1:
+		case MEM_ARM7_REG_SOUNDXCNT(11) + 2:
+		case MEM_ARM7_REG_SOUNDXCNT(11) + 3:
+		case MEM_ARM7_REG_SOUNDXCNT(12):
+		case MEM_ARM7_REG_SOUNDXCNT(12) + 1:
+		case MEM_ARM7_REG_SOUNDXCNT(12) + 2:
+		case MEM_ARM7_REG_SOUNDXCNT(12) + 3:
+		case MEM_ARM7_REG_SOUNDXCNT(13):
+		case MEM_ARM7_REG_SOUNDXCNT(13) + 1:
+		case MEM_ARM7_REG_SOUNDXCNT(13) + 2:
+		case MEM_ARM7_REG_SOUNDXCNT(13) + 3:
+		case MEM_ARM7_REG_SOUNDXCNT(14):
+		case MEM_ARM7_REG_SOUNDXCNT(14) + 1:
+		case MEM_ARM7_REG_SOUNDXCNT(14) + 2:
+		case MEM_ARM7_REG_SOUNDXCNT(14) + 3:
+		case MEM_ARM7_REG_SOUNDXCNT(15):
+		case MEM_ARM7_REG_SOUNDXCNT(15) + 1:
+		case MEM_ARM7_REG_SOUNDXCNT(15) + 2:
+		case MEM_ARM7_REG_SOUNDXCNT(15) + 3:
+		case MEM_ARM7_REG_SOUNDXSAD(0):
+		case MEM_ARM7_REG_SOUNDXSAD(0) + 1:
+		case MEM_ARM7_REG_SOUNDXSAD(0) + 2:
+		case MEM_ARM7_REG_SOUNDXSAD(0) + 3:
+		case MEM_ARM7_REG_SOUNDXSAD(1):
+		case MEM_ARM7_REG_SOUNDXSAD(1) + 1:
+		case MEM_ARM7_REG_SOUNDXSAD(1) + 2:
+		case MEM_ARM7_REG_SOUNDXSAD(1) + 3:
+		case MEM_ARM7_REG_SOUNDXSAD(2):
+		case MEM_ARM7_REG_SOUNDXSAD(2) + 1:
+		case MEM_ARM7_REG_SOUNDXSAD(2) + 2:
+		case MEM_ARM7_REG_SOUNDXSAD(2) + 3:
+		case MEM_ARM7_REG_SOUNDXSAD(3):
+		case MEM_ARM7_REG_SOUNDXSAD(3) + 1:
+		case MEM_ARM7_REG_SOUNDXSAD(3) + 2:
+		case MEM_ARM7_REG_SOUNDXSAD(3) + 3:
+		case MEM_ARM7_REG_SOUNDXSAD(4):
+		case MEM_ARM7_REG_SOUNDXSAD(4) + 1:
+		case MEM_ARM7_REG_SOUNDXSAD(4) + 2:
+		case MEM_ARM7_REG_SOUNDXSAD(4) + 3:
+		case MEM_ARM7_REG_SOUNDXSAD(5):
+		case MEM_ARM7_REG_SOUNDXSAD(5) + 1:
+		case MEM_ARM7_REG_SOUNDXSAD(5) + 2:
+		case MEM_ARM7_REG_SOUNDXSAD(5) + 3:
+		case MEM_ARM7_REG_SOUNDXSAD(6):
+		case MEM_ARM7_REG_SOUNDXSAD(6) + 1:
+		case MEM_ARM7_REG_SOUNDXSAD(6) + 2:
+		case MEM_ARM7_REG_SOUNDXSAD(6) + 3:
+		case MEM_ARM7_REG_SOUNDXSAD(7):
+		case MEM_ARM7_REG_SOUNDXSAD(7) + 1:
+		case MEM_ARM7_REG_SOUNDXSAD(7) + 2:
+		case MEM_ARM7_REG_SOUNDXSAD(7) + 3:
+		case MEM_ARM7_REG_SOUNDXSAD(8):
+		case MEM_ARM7_REG_SOUNDXSAD(8) + 1:
+		case MEM_ARM7_REG_SOUNDXSAD(8) + 2:
+		case MEM_ARM7_REG_SOUNDXSAD(8) + 3:
+		case MEM_ARM7_REG_SOUNDXSAD(9):
+		case MEM_ARM7_REG_SOUNDXSAD(9) + 1:
+		case MEM_ARM7_REG_SOUNDXSAD(9) + 2:
+		case MEM_ARM7_REG_SOUNDXSAD(9) + 3:
+		case MEM_ARM7_REG_SOUNDXSAD(10):
+		case MEM_ARM7_REG_SOUNDXSAD(10) + 1:
+		case MEM_ARM7_REG_SOUNDXSAD(10) + 2:
+		case MEM_ARM7_REG_SOUNDXSAD(10) + 3:
+		case MEM_ARM7_REG_SOUNDXSAD(11):
+		case MEM_ARM7_REG_SOUNDXSAD(11) + 1:
+		case MEM_ARM7_REG_SOUNDXSAD(11) + 2:
+		case MEM_ARM7_REG_SOUNDXSAD(11) + 3:
+		case MEM_ARM7_REG_SOUNDXSAD(12):
+		case MEM_ARM7_REG_SOUNDXSAD(12) + 1:
+		case MEM_ARM7_REG_SOUNDXSAD(12) + 2:
+		case MEM_ARM7_REG_SOUNDXSAD(12) + 3:
+		case MEM_ARM7_REG_SOUNDXSAD(13):
+		case MEM_ARM7_REG_SOUNDXSAD(13) + 1:
+		case MEM_ARM7_REG_SOUNDXSAD(13) + 2:
+		case MEM_ARM7_REG_SOUNDXSAD(13) + 3:
+		case MEM_ARM7_REG_SOUNDXSAD(14):
+		case MEM_ARM7_REG_SOUNDXSAD(14) + 1:
+		case MEM_ARM7_REG_SOUNDXSAD(14) + 2:
+		case MEM_ARM7_REG_SOUNDXSAD(14) + 3:
+		case MEM_ARM7_REG_SOUNDXSAD(15):
+		case MEM_ARM7_REG_SOUNDXSAD(15) + 1:
+		case MEM_ARM7_REG_SOUNDXSAD(15) + 2:
+		case MEM_ARM7_REG_SOUNDXSAD(15) + 3:
+		case MEM_ARM7_REG_SOUNDXTMR(0):
+		case MEM_ARM7_REG_SOUNDXTMR(0) + 1:
+		case MEM_ARM7_REG_SOUNDXTMR(1):
+		case MEM_ARM7_REG_SOUNDXTMR(1) + 1:
+		case MEM_ARM7_REG_SOUNDXTMR(2):
+		case MEM_ARM7_REG_SOUNDXTMR(2) + 1:
+		case MEM_ARM7_REG_SOUNDXTMR(3):
+		case MEM_ARM7_REG_SOUNDXTMR(3) + 1:
+		case MEM_ARM7_REG_SOUNDXTMR(4):
+		case MEM_ARM7_REG_SOUNDXTMR(4) + 1:
+		case MEM_ARM7_REG_SOUNDXTMR(5):
+		case MEM_ARM7_REG_SOUNDXTMR(5) + 1:
+		case MEM_ARM7_REG_SOUNDXTMR(6):
+		case MEM_ARM7_REG_SOUNDXTMR(6) + 1:
+		case MEM_ARM7_REG_SOUNDXTMR(7):
+		case MEM_ARM7_REG_SOUNDXTMR(7) + 1:
+		case MEM_ARM7_REG_SOUNDXTMR(8):
+		case MEM_ARM7_REG_SOUNDXTMR(8) + 1:
+		case MEM_ARM7_REG_SOUNDXTMR(9):
+		case MEM_ARM7_REG_SOUNDXTMR(9) + 1:
+		case MEM_ARM7_REG_SOUNDXTMR(10):
+		case MEM_ARM7_REG_SOUNDXTMR(10) + 1:
+		case MEM_ARM7_REG_SOUNDXTMR(11):
+		case MEM_ARM7_REG_SOUNDXTMR(11) + 1:
+		case MEM_ARM7_REG_SOUNDXTMR(12):
+		case MEM_ARM7_REG_SOUNDXTMR(12) + 1:
+		case MEM_ARM7_REG_SOUNDXTMR(13):
+		case MEM_ARM7_REG_SOUNDXTMR(13) + 1:
+		case MEM_ARM7_REG_SOUNDXTMR(14):
+		case MEM_ARM7_REG_SOUNDXTMR(14) + 1:
+		case MEM_ARM7_REG_SOUNDXTMR(15):
+		case MEM_ARM7_REG_SOUNDXTMR(15) + 1:
+		case MEM_ARM7_REG_SOUNDXPNT(0):
+		case MEM_ARM7_REG_SOUNDXPNT(0) + 1:
+		case MEM_ARM7_REG_SOUNDXPNT(1):
+		case MEM_ARM7_REG_SOUNDXPNT(1) + 1:
+		case MEM_ARM7_REG_SOUNDXPNT(2):
+		case MEM_ARM7_REG_SOUNDXPNT(2) + 1:
+		case MEM_ARM7_REG_SOUNDXPNT(3):
+		case MEM_ARM7_REG_SOUNDXPNT(3) + 1:
+		case MEM_ARM7_REG_SOUNDXPNT(4):
+		case MEM_ARM7_REG_SOUNDXPNT(4) + 1:
+		case MEM_ARM7_REG_SOUNDXPNT(5):
+		case MEM_ARM7_REG_SOUNDXPNT(5) + 1:
+		case MEM_ARM7_REG_SOUNDXPNT(6):
+		case MEM_ARM7_REG_SOUNDXPNT(6) + 1:
+		case MEM_ARM7_REG_SOUNDXPNT(7):
+		case MEM_ARM7_REG_SOUNDXPNT(7) + 1:
+		case MEM_ARM7_REG_SOUNDXPNT(8):
+		case MEM_ARM7_REG_SOUNDXPNT(8) + 1:
+		case MEM_ARM7_REG_SOUNDXPNT(9):
+		case MEM_ARM7_REG_SOUNDXPNT(9) + 1:
+		case MEM_ARM7_REG_SOUNDXPNT(10):
+		case MEM_ARM7_REG_SOUNDXPNT(10) + 1:
+		case MEM_ARM7_REG_SOUNDXPNT(11):
+		case MEM_ARM7_REG_SOUNDXPNT(11) + 1:
+		case MEM_ARM7_REG_SOUNDXPNT(12):
+		case MEM_ARM7_REG_SOUNDXPNT(12) + 1:
+		case MEM_ARM7_REG_SOUNDXPNT(13):
+		case MEM_ARM7_REG_SOUNDXPNT(13) + 1:
+		case MEM_ARM7_REG_SOUNDXPNT(14):
+		case MEM_ARM7_REG_SOUNDXPNT(14) + 1:
+		case MEM_ARM7_REG_SOUNDXPNT(15):
+		case MEM_ARM7_REG_SOUNDXPNT(15) + 1:
+		case MEM_ARM7_REG_SOUNDXLEN(0):
+		case MEM_ARM7_REG_SOUNDXLEN(0) + 1:
+		case MEM_ARM7_REG_SOUNDXLEN(0) + 2:
+		case MEM_ARM7_REG_SOUNDXLEN(0) + 3:
+		case MEM_ARM7_REG_SOUNDXLEN(1):
+		case MEM_ARM7_REG_SOUNDXLEN(1) + 1:
+		case MEM_ARM7_REG_SOUNDXLEN(1) + 2:
+		case MEM_ARM7_REG_SOUNDXLEN(1) + 3:
+		case MEM_ARM7_REG_SOUNDXLEN(2):
+		case MEM_ARM7_REG_SOUNDXLEN(2) + 1:
+		case MEM_ARM7_REG_SOUNDXLEN(2) + 2:
+		case MEM_ARM7_REG_SOUNDXLEN(2) + 3:
+		case MEM_ARM7_REG_SOUNDXLEN(3):
+		case MEM_ARM7_REG_SOUNDXLEN(3) + 1:
+		case MEM_ARM7_REG_SOUNDXLEN(3) + 2:
+		case MEM_ARM7_REG_SOUNDXLEN(3) + 3:
+		case MEM_ARM7_REG_SOUNDXLEN(4):
+		case MEM_ARM7_REG_SOUNDXLEN(4) + 1:
+		case MEM_ARM7_REG_SOUNDXLEN(4) + 2:
+		case MEM_ARM7_REG_SOUNDXLEN(4) + 3:
+		case MEM_ARM7_REG_SOUNDXLEN(5):
+		case MEM_ARM7_REG_SOUNDXLEN(5) + 1:
+		case MEM_ARM7_REG_SOUNDXLEN(5) + 2:
+		case MEM_ARM7_REG_SOUNDXLEN(5) + 3:
+		case MEM_ARM7_REG_SOUNDXLEN(6):
+		case MEM_ARM7_REG_SOUNDXLEN(6) + 1:
+		case MEM_ARM7_REG_SOUNDXLEN(6) + 2:
+		case MEM_ARM7_REG_SOUNDXLEN(6) + 3:
+		case MEM_ARM7_REG_SOUNDXLEN(7):
+		case MEM_ARM7_REG_SOUNDXLEN(7) + 1:
+		case MEM_ARM7_REG_SOUNDXLEN(7) + 2:
+		case MEM_ARM7_REG_SOUNDXLEN(7) + 3:
+		case MEM_ARM7_REG_SOUNDXLEN(8):
+		case MEM_ARM7_REG_SOUNDXLEN(8) + 1:
+		case MEM_ARM7_REG_SOUNDXLEN(8) + 2:
+		case MEM_ARM7_REG_SOUNDXLEN(8) + 3:
+		case MEM_ARM7_REG_SOUNDXLEN(9):
+		case MEM_ARM7_REG_SOUNDXLEN(9) + 1:
+		case MEM_ARM7_REG_SOUNDXLEN(9) + 2:
+		case MEM_ARM7_REG_SOUNDXLEN(9) + 3:
+		case MEM_ARM7_REG_SOUNDXLEN(10):
+		case MEM_ARM7_REG_SOUNDXLEN(10) + 1:
+		case MEM_ARM7_REG_SOUNDXLEN(10) + 2:
+		case MEM_ARM7_REG_SOUNDXLEN(10) + 3:
+		case MEM_ARM7_REG_SOUNDXLEN(11):
+		case MEM_ARM7_REG_SOUNDXLEN(11) + 1:
+		case MEM_ARM7_REG_SOUNDXLEN(11) + 2:
+		case MEM_ARM7_REG_SOUNDXLEN(11) + 3:
+		case MEM_ARM7_REG_SOUNDXLEN(12):
+		case MEM_ARM7_REG_SOUNDXLEN(12) + 1:
+		case MEM_ARM7_REG_SOUNDXLEN(12) + 2:
+		case MEM_ARM7_REG_SOUNDXLEN(12) + 3:
+		case MEM_ARM7_REG_SOUNDXLEN(13):
+		case MEM_ARM7_REG_SOUNDXLEN(13) + 1:
+		case MEM_ARM7_REG_SOUNDXLEN(13) + 2:
+		case MEM_ARM7_REG_SOUNDXLEN(13) + 3:
+		case MEM_ARM7_REG_SOUNDXLEN(14):
+		case MEM_ARM7_REG_SOUNDXLEN(14) + 1:
+		case MEM_ARM7_REG_SOUNDXLEN(14) + 2:
+		case MEM_ARM7_REG_SOUNDXLEN(14) + 3:
+		case MEM_ARM7_REG_SOUNDXLEN(15):
+		case MEM_ARM7_REG_SOUNDXLEN(15) + 1:
+		case MEM_ARM7_REG_SOUNDXLEN(15) + 2:
+		case MEM_ARM7_REG_SOUNDXLEN(15) + 3:
+#if 0
+			printf("SND[%08x] = %02x\n", addr, v);
+#endif
 			mem->arm7_regs[addr] = v;
 			return;
 		case MEM_ARM7_REG_ROMCTRL:
@@ -1072,6 +1349,8 @@ static uint8_t get_arm7_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM7_REG_RCNT + 1:
 		case MEM_ARM7_REG_SOUNDCNT:
 		case MEM_ARM7_REG_SOUNDCNT + 1:
+		case MEM_ARM7_REG_SOUNDCNT + 2:
+		case MEM_ARM7_REG_SOUNDCNT + 3:
 		case MEM_ARM7_REG_WIFIWAITCNT:
 		case MEM_ARM7_REG_WIFIWAITCNT + 1:
 		case MEM_ARM7_REG_SNDCAP0CNT:
@@ -1552,8 +1831,8 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 			return;
 		case MEM_ARM9_REG_IPCSYNC + 1:
 			mem->arm9_regs[addr] = v & 0x47;
-			if ((v & (1 << 13))
-			 && (mem->arm7_regs[MEM_ARM7_REG_IPCSYNC] & (1 << 14)))
+			if ((v & (1 << 5))
+			 && (mem->arm7_regs[MEM_ARM7_REG_IPCSYNC + 1] & (1 << 6)))
 				mem_arm7_if(mem, 1 << 16);
 #if 0
 			printf("ARM9 IPCSYNC write 0x%02" PRIx8 "\n", v);
@@ -2360,64 +2639,52 @@ static void *get_vram_ptr(mem_t *mem, uint32_t addr)
 	switch ((addr >> 20) & 0xF)
 	{
 		case 0x0:
-			return &mem->vram_lcdc_a[addr & 0x1FFFF];
+			if (!mem->vram_bga_mask)
+				return NULL;
+			return &mem->vram[mem->vram_bga_base + (addr & mem->vram_bga_mask)];
 		case 0x2:
-			return &mem->vram_lcdc_c[addr & 0x1FFFF];
+			if (!mem->vram_bgb_mask)
+				return NULL;
+			return &mem->vram[mem->vram_bgb_base + (addr & mem->vram_bgb_mask)];
 		case 0x4:
-			return &mem->vram_lcdc_b[addr & 0x1FFFF];
+			if (!mem->vram_obja_mask)
+				return NULL;
+			return &mem->vram[mem->vram_obja_base + (addr & mem->vram_obja_mask)];
 		case 0x6:
-			return &mem->vram_lcdc_d[addr & 0x1FFFF];
+			if (!mem->vram_objb_mask)
+				return NULL;
+			return &mem->vram[mem->vram_objb_base + (addr & mem->vram_objb_mask)];
 		case 0x8:
 			switch ((addr >> 16) & 0xF)
 			{
 				case 0x0:
 				case 0x1:
-					if (!mem->vram_lcdc_a)
-						return NULL;
-					return &mem->vram_lcdc_a[addr & 0x1FFFF];
+					return &mem->vram[MEM_VRAM_A_BASE + (addr & MEM_VRAM_A_MASK)];
 				case 0x2:
 				case 0x3:
-					if (!mem->vram_lcdc_b)
-						return NULL;
-					return &mem->vram_lcdc_b[addr & 0x1FFFF];
+					return &mem->vram[MEM_VRAM_B_BASE + (addr & MEM_VRAM_B_MASK)];
 				case 0x4:
 				case 0x5:
-					if (!mem->vram_lcdc_c)
-						return NULL;
-					return &mem->vram_lcdc_c[addr & 0x1FFFF];
+					return &mem->vram[MEM_VRAM_C_BASE + (addr & MEM_VRAM_C_MASK)];
 				case 0x6:
 				case 0x7:
-					if (!mem->vram_lcdc_d)
-						return NULL;
-					return &mem->vram_lcdc_d[addr & 0x1FFFF];
+					return &mem->vram[MEM_VRAM_D_BASE + (addr & MEM_VRAM_D_MASK)];
 				case 0x8:
-					if (!mem->vram_lcdc_e)
-						return NULL;
-					return &mem->vram_lcdc_e[addr & 0xFFFF];
+					return &mem->vram[MEM_VRAM_E_BASE + (addr & MEM_VRAM_E_MASK)];
 				case 0x9:
 					switch ((addr >> 14) & 0x3)
 					{
 						case 0x0:
-							if (!mem->vram_lcdc_f)
-								return NULL;
-							return &mem->vram_lcdc_f[addr & 0x3FFF];
+							return &mem->vram[MEM_VRAM_F_BASE + (addr & MEM_VRAM_F_MASK)];
 						case 0x1:
-							if (!mem->vram_lcdc_g)
-								return NULL;
-							return &mem->vram_lcdc_g[addr & 0x3FFF];
+							return &mem->vram[MEM_VRAM_G_BASE + (addr & MEM_VRAM_G_MASK)];
 						case 0x2:
 						case 0x3:
-							if (!mem->vram_lcdc_h)
-								return NULL;
-							return &mem->vram_lcdc_h[addr & 0x7FFF];
+							return &mem->vram[MEM_VRAM_H_BASE + (addr & MEM_VRAM_H_MASK)];
 					}
 					break;
 				case 0xA:
-					if (addr >= 0x8A4000)
-						return NULL;
-					if (!mem->vram_lcdc_i)
-						return NULL;
-					return &mem->vram_lcdc_i[addr - 0x8A0000];
+					return &mem->vram[MEM_VRAM_I_BASE + (addr & MEM_VRAM_I_MASK)];
 			}
 			break;
 	}
@@ -2480,15 +2747,20 @@ uint##size##_t mem_arm9_get##size(mem_t *mem, uint32_t addr, enum mem_type type)
 			arm9_instr_delay(mem, arm9_wram_cycles_##size, type); \
 			return get_arm9_reg##size(mem, addr - 0x4000000); \
 		case 0x5: /* palette */ \
+			arm9_instr_delay(mem, arm9_vram_cycles_##size, type); \
 			return *(uint##size##_t*)&mem->palette[addr & 0x7FF]; \
 		case 0x6: /* vram */ \
 		{ \
 			void *ptr = get_vram_ptr(mem, addr & 0xFFFFFF); \
 			if (ptr) \
+			{ \
+				arm9_instr_delay(mem, arm9_vram_cycles_##size, type); \
 				return *(uint##size##_t*)ptr; \
+			} \
 			return 0; \
 		} \
 		case 0x7: /* oam */ \
+			arm9_instr_delay(mem, arm9_wram_cycles_##size, type); \
 			return *(uint##size##_t*)&mem->oam[addr & 0x7FF]; \
 		case 0x8: /* GBA */ \
 		case 0x9: \
@@ -2552,7 +2824,7 @@ void mem_arm9_set##size(mem_t *mem, uint32_t addr, uint##size##_t v, enum mem_ty
 			arm9_instr_delay(mem, arm9_mram_cycles_##size, type); \
 			return; \
 		case 0x3: /* shared wram */ \
-			if (!mem->arm7_wram_mask) \
+			if (!mem->arm9_wram_mask) \
 				return; \
 			*(uint##size##_t*)&mem->wram[mem->arm9_wram_base \
 			                           + (addr & mem->arm9_wram_mask)] = v; \
@@ -2565,18 +2837,23 @@ void mem_arm9_set##size(mem_t *mem, uint32_t addr, uint##size##_t v, enum mem_ty
 		case 0x5: /* palette */ \
 			/* printf("palette write [%08" PRIx32 "] = %x\n", addr, v); */ \
 			*(uint##size##_t*)&mem->palette[addr & 0x7FF] = v; \
+			arm9_instr_delay(mem, arm9_vram_cycles_##size, type); \
 			return; \
 		case 0x6: /* vram */ \
 		{ \
 			/* printf("vram write [%08" PRIx32 "] = %x\n", addr, v); */ \
 			void *ptr = get_vram_ptr(mem, addr & 0xFFFFFF); \
 			if (ptr) \
+			{ \
+				arm9_instr_delay(mem, arm9_vram_cycles_##size, type); \
 				*(uint##size##_t*)ptr = v; \
+			} \
 			return; \
 		} \
 		case 0x7: /* oam */ \
 			/* printf("oam write [%08" PRIx32 "] = %x\n", addr, v); */ \
 			*(uint##size##_t*)&mem->oam[addr & 0x7FF] = v; \
+			arm9_instr_delay(mem, arm9_wram_cycles_##size, type); \
 			return; \
 		case 0x8: /* GBA */ \
 		case 0x9: \

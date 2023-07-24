@@ -140,7 +140,6 @@ static int16_t audio_buf[AUDIO_FRAME * 2];
 
 void retro_run(void)
 {
-	int16_t tmp_audio[803];
 	uint32_t joypad = 0;
 
 	input_poll_cb();
@@ -158,19 +157,9 @@ void retro_run(void)
 	joypad |= NDS_BUTTON_START  * (!!input_state_cb(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_START));
 	joypad |= NDS_BUTTON_SELECT * (!!input_state_cb(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_SELECT));
 
-	nds_frame(g_nds, video_buf, tmp_audio, joypad);
+	nds_frame(g_nds, video_buf, audio_buf, joypad);
 
 	video_cb(video_buf, VIDEO_WIDTH, VIDEO_HEIGHT, VIDEO_WIDTH * 4);
-
-	for (size_t i = 0; i < AUDIO_FRAME; ++i)
-	{
-		uint16_t dst = i * 803 / AUDIO_FRAME;
-		uint16_t sample = tmp_audio[dst];
-		uint8_t l = sample >> 8;
-		uint8_t r = sample >> 0;
-		audio_buf[i * 2 + 0] = (l >> 1) | (l << 7);
-		audio_buf[i * 2 + 1] = (r >> 1) | (r << 7);
-	}
 
 	audio_batch_cb(audio_buf, AUDIO_FRAME);
 }

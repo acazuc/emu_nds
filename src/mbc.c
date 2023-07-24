@@ -114,7 +114,7 @@ static void init_keycode(mbc_t *mbc, uint32_t idcode, uint8_t level, uint8_t mod
 
 static void start_cmd(mbc_t *mbc)
 {
-#if 1
+#if 0
 	printf("start cmd with ROMCTRL=%08" PRIx32 ", AUXSPICNT=%04" PRIx32 "\n",
 	       mem_arm9_get_reg32(mbc->nds->mem, MEM_ARM9_REG_ROMCTRL),
 	       mem_arm9_get_reg16(mbc->nds->mem, MEM_ARM9_REG_AUXSPICNT));
@@ -125,7 +125,7 @@ static void start_cmd(mbc_t *mbc)
 
 static void end_cmd(mbc_t *mbc)
 {
-#if 1
+#if 0
 	printf("end cmd %s interrupt\n", (mem_arm9_get_reg16(mbc->nds->mem, MEM_ARM9_REG_AUXSPICNT) & (1 << 14)) ? "with" : "without");
 #endif
 	mbc->cmd = MBC_CMD_NONE;
@@ -164,7 +164,7 @@ void mbc_cmd(mbc_t *mbc)
 	cmd |= (uint64_t)mbc->nds->mem->arm9_regs[MEM_ARM9_REG_ROMCMD + 5] << 16;
 	cmd |= (uint64_t)mbc->nds->mem->arm9_regs[MEM_ARM9_REG_ROMCMD + 6] << 8;
 	cmd |= (uint64_t)mbc->nds->mem->arm9_regs[MEM_ARM9_REG_ROMCMD + 7] << 0;
-#if 1
+#if 0
 	printf("CMD %016" PRIx64 "\n", cmd);
 #endif
 	switch (mbc->enc)
@@ -207,7 +207,9 @@ void mbc_cmd(mbc_t *mbc)
 			values[0] = cmd >> 0;
 			decrypt(mbc, values);
 			cmd = ((uint64_t)values[1] << 32) | values[0];
+#if 0
 			printf("CMD KEY1 %016" PRIx64 "\n", cmd);
+#endif
 			switch ((cmd >> 60) & 0xF)
 			{
 				case 0x4:
@@ -251,7 +253,9 @@ void mbc_cmd(mbc_t *mbc)
 			uint64_t cmd_dec = 0;
 			for (size_t i = 0; i < 64; i += 8)
 				cmd_dec |= ((uint64_t)key2_byte(mbc, cmd >> i)) << i;
+#if 0
 			printf("CMD KEY2 %016" PRIx64 "\n", cmd_dec);
+#endif
 			switch ((cmd >> 56) & 0xFF)
 			{
 				case 0xB7:

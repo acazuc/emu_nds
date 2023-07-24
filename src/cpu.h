@@ -121,7 +121,6 @@ typedef struct cpu
 	struct cp15 cp15;
 	mem_t *mem;
 	const struct cpu_instr *instr;
-	uint32_t last_bios_decode;
 	uint32_t instr_opcode;
 	uint32_t instr_delay;
 	uint8_t debug;

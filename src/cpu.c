@@ -236,16 +236,12 @@ static bool decode_instruction(cpu_t *cpu)
 	if (CPU_GET_FLAG_T(cpu))
 	{
 		uint32_t pc = cpu_get_reg(cpu, CPU_REG_PC);
-		if (pc < 0x4000)
-			cpu->last_bios_decode = pc + 4;
 		cpu->instr_opcode = cpu->get16(cpu->mem, pc, cpu->arm9 ? MEM_CODE_NSEQ : MEM_CODE_SEQ);
 		cpu->instr = cpu_instr_thumb[cpu->instr_opcode >> 6];
 	}
 	else
 	{
 		uint32_t pc = cpu_get_reg(cpu, CPU_REG_PC);
-		if (pc < 0x4000)
-			cpu->last_bios_decode = pc + 8;
 		cpu->instr_opcode = cpu->get32(cpu->mem, pc, cpu->arm9 ? MEM_CODE_NSEQ : MEM_CODE_SEQ);
 		if (cpu->instr_opcode >> 25 == 0x7D) /* come on arm ISA.... wtf ? */
 		{
@@ -275,8 +271,8 @@ void cpu_cycle(cpu_t *cpu)
 		cpu->debug = CPU_DEBUG_REGS | CPU_DEBUG_INSTR;
 #endif
 #if 0
-	if (cpu_get_reg(cpu, CPU_REG_PC) == 0x01ff8130)
-		cpu->debug = CPU_DEBUG_ALL;
+	if (cpu_get_reg(cpu, CPU_REG_PC) == 0x20F8)
+		cpu->debug = CPU_DEBUG_ALL_ML;
 #endif
 
 	if (!cpu->instr)
@@ -502,19 +498,25 @@ void cp15_write(cpu_t *cpu, uint8_t cn, uint8_t cm, uint8_t cp, uint32_t v)
 			return;
 		case 0x750: /* invalidate instruction cache */
 			return;
-		case 0x751: /* invalidate instruction cache line */
+		case 0x751: /* invalidate instruction cache line VA */
+			return;
+		case 0x752: /* invalidate instruction cache line S/I */
 			return;
 		case 0x760: /* invalidate data cache */
 			return;
-		case 0x761: /* invalidate data cache line */
+		case 0x761: /* invalidate data cache line VA */
 			return;
-		case 0x7A1: /* clean data cache line */
+		case 0x762: /* invalidate data cache line S/I */
+			return;
+		case 0x7A1: /* clean data cache line VA */
+			return;
+		case 0x7A2: /* clean data cache line S/I */
 			return;
 		case 0x7A4: /* drain write buffer */
 			return;
-		case 0x7E1: /* clean and invalidate cache line */
+		case 0x7E1: /* clean and invalidate cache line VA */
 			return;
-		case 0x7E2: /* clean and invalidate cache line */
+		case 0x7E2: /* clean and invalidate cache line S/I */
 			return;
 		case 0x900:
 			cpu->cp15.dcl = v;

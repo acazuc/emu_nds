@@ -9,8 +9,15 @@ typedef struct mem mem_t;
 
 typedef struct apu
 {
-	uint16_t data[APU_FRAME_SAMPLES];
+	int16_t data[APU_FRAME_SAMPLES * 2];
 	mem_t *mem;
+	struct
+	{
+		uint16_t clock;
+	} channels[16];
+	uint32_t clock;
+	uint32_t sample;
+	uint32_t next_sample;
 } apu_t;
 
 apu_t *apu_new(mem_t *mem);

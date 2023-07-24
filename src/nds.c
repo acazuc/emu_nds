@@ -7,6 +7,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 /*
  * 22A4: read a firmware byte
@@ -89,6 +90,15 @@
  *       166C: wait for ROMCTRL ready
  * 1DC4: (irq vector) do stuff
  *       call 1888
+ *
+ * 21E8: read RTC date
+ *
+ * 214A: write RTC cmd (r0=rtc reg write mask)
+ *
+ * 20F8: read RTC bytes (r0=dst, r1=nbytes)
+ *       2104: while (i < nbytes)
+ *       2108: while (b < 8)
+ *             211C: read RTC bit
  */
 
 nds_t *nds_new(const void *rom_data, size_t rom_size)
@@ -156,12 +166,15 @@ static void nds_cycles(nds_t *nds, uint32_t cycles)
 			cpu_cycle(nds->arm9);
 		else
 			nds->arm9->instr_delay--;
-		apu_cycle(nds->apu);
+		if (!(nds->cycle & 3))
+			apu_cycle(nds->apu);
 	}
 }
 
 void nds_frame(nds_t *nds, uint8_t *video_buf, int16_t *audio_buf, uint32_t joypad)
 {
+	nds->apu->sample = 0;
+	nds->apu->next_sample = nds->apu->clock;
 	nds->joypad = joypad;
 	for (uint8_t y = 0; y < 192; ++y)
 	{
