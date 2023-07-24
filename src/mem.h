@@ -313,7 +313,7 @@ typedef struct mem
 	uint8_t arm9_bios[0x1000];
 	uint8_t firmware[0x40000];
 	uint8_t arm7_regs[0x600];
-	uint8_t arm9_regs[0x700];
+	uint8_t arm9_regs[0x1070];
 	uint8_t mram[0x400000];
 	uint8_t wram[0x8000];
 	uint8_t arm7_wram[0x10000];
