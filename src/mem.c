@@ -345,12 +345,8 @@ static void powerman_write(mem_t *mem, uint8_t v)
 #endif
 	if (mem->spi_powerman.has_cmd)
 	{
-		uint8_t reg = mem->spi_powerman.cmd & ~(1 << 7);
-		if (reg > 0x4)
-		{
-			printf("SPI powerman invalid reg: 0x%02" PRIx8 "\n", reg);
-			return;
-		}
+		static const uint8_t regs[8] = {0, 1, 2, 3, 4, 4, 4, 4};
+		uint8_t reg = regs[mem->spi_powerman.cmd & 0x7];
 		if (mem->spi_powerman.cmd & (1 << 7))
 		{
 			uint8_t val = mem->spi_powerman.regs[reg];
