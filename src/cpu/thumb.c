@@ -56,7 +56,6 @@ THUMB_INSTR(n##_imm, \
 	cpu_set_reg(cpu, rdr, rs); \
 	update_flags_logical(cpu, rs); \
 	cpu_inc_pc(cpu, 2); \
-	cpu->instr_delay += 1; \
 }, \
 { \
 	uint32_t shift = (cpu->instr_opcode >> 6) & 0x1F; \
@@ -118,7 +117,6 @@ THUMB_INSTR(n##_##v, \
 		CPU_SET_FLAG_C(cpu, res < rs); \
 	} \
 	cpu_inc_pc(cpu, 2); \
-	cpu->instr_delay += 1; \
 }, \
 { \
 	uint32_t rsr = (cpu->instr_opcode >> 3) & 0x7; \
@@ -173,7 +171,6 @@ THUMB_INSTR(n##_i8r##r, \
 	uint32_t nn = cpu->instr_opcode & 0xFF; \
 	mcas_##n(cpu, r, nn); \
 	cpu_inc_pc(cpu, 2); \
-	cpu->instr_delay += 1; \
 }, \
 { \
 	uint32_t nn = cpu->instr_opcode & 0xFF; \
@@ -357,7 +354,6 @@ THUMB_INSTR(alu_##n, \
 		rs += 4; \
 	alu_##n(cpu, rd, rdr, rs); \
 	cpu_inc_pc(cpu, 2); \
-	cpu->instr_delay += 1; \
 }, \
 { \
 	uint32_t rd = (cpu->instr_opcode >> 0) & 0x7; \
@@ -411,7 +407,6 @@ static void hi_movh(cpu_t *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
 	if (rdr == CPU_REG_PC)
 	{
 		cpu_set_reg(cpu, rdr, rs & ~1);
-		cpu->instr_delay += 2;
 	}
 	else
 	{
@@ -432,7 +427,6 @@ THUMB_INSTR(n, \
 	uint32_t rs = cpu_get_reg(cpu, rsr); \
 	rs += (rsr == CPU_REG_PC) ? 4 : 0; \
 	hi_##n(cpu, rd, rdr, rs); \
-	cpu->instr_delay++; \
 }, \
 { \
 	uint32_t msbd = (cpu->instr_opcode >> 7) & 0x1; \
@@ -465,7 +459,6 @@ THUMB_INSTR(bx,
 	if (msbd)
 		cpu_set_reg(cpu, CPU_REG_LR, (cpu_get_reg(cpu, CPU_REG_PC) + 2) | 1);
 	cpu_set_reg(cpu, CPU_REG_PC, rs);
-	cpu->instr_delay += 3;
 },
 {
 	uint32_t msbs = (cpu->instr_opcode >> 6) & 0x1;
@@ -557,6 +550,8 @@ THUMB_INSTR(n##_reg, \
 	uint32_t ro = (cpu->instr_opcode >> 6) & 0x7; \
 	stld_##n(cpu, rd, cpu_get_reg(cpu, rb), cpu_get_reg(cpu, ro)); \
 	cpu_inc_pc(cpu, 2); \
+	if (st_ld) \
+		cpu->instr_delay++; \
 }, \
 { \
 	uint32_t rd = (cpu->instr_opcode >> 0) & 0x7; \
@@ -583,6 +578,8 @@ THUMB_INSTR(n##_imm, \
 	nn *= nn_mult; \
 	stld_##n(cpu, rd, cpu_get_reg(cpu, rb), nn); \
 	cpu_inc_pc(cpu, 2); \
+	if (st_ld) \
+		cpu->instr_delay++; \
 }, \
 { \
 	uint32_t rd = (cpu->instr_opcode >> 0) & 0x7; \
@@ -608,6 +605,7 @@ THUMB_INSTR(n##sp_r##r, \
 		uint32_t addr = cpu_get_reg(cpu, CPU_REG_SP) + nn; \
 		uint32_t v = cpu->get32(cpu->mem, addr, MEM_DATA_NSEQ); \
 		cpu_set_reg(cpu, rd, THUMB_ROR(v, (addr & 3) * 8)); \
+		cpu->instr_delay++; \
 	} \
 	else \
 	{ \
@@ -800,7 +798,6 @@ THUMB_INSTR(n####next, \
 		cpu_set_reg(cpu, base_reg, sp); \
 	if (pc_inc) \
 		cpu_inc_pc(cpu, 2); \
-	cpu->instr_delay++; \
 }, \
 { \
 	uint32_t regs = cpu->instr_opcode & 0xFF; \

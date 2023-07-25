@@ -13,17 +13,17 @@ static const uint16_t timer_masks[4] = {0, 0x7E, 0x1FE, 0x7FE};
 
 static const uint32_t dma_len_max[4] = {0x4000, 0x4000, 0x4000, 0x10000};
 
-static const uint8_t arm7_mram_cycles_32[] = {0, 4, 20, 4, 18};
-static const uint8_t arm7_mram_cycles_16[] = {0, 2, 18, 2, 16};
-static const uint8_t arm7_mram_cycles_8[]  = {0, 2, 18, 2, 16};
+static const uint8_t arm7_mram_cycles_32[] = {0, 2, 10, 2,  9};
+static const uint8_t arm7_mram_cycles_16[] = {0, 1,  9, 1,  8};
+static const uint8_t arm7_mram_cycles_8[]  = {0, 1,  9, 1,  8};
 
-static const uint8_t arm7_wram_cycles_32[] = {0, 2,  2, 2,  2};
-static const uint8_t arm7_wram_cycles_16[] = {0, 2,  2, 2,  2};
-static const uint8_t arm7_wram_cycles_8[]  = {0, 2,  2, 2,  2};
+static const uint8_t arm7_wram_cycles_32[] = {0, 1,  1, 1,  1};
+static const uint8_t arm7_wram_cycles_16[] = {0, 1,  1, 1,  1};
+static const uint8_t arm7_wram_cycles_8[]  = {0, 1,  1, 1,  1};
 
-static const uint8_t arm7_vram_cycles_32[] = {0, 4,  2, 4,  4};
-static const uint8_t arm7_vram_cycles_16[] = {0, 2,  2, 2,  2};
-static const uint8_t arm7_vram_cycles_8[]  = {0, 2,  2, 2,  2};
+static const uint8_t arm7_vram_cycles_32[] = {0, 2,  1, 2,  2};
+static const uint8_t arm7_vram_cycles_16[] = {0, 1,  1, 1,  1};
+static const uint8_t arm7_vram_cycles_8[]  = {0, 1,  1, 1,  1};
 
 static const uint8_t arm9_mram_cycles_32[] = {0, 4, 20, 18, 18};
 static const uint8_t arm9_mram_cycles_16[] = {0, 2, 18,  9,  9};

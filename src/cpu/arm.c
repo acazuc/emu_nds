@@ -1254,7 +1254,6 @@ ARM_INSTR(b,
 	if (cpu->instr_opcode & 0x800000)
 		v = -(~v & 0x7FFFFF) - 1;
 	cpu_inc_pc(cpu, 8 + 4 * v);
-	cpu->instr_delay += 3;
 },
 {
 	int32_t v = cpu->instr_opcode & 0x7FFFFF;
@@ -1270,7 +1269,6 @@ ARM_INSTR(bl,
 		v = -(~v & 0x7FFFFF) - 1;
 	cpu_set_reg(cpu, CPU_REG_LR, cpu_get_reg(cpu, CPU_REG_PC) + 4);
 	cpu_inc_pc(cpu, 8 + 4 * v);
-	cpu->instr_delay += 3;
 },
 {
 	int32_t v = cpu->instr_opcode & 0x7FFFFF;
@@ -1401,7 +1399,6 @@ ARM_INSTR(blx_imm,
 	v += ((cpu->instr_opcode >> 23) & 0x2);
 	cpu_inc_pc(cpu, 8 + v);
 	CPU_SET_FLAG_T(cpu, 1);
-	cpu->instr_delay += 3;
 },
 {
 	int32_t v = cpu->instr_opcode & 0x7FFFFF;
