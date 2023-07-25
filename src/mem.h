@@ -267,6 +267,19 @@ struct spi_firmware
 	} cmd_data;
 };
 
+struct spi_powerman
+{
+	uint8_t has_cmd;
+	uint8_t cmd;
+	uint8_t read_latch;
+	uint8_t regs[0x5];
+};
+
+struct spi_touchscreen
+{
+	uint8_t read_latch;
+};
+
 struct rtc
 {
 	int cmd_flip;
@@ -317,6 +330,8 @@ typedef struct mem
 	struct fifo arm7_fifo;
 	struct fifo arm9_fifo;
 	struct spi_firmware spi_firmware;
+	struct spi_powerman spi_powerman;
+	struct spi_touchscreen spi_touchscreen;
 	struct rtc rtc;
 	uint8_t arm7_bios[0x4000];
 	uint8_t arm9_bios[0x1000];

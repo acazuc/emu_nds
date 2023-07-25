@@ -35,7 +35,7 @@ typedef struct nds
 	cpu_t *arm9;
 	gpu_t *gpu;
 	uint32_t joypad;
-	uint32_t cycle;
+	uint64_t cycle;
 } nds_t;
 
 nds_t *nds_new(const void *rom_data, size_t rom_size);

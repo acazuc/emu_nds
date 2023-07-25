@@ -309,46 +309,80 @@ void mem_dscard(mem_t *mem)
 
 static uint8_t powerman_read(mem_t *mem)
 {
-#if 1
-	printf("SPI powerman read\n");
+#if 0
+	printf("[%08" PRIx32 "] SPI powerman read 0x%02" PRIx8 "\n",
+	       cpu_get_reg(mem->nds->arm7, CPU_REG_PC),
+	       mem->spi_powerman.read_latch);
 #endif
-	/* XXX */
-	(void)mem;
-	return 0;
+	return mem->spi_powerman.read_latch;
 }
 
 static uint8_t firmware_read(mem_t *mem)
 {
 #if 0
-	printf("SPI firmware read %02" PRIx8 "\n", mem->spi_firmware.read_latch);
+	printf("[%08" PRIx32 "] SPI firmware read 0x%02" PRIx8 "\n",
+	       cpu_get_reg(mem->nds->arm7, CPU_REG_PC),
+	       mem->spi_firmware.read_latch);
 #endif
 	return mem->spi_firmware.read_latch;
 }
 
 static uint8_t touchscreen_read(mem_t *mem)
 {
-#if 1
-	printf("SPI touchscreen read\n");
+#if 0
+	printf("[%08" PRIx32 "] SPI touchscreen read 0x%02" PRIx8 "\n",
+	       cpu_get_reg(mem->nds->arm7, CPU_REG_PC),
+	       mem->spi_touchscreen.read_latch);
 #endif
-	/* XXX */
-	(void)mem;
-	return 0;
+	return mem->spi_touchscreen.read_latch;
 }
 
 static void powerman_write(mem_t *mem, uint8_t v)
 {
-#if 1
-	printf("SPI powerman write 0x%02" PRIx8 "\n", v);
+#if 0
+	printf("[%08" PRIx32 "] SPI powerman write 0x%02" PRIx8 "\n",
+	       cpu_get_reg(mem->nds->arm7, CPU_REG_PC), v);
 #endif
-	/* XXX */
-	(void)mem;
-	(void)v;
+	if (mem->spi_powerman.has_cmd)
+	{
+		uint8_t reg = mem->spi_powerman.cmd & ~(1 << 7);
+		if (reg > 0x4)
+		{
+			printf("SPI powerman invalid reg: 0x%02" PRIx8 "\n", reg);
+			return;
+		}
+		if (mem->spi_powerman.cmd & (1 << 7))
+		{
+			uint8_t val = mem->spi_powerman.regs[reg];
+#if 0
+			printf("SPI powerman read reg[0x%" PRIx8 "] = 0x%02" PRIx8 "\n",
+			       reg, val);
+#endif
+			mem->spi_powerman.read_latch = val;
+		}
+		else
+		{
+			mem->spi_powerman.regs[reg] = v;
+#if 0
+			printf("SPI powerman write reg[0x%" PRIx8 "] = 0x%02" PRIx8 "\n",
+			       reg, v);
+#endif
+		}
+		return;
+	}
+	if (mem->arm7_regs[MEM_ARM7_REG_SPICNT + 1] & (1 << 3))
+	{
+		mem->spi_powerman.has_cmd = 1;
+		mem->spi_powerman.cmd = v;
+		return;
+	}
 }
 
 static void firmware_write(mem_t *mem, uint8_t v)
 {
 #if 0
-	printf("SPI firmware write 0x%02" PRIx8 "\n", v);
+	printf("[%08" PRIx32 "] SPI firmware write 0x%02" PRIx8 "\n",
+	       cpu_get_reg(mem->nds->arm7, CPU_REG_PC), v);
 #endif
 	switch (mem->spi_firmware.cmd)
 	{
@@ -363,7 +397,7 @@ static void firmware_write(mem_t *mem, uint8_t v)
 				case 0x5:
 					break;
 				default:
-					printf("unknown SPI firmware cmd: %02" PRIx8 "\n", v);
+					printf("unknown SPI firmware cmd: 0x%02" PRIx8 "\n", v);
 					return;
 			}
 			return;
@@ -396,8 +430,9 @@ static void firmware_write(mem_t *mem, uint8_t v)
 
 static void touchscreen_write(mem_t *mem, uint8_t v)
 {
-#if 1
-	printf("SPI touchscreen write 0x%02" PRIx8 "\n", v);
+#if 0
+	printf("[%08" PRIx32 "] SPI touchscreen write 0x%02" PRIx8 "\n",
+	       cpu_get_reg(mem->nds->arm7, CPU_REG_PC), v);
 #endif
 	/* XXX */
 	(void)mem;
@@ -406,25 +441,27 @@ static void touchscreen_write(mem_t *mem, uint8_t v)
 
 static void powerman_reset(mem_t *mem)
 {
-#if 1
-	printf("SPI powerman reset\n");
+#if 0
+	printf("[%08" PRIx32 "] SPI powerman reset\n",
+	       cpu_get_reg(mem->nds->arm7, CPU_REG_PC));
 #endif
-	/* XXX */
-	(void)mem;
+	mem->spi_powerman.has_cmd = 0;
 }
 
 static void firmware_reset(mem_t *mem)
 {
 #if 0
-	printf("SPI firmware reset\n");
+	printf("[%08" PRIx32 "] SPI firmware reset\n",
+	       cpu_get_reg(mem->nds->arm7, CPU_REG_PC));
 #endif
 	mem->spi_firmware.cmd = 0;
 }
 
 static void touchscreen_reset(mem_t *mem)
 {
-#if 1
-	printf("SPI touchscreen reset\n");
+#if 0
+	printf("[%08" PRIx32 "] SPI touchscreen reset\n",
+	       cpu_get_reg(mem->nds->arm7, CPU_REG_PC));
 #endif
 	/* XXX */
 	(void)mem;
@@ -433,7 +470,8 @@ static void touchscreen_reset(mem_t *mem)
 static uint8_t spi_read(mem_t *mem)
 {
 #if 0
-	printf("SPI read\n");
+	printf("[%08" PRIx32 "] SPI read\n",
+	       cpu_get_reg(mem->nds->arm7, CPU_REG_PC));
 #endif
 	switch (mem->arm7_regs[MEM_ARM7_REG_SPICNT + 1] & 0x3)
 	{
@@ -453,7 +491,8 @@ static uint8_t spi_read(mem_t *mem)
 static void spi_write(mem_t *mem, uint8_t v)
 {
 #if 0
-	printf("SPI write %02" PRIx8 "\n", v);
+	printf("[%08" PRIx32 "] SPI write %02" PRIx8 "\n",
+	       cpu_get_reg(mem->nds->arm7, CPU_REG_PC), v);
 #endif
 	switch (mem->arm7_regs[MEM_ARM7_REG_SPICNT + 1] & 0x3)
 	{
@@ -1162,14 +1201,14 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 			arm7_timer_control(mem, 3, v);
 			return;
 		case MEM_ARM7_REG_SPICNT:
-#if 1
+#if 0
 			printf("[%08" PRIx32 "] SPICNT[%08" PRIx32 "] = %02" PRIx8 "\n",
 			       cpu_get_reg(mem->nds->arm7, CPU_REG_PC), addr, v);
 #endif
 			mem->arm7_regs[addr] = v & ~(1 << 7);
 			return;
 		case MEM_ARM7_REG_SPICNT + 1:
-#if 1
+#if 0
 			printf("[%08" PRIx32 "] SPICNT[%08" PRIx32 "] = %02" PRIx8 "\n",
 			       cpu_get_reg(mem->nds->arm7, CPU_REG_PC), addr, v);
 #endif
@@ -1486,7 +1525,7 @@ static uint8_t get_arm7_reg8(mem_t *mem, uint32_t addr)
 			return mem->arm7_regs[addr];
 		case MEM_ARM7_REG_SPICNT:
 		case MEM_ARM7_REG_SPICNT + 1:
-#if 1
+#if 0
 			printf("[%08" PRIx32 "] SPICNT[%08" PRIx32 "] read 0x%02" PRIx8 "\n",
 			       cpu_get_reg(mem->nds->arm7, CPU_REG_PC), addr, mem->arm7_regs[addr]);
 #endif

@@ -25,6 +25,7 @@
  *       2382: SPICNT = val
  *       2384: write SPIDATA
  * 2388: (called 1 time) do things, then call 2330 4 times
+ *       2398: 33C0(r0=3, r1=1)
  * 2462: calls LZ77UnCompReadByCallbackWrite16bit with:
  *             - open_and_get_32bit: 0x2388 (returns 0x010b4410, so LZ44 of 0x10b44 uncompressed bytes)
  *             - close             : 0x22C6
@@ -41,6 +42,9 @@
  * 2A2A: LZ77UnCompReadByCallbackWrite16bit
  * 3344: thumb wrapper of 1130
  * 33A4: read spi bytes + WaitByLoop (r0 = dst, r1 = bytes count, r2 = unk (unused?))
+ * 33C0: firmware write byte ? (r0=spidata byte, r1=chip hold)
+ *       33CC: 2368(r0=0x2100, r1=arg_r0, r2=arg_r1)
+ *       33D2: if (!arg_r1) WaitByLoop(3)
  *
  *
  * - 124A
