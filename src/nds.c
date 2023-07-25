@@ -10,20 +10,21 @@
 #include <stdio.h>
 
 /*
+ * 1130: bios call wrapper of 20BC (by 1164)
+ * 1164: bios safe call
+ * 20BC: decrypt a block of 8 bytes (r0 = dst, r1 = src)
  * 22A4: read a firmware byte
  * 227C: read an spi byte (return in r0, r0 = SPICNT (bit 15 not needed), r1 = hold)
  * 22D6: read spi bytes (r1 = dst, r2 = bytes count, r3 = unk (unused?))
- * 33A4: read spi bytes + WaitByLoop (r0 = dst, r1 = bytes count, r2 = unk (unused?))
  * 2330: function to read a block byte per byte (with cached data)
  *  - read + decrypt a firmware block into 0x037F90C4 (8 bytes, 0x037F800C as tmp buffer)
  *  - increment uint16_t @ 0x037F800A (if not 0 at call, no data is read + unciphered) (upper 29 bits are cleared (mod 8))
  *  - return 0x037F800C[*0x037F800A] in r0
- * 20BC: decrypt a block of 8 bytes (r0 = dst, r1 = src)
- * 1164: bios safe call
- * 1130: bios call wrapper of 20BC (by 1164)
- * 3344: thumb wrapper of 1130
+ * 2368: wait SPI availability & write SPIDATA byte (r0=spicnt ored mask, r1=spidata byte, r2=chip hold(0/1))
+ *       237C: while (SPICNT & (1 << 7))
+ *       2382: SPICNT = val
+ *       2384: write SPIDATA
  * 2388: (called 1 time) do things, then call 2330 4 times
- * 2A2A: LZ77UnCompReadByCallbackWrite16bit
  * 2462: calls LZ77UnCompReadByCallbackWrite16bit with:
  *             - open_and_get_32bit: 0x2388 (returns 0x010b4410, so LZ44 of 0x10b44 uncompressed bytes)
  *             - close             : 0x22C6
@@ -37,6 +38,9 @@
  *             read firmware up to 14F18
  *       24F2: if (SVC_LZ77UnCompReadBycallbackWrite16bit(r0=0xCA20, r1=0x037FA800, r2=0x33E0, r3=0x33E0) > 0)
  *       2500:     SVC_GetCRC16(r0=0x245F, r1=0x037FA800, r2=0x0B2B0) = 0x0F1F
+ * 2A2A: LZ77UnCompReadByCallbackWrite16bit
+ * 3344: thumb wrapper of 1130
+ * 33A4: read spi bytes + WaitByLoop (r0 = dst, r1 = bytes count, r2 = unk (unused?))
  *
  *
  * - 124A
@@ -166,8 +170,9 @@ static void nds_cycles(nds_t *nds, uint32_t cycles)
 			cpu_cycle(nds->arm9);
 		else
 			nds->arm9->instr_delay--;
-		if (!(nds->cycle & 3))
+		if (!(nds->cycle & 0x1FF))
 			apu_cycle(nds->apu);
+		apu_sample(nds->apu);
 	}
 }
 

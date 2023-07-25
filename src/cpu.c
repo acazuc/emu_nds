@@ -27,7 +27,6 @@ cpu_t *cpu_new(mem_t *mem, int arm9)
 		cpu->cp15.ctr = 0x0F0D2112;
 		cpu->cp15.tcmsr = 0x00140180;
 		cpu->cp15.cr = 0x00002078;
-		//cpu->debug = CPU_DEBUG_ALL | CPU_DEBUG_REGS_ML;
 	}
 	else
 	{
@@ -37,15 +36,11 @@ cpu_t *cpu_new(mem_t *mem, int arm9)
 		cpu->set8 = mem_arm7_set8;
 		cpu->set16 = mem_arm7_set16;
 		cpu->set32 = mem_arm7_set32;
-		//cpu->debug = CPU_DEBUG_ALL | CPU_DEBUG_REGS_ML;
 	}
 	cpu->mem = mem;
 	cpu->regs.cpsr = 0xD3;
 	cpu_update_mode(cpu);
-	if (arm9)
-	{
-		cpu_set_reg(cpu, CPU_REG_PC, (cpu->cp15.cr & 0x2000) ? 0xFFFF0000 : 0);
-	}
+	cpu_set_reg(cpu, CPU_REG_PC, (cpu->cp15.cr & 0x2000) ? 0xFFFF0000 : 0);
 	return cpu;
 }
 
