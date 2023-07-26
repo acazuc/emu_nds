@@ -277,7 +277,10 @@ struct spi_powerman
 
 struct spi_touchscreen
 {
-	uint8_t read_latch;
+	uint16_t read_latch;
+	uint8_t read_pos;
+	uint8_t channel;
+	uint8_t has_channel;
 };
 
 struct rtc
@@ -384,6 +387,19 @@ void mem_arm9_set8 (mem_t *mem, uint32_t addr, uint8_t val, enum mem_type type);
 void mem_arm9_set16(mem_t *mem, uint32_t addr, uint16_t val, enum mem_type type);
 void mem_arm9_set32(mem_t *mem, uint32_t addr, uint32_t val, enum mem_type type);
 
+uint8_t  mem_vram_bga_get8 (mem_t *mem, uint32_t addr);
+uint16_t mem_vram_bga_get16(mem_t *mem, uint32_t addr);
+uint32_t mem_vram_bga_get32(mem_t *mem, uint32_t addr);
+uint8_t  mem_vram_bgb_get8 (mem_t *mem, uint32_t addr);
+uint16_t mem_vram_bgb_get16(mem_t *mem, uint32_t addr);
+uint32_t mem_vram_bgb_get32(mem_t *mem, uint32_t addr);
+uint8_t  mem_vram_obja_get8 (mem_t *mem, uint32_t addr);
+uint16_t mem_vram_obja_get16(mem_t *mem, uint32_t addr);
+uint32_t mem_vram_obja_get32(mem_t *mem, uint32_t addr);
+uint8_t  mem_vram_objb_get8 (mem_t *mem, uint32_t addr);
+uint16_t mem_vram_objb_get16(mem_t *mem, uint32_t addr);
+uint32_t mem_vram_objb_get32(mem_t *mem, uint32_t addr);
+
 static inline uint8_t mem_arm9_get_reg8(mem_t *mem, uint32_t reg)
 {
 	return mem->arm9_regs[reg];
@@ -462,16 +478,6 @@ static inline void mem_arm9_if(mem_t *mem, uint32_t f)
 static inline void mem_arm7_if(mem_t *mem, uint32_t f)
 {
 	mem_arm7_set_reg32(mem, MEM_ARM7_REG_IF, mem_arm7_get_reg32(mem, MEM_ARM7_REG_IF) | f);
-}
-
-static inline uint8_t mem_get_vram8(mem_t *mem, uint32_t addr)
-{
-	return mem->vram[addr];
-}
-
-static inline uint16_t mem_get_vram16(mem_t *mem, uint32_t addr)
-{
-	return *(uint16_t*)&mem->vram[addr & ~1];
 }
 
 static inline uint16_t mem_get_oam16(mem_t *mem, uint32_t addr)

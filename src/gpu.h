@@ -10,13 +10,15 @@ typedef struct gpu
 	struct gpu_eng
 	{
 		uint8_t data[256 * 192 * 4];
+		uint8_t  (*get_vram_bg8 )(mem_t *mem, uint32_t addr);
+		uint16_t (*get_vram_bg16)(mem_t *mem, uint32_t addr);
+		uint32_t (*get_vram_bg32)(mem_t *mem, uint32_t addr);
+		uint8_t  (*get_vram_obj8 )(mem_t *mem, uint32_t addr);
+		uint16_t (*get_vram_obj16)(mem_t *mem, uint32_t addr);
+		uint32_t (*get_vram_obj32)(mem_t *mem, uint32_t addr);
 		uint32_t reg_base;
 		uint32_t pal_base;
 		uint32_t oam_base;
-		uint32_t bg_base;
-		uint32_t bg_mask;
-		uint32_t obj_base;
-		uint32_t obj_mask;
 		int32_t bg2x;
 		int32_t bg2y;
 		int32_t bg3x;

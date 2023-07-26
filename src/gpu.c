@@ -58,18 +58,22 @@ gpu_t *gpu_new(mem_t *mem)
 	gpu->enga.reg_base = 0;
 	gpu->enga.pal_base = 0;
 	gpu->enga.oam_base = 0;
-	gpu->enga.bg_base = MEM_VRAM_A_BASE;
-	gpu->enga.bg_mask = MEM_VRAM_A_MASK;
-	gpu->enga.obj_base = MEM_VRAM_B_BASE;
-	gpu->enga.obj_mask = MEM_VRAM_B_MASK;
+	gpu->enga.get_vram_bg8  = mem_vram_bga_get8;
+	gpu->enga.get_vram_bg16 = mem_vram_bga_get16;
+	gpu->enga.get_vram_bg32 = mem_vram_bga_get32;
+	gpu->enga.get_vram_obj8  = mem_vram_obja_get8;
+	gpu->enga.get_vram_obj16 = mem_vram_obja_get16;
+	gpu->enga.get_vram_obj32 = mem_vram_obja_get32;
 	gpu->enga.engb = 0;
 	gpu->engb.reg_base = 0x1000;
 	gpu->engb.pal_base = 0x400;
 	gpu->engb.oam_base = 0x400;
-	gpu->engb.bg_base = MEM_VRAM_C_BASE;
-	gpu->engb.bg_mask = MEM_VRAM_C_MASK;
-	gpu->engb.obj_base = MEM_VRAM_D_BASE;
-	gpu->engb.obj_mask = MEM_VRAM_D_MASK;
+	gpu->engb.get_vram_bg8  = mem_vram_bgb_get8;
+	gpu->engb.get_vram_bg16 = mem_vram_bgb_get16;
+	gpu->engb.get_vram_bg32 = mem_vram_bgb_get32;
+	gpu->engb.get_vram_obj8  = mem_vram_objb_get8;
+	gpu->engb.get_vram_obj16 = mem_vram_objb_get16;
+	gpu->engb.get_vram_obj32 = mem_vram_objb_get32;
 	gpu->engb.engb = 1;
 	return gpu;
 }
@@ -132,7 +136,7 @@ static void draw_background_text(gpu_t *gpu, struct gpu_eng *eng, uint8_t y, uin
 		}
 		uint32_t mapaddr = mapbase + mapoff;
 		mapaddr += (mapx + mapy * 32) * 2;
-		uint16_t map = mem_get_vram16(gpu->mem, eng->bg_base + (mapaddr & eng->bg_mask));
+		uint16_t map = eng->get_vram_bg16(gpu->mem, mapaddr);
 		uint16_t tileid = map & 0x3FF;
 #if 0
 		printf("[BG0] %03ux%03u, tile: %04x (%08x)\n",
@@ -148,7 +152,7 @@ static void draw_background_text(gpu_t *gpu, struct gpu_eng *eng, uint8_t y, uin
 		{
 			tileaddr += tileid * 0x40;
 			tileaddr += tilex + tiley * 8;
-			paladdr = mem_get_vram8(gpu->mem, eng->bg_base + (tileaddr & eng->bg_mask));
+			paladdr = eng->get_vram_bg8(gpu->mem, tileaddr);
 			if (!paladdr)
 				continue;
 		}
@@ -156,7 +160,7 @@ static void draw_background_text(gpu_t *gpu, struct gpu_eng *eng, uint8_t y, uin
 		{
 			tileaddr += tileid * 0x20;
 			tileaddr += tilex / 2 + tiley * 4;
-			paladdr = mem_get_vram8(gpu->mem, eng->bg_base + (tileaddr & eng->bg_mask));
+			paladdr = eng->get_vram_bg8(gpu->mem, tileaddr);
 #if 0
 			printf("[BG0] %03ux%03u, pixel: %02x (%08x)\n",
 			       x, y, paladdr, eng->bg_base + (tileaddr & eng->bg_mask));
@@ -215,14 +219,14 @@ static void draw_background_affine(gpu_t *gpu, struct gpu_eng *eng, uint8_t y, u
 		uint32_t tilex = vx % 8;
 		uint32_t tiley = vy % 8;
 		uint32_t mapaddr = mapbase + mapx + mapy * (mapsize / 8);
-		uint16_t tileid = mem_get_vram8(gpu->mem, eng->bg_base + (mapaddr & eng->bg_mask));
+		uint16_t tileid = eng->get_vram_bg8(gpu->mem, mapaddr);
 #if 0
 		printf("[BG1] %03ux%03u, tileid: %03x\n", x, y, tileid);
 #endif
 		uint8_t paladdr;
 		uint32_t tileaddr = tilebase + tileid * 0x40;
 		tileaddr += tilex + tiley * 8;
-		paladdr = mem_get_vram8(gpu->mem, eng->bg_base + (tileaddr & eng->bg_mask));
+		paladdr = eng->get_vram_bg8(gpu->mem, tileaddr);
 		if (!paladdr)
 			continue;
 		uint16_t val = mem_get_bg_palette(gpu->mem, eng->pal_base + paladdr * 2);
@@ -247,7 +251,7 @@ static void draw_background_bitmap_3(gpu_t *gpu, struct gpu_eng *eng, uint8_t y,
 		 || vy < 0 || vy >= 192)
 			continue;
 		uint32_t addr = 2 * (vx + 256 * vy);
-		uint16_t val = mem_get_vram16(gpu->mem, eng->bg_base + (addr & eng->bg_mask));
+		uint16_t val = eng->get_vram_bg16(gpu->mem, addr);
 		SETRGB5(&data[x * 4], val, 0xFF);
 	}
 }
@@ -271,7 +275,7 @@ static void draw_background_bitmap_4(gpu_t *gpu, struct gpu_eng *eng, uint8_t y,
 		 || vy < 0 || vy >= 192)
 			continue;
 		uint32_t addr = addr_offset + vx + 256 * vy;
-		uint8_t val = mem_get_vram8(gpu->mem, eng->bg_base + (addr & eng->bg_mask));
+		uint8_t val = eng->get_vram_bg8(gpu->mem, addr);
 		if (!val)
 			continue;
 		uint16_t col = mem_get_bg_palette(gpu->mem, eng->pal_base + val * 2);
@@ -303,7 +307,7 @@ static void draw_background_bitmap_5(gpu_t *gpu, struct gpu_eng *eng, uint8_t y,
 		 || vy < 0 || vy >= 128)
 			continue;
 		uint32_t addr = baseaddr + 2 * (vx + 192 * vy);
-		uint16_t val = mem_get_vram16(gpu->mem, eng->bg_base + (addr & eng->bg_mask));
+		uint16_t val = eng->get_vram_bg16(gpu->mem, addr);
 		SETRGB5(&data[(40 + x) * 4], val, 0xFF);
 	}
 }
@@ -447,7 +451,7 @@ static void draw_objects(gpu_t *gpu, struct gpu_eng *eng, uint8_t y, uint8_t *da
 			uint32_t tileoff = tileby * 0x8 + tilebx;
 			if (!color_mode)
 				tileoff /= 2;
-			uint16_t tilev = mem_get_vram8(gpu->mem, eng->obj_base + ((tilepos * 0x20 + tileoff) & eng->obj_mask));
+			uint16_t tilev = eng->get_vram_obj8(gpu->mem, tilepos * 0x20 + tileoff);
 			if (!color_mode)
 			{
 				if (tilebx & 1)
@@ -960,6 +964,13 @@ static void draw_eng(gpu_t *gpu, struct gpu_eng *eng, uint8_t y)
 
 void gpu_draw(gpu_t *gpu, uint8_t y)
 {
-	draw_eng(gpu, &gpu->enga, y);
-	draw_eng(gpu, &gpu->engb, y);
+	uint32_t powcnt1 = mem_arm9_get_reg32(gpu->mem, MEM_ARM9_REG_POWCNT1);
+	if (powcnt1 & (1 << 1))
+		draw_eng(gpu, &gpu->enga, y);
+	else
+		memset(&gpu->enga.data[y * 256 * 4], 0, 256 * 4);
+	if (powcnt1 & (1 << 9))
+		draw_eng(gpu, &gpu->engb, y);
+	else
+		memset(&gpu->engb.data[y * 256 * 4], 0, 256 * 4);
 }

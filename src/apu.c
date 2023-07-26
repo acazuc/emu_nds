@@ -31,6 +31,13 @@ static void gen_sample(apu_t *apu, int16_t *dst)
 		dst[1] = 0;
 		return;
 	}
+	uint32_t powcnt2 = mem_arm7_get_reg32(apu->mem, MEM_ARM7_REG_POWCNT2);
+	if (!(powcnt2 & (1 << 0)))
+	{
+		dst[0] = 0;
+		dst[1] = 0;
+		return;
+	}
 	for (size_t i = 0; i < 16; ++i)
 	{
 		uint32_t cnt = mem_arm7_get_reg32(apu->mem, MEM_ARM7_REG_SOUNDXCNT(i));
@@ -102,12 +109,18 @@ void apu_sample(apu_t *apu)
 
 void apu_cycle(apu_t *apu)
 {
+	uint32_t powcnt2 = mem_arm7_get_reg32(apu->mem, MEM_ARM7_REG_POWCNT2);
+	if (!(powcnt2 & (1 << 0)))
+		return;
 	for (size_t i = 0; i < 16; ++i)
 	{
 		uint32_t cnt = mem_arm7_get_reg32(apu->mem, MEM_ARM7_REG_SOUNDXCNT(i));
 		if (!(cnt & (1 << 31)))
 			continue;
 		struct apu_channel *channel = &apu->channels[i];
+		if (++channel->clock)
+			continue;
+		channel->clock = channel->tmr;
 		switch ((cnt >> 29) & 0x3)
 		{
 			case 0:
@@ -148,6 +161,7 @@ void apu_start_channel(apu_t *apu, uint8_t id)
 	channel->sad = mem_arm7_get_reg32(apu->mem, MEM_ARM7_REG_SOUNDXSAD(id));
 	channel->len = (mem_arm7_get_reg32(apu->mem, MEM_ARM7_REG_SOUNDXLEN(id)) & 0x3FFFFF) * 4;
 	channel->pos = 0;
+	channel->clock = channel->tmr;
 #if 0
 	printf("APU start %u: CNT=%08" PRIx32 " SAD=%08" PRIx32 " TMR=%04" PRIx16 " PNT=%04" PRIx16 " LEN=%08" PRIx32 "\n",
 	       id, mem_arm7_get_reg32(apu->mem, MEM_ARM7_REG_SOUNDXCNT(id)),

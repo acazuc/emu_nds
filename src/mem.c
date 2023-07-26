@@ -56,6 +56,7 @@ mem_t *mem_new(nds_t *nds, mbc_t *mbc)
 	mem->arm9_wram_base = 0x7FFF;
 	mem->arm9_regs[MEM_ARM7_REG_ROMCTRL + 2] = 0x80;
 	mem_arm7_set_reg32(mem, MEM_ARM7_REG_SOUNDBIAS, 0x200);
+	mem_arm7_set_reg32(mem, MEM_ARM7_REG_POWCNT2, 1);
 	mem->vram_bga_base = MEM_VRAM_A_BASE;
 	mem->vram_bga_mask = MEM_VRAM_A_MASK;
 	mem->vram_bgb_base = MEM_VRAM_C_BASE;
@@ -64,6 +65,8 @@ mem_t *mem_new(nds_t *nds, mbc_t *mbc)
 	mem->vram_obja_mask = MEM_VRAM_B_MASK;
 	mem->vram_objb_base = MEM_VRAM_D_BASE;
 	mem->vram_objb_mask = MEM_VRAM_D_MASK;
+	mem->spi_powerman.regs[0x0] = 0x0C; /* enable backlight */
+	mem->spi_powerman.regs[0x4] = 0x42; /* high brightness */
 	return mem;
 }
 
@@ -329,12 +332,21 @@ static uint8_t firmware_read(mem_t *mem)
 
 static uint8_t touchscreen_read(mem_t *mem)
 {
+	uint8_t v;
+	if (!mem->spi_touchscreen.read_pos)
+	{
+		v = mem->spi_touchscreen.read_latch >> 5;
+		mem->spi_touchscreen.read_pos = 1;
+	}
+	else
+	{
+		v = mem->spi_touchscreen.read_latch << 3;
+	}
 #if 0
 	printf("[%08" PRIx32 "] SPI touchscreen read 0x%02" PRIx8 "\n",
-	       cpu_get_reg(mem->nds->arm7, CPU_REG_PC),
-	       mem->spi_touchscreen.read_latch);
+	       cpu_get_reg(mem->nds->arm7, CPU_REG_PC), v);
 #endif
-	return mem->spi_touchscreen.read_latch;
+	return v;
 }
 
 static void powerman_write(mem_t *mem, uint8_t v)
@@ -358,7 +370,9 @@ static void powerman_write(mem_t *mem, uint8_t v)
 		}
 		else
 		{
-			mem->spi_powerman.regs[reg] = v;
+			static const uint8_t write_masks[5] = {0x7F, 0x00, 0x01, 0x03, 0x07};
+			mem->spi_powerman.regs[reg] = (v & write_masks[reg])
+			                            | (mem->spi_powerman.regs[reg] & ~write_masks[reg]);
 #if 0
 			printf("SPI powerman write reg[0x%" PRIx8 "] = 0x%02" PRIx8 "\n",
 			       reg, v);
@@ -430,9 +444,37 @@ static void touchscreen_write(mem_t *mem, uint8_t v)
 	printf("[%08" PRIx32 "] SPI touchscreen write 0x%02" PRIx8 "\n",
 	       cpu_get_reg(mem->nds->arm7, CPU_REG_PC), v);
 #endif
-	/* XXX */
-	(void)mem;
-	(void)v;
+	if (v & (1 << 7))
+	{
+		mem->spi_touchscreen.channel = (v >> 4) & 0x7;
+		mem->spi_touchscreen.has_channel = 1;
+		return;
+	}
+	switch (mem->spi_touchscreen.channel)
+	{
+		case 0x1:
+			if (mem->nds->touch)
+				mem->spi_touchscreen.read_latch = 0xB0 + mem->nds->touch_y * 0x13;
+			else
+				mem->spi_touchscreen.read_latch = 0xFFF;
+			mem->spi_touchscreen.read_pos = 0;
+			break;
+		case 0x5:
+			if (mem->nds->touch)
+				mem->spi_touchscreen.read_latch = 0x100 + mem->nds->touch_x * 0xE;
+			else
+				mem->spi_touchscreen.read_latch = 0x000;
+			mem->spi_touchscreen.read_pos = 0;
+			break;
+		default:
+#if 0
+			printf("unknown touchscreen channel: %x\n",
+			       mem->spi_touchscreen.channel);
+#endif
+			mem->spi_touchscreen.read_latch = 0x000;
+			mem->spi_touchscreen.read_pos = 0;
+			break;
+	}
 }
 
 static void powerman_reset(mem_t *mem)
@@ -459,8 +501,7 @@ static void touchscreen_reset(mem_t *mem)
 	printf("[%08" PRIx32 "] SPI touchscreen reset\n",
 	       cpu_get_reg(mem->nds->arm7, CPU_REG_PC));
 #endif
-	/* XXX */
-	(void)mem;
+	mem->spi_touchscreen.has_channel = 0;
 }
 
 static uint8_t spi_read(mem_t *mem)
@@ -521,10 +562,7 @@ static void spi_write(mem_t *mem, uint8_t v)
 		}
 	}
 	if (mem->arm7_regs[MEM_ARM7_REG_SPICNT + 1] & (1 << 6))
-	{
 		mem_arm7_if(mem, 1 << 23);
-		mem_arm9_if(mem, 1 << 23); /* XXX is it really happening on arm9 ? */
-	}
 }
 
 /* the fact that every single RTC on earth uses BCD scares me */
@@ -635,7 +673,8 @@ static void rtc_write(mem_t *mem, uint8_t v)
 								mem->rtc.outlen = 8 * 3;
 								break;
 							default:
-								printf("unknown rtc read sr2 pos: %02" PRIx8 "\n", mem->rtc.sr2 & 0xF);
+								printf("unknown rtc read sr2 pos: 0x%01" PRIx8 "\n",
+								       mem->rtc.sr2 & 0xF);
 								mem->rtc.outpos = 0;
 								mem->rtc.outlen = 0;
 								break;
@@ -701,7 +740,8 @@ static void rtc_write(mem_t *mem, uint8_t v)
 						mem->rtc.alarm1[mem->rtc.wpos++] = mem->rtc.inbuf;
 						break;
 					default:
-						printf("unknown rtc write sr2 pos: %02" PRIx8 "\n", mem->rtc.sr2 & 0xF);
+						printf("unknown rtc write sr2 pos: 0x%01" PRIx8 " = %02" PRIx8 "\n",
+						       mem->rtc.sr2 & 0xF, mem->rtc.inbuf);
 						break;
 				}
 				break;
@@ -1167,6 +1207,9 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM7_REG_ROMDATA + 1:
 		case MEM_ARM7_REG_ROMDATA + 2:
 		case MEM_ARM7_REG_ROMDATA + 3:
+#if 0
+			printf("[ARM7] MBC write %02" PRIx8 "\n", v);
+#endif
 			mbc_write(mem->mbc, v);
 			return;
 		case MEM_ARM7_REG_ROMCTRL + 2:
@@ -1176,7 +1219,12 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM7_REG_ROMCTRL + 3:
 			mem->arm9_regs[addr] = v;
 			if (v & 0x80)
+			{
+#if 0
+				printf("[ARM9] MBC cmd %02" PRIx8 "\n", v);
+#endif
 				mbc_cmd(mem->mbc);
+			}
 			return;
 		case MEM_ARM7_REG_IF:
 		case MEM_ARM7_REG_IF + 1:
@@ -1631,7 +1679,8 @@ static uint8_t get_arm7_reg8(mem_t *mem, uint32_t addr)
 			v |= (1 << 3);
 			v |= (1 << 4);
 			v |= (1 << 5);
-			v |= (1 << 6); /* XXX pen down */
+			if (!mem->nds->touch)
+				v |= (1 << 6);
 			return v;
 		}
 		case MEM_ARM7_REG_IPCFIFOCNT:
@@ -2233,12 +2282,20 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM9_REG_ROMCTRL + 3:
 			mem->arm9_regs[addr] = v;
 			if (v & 0x80)
+			{
+#if 0
+				printf("[ARM9] MBC cmd %02" PRIx8 "\n", v);
+#endif
 				mbc_cmd(mem->mbc);
+			}
 			return;
 		case MEM_ARM9_REG_ROMDATA:
 		case MEM_ARM9_REG_ROMDATA + 1:
 		case MEM_ARM9_REG_ROMDATA + 2:
 		case MEM_ARM9_REG_ROMDATA + 3:
+#if 0
+			printf("[ARM9] MBC write %02" PRIx8 "\n", v);
+#endif
 			mbc_write(mem->mbc, v);
 			return;
 		case MEM_ARM9_REG_IF:
@@ -2260,6 +2317,9 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 			arm9_timer_control(mem, 3, v);
 			return;
 		case MEM_ARM9_REG_WRAMCNT:
+#if 0
+			printf("WRAMCNT = %02" PRIx8 "\n", v);
+#endif
 			v &= 3;
 			switch (v)
 			{
@@ -2732,26 +2792,46 @@ static void arm9_instr_delay(mem_t *mem, const uint8_t *table, enum mem_type typ
 	mem->nds->arm9->instr_delay += table[type];
 }
 
+static void *get_vram_bga_ptr(mem_t *mem, uint32_t addr)
+{
+	if (!mem->vram_bga_mask)
+		return NULL;
+	return &mem->vram[mem->vram_bga_base + (addr & mem->vram_bga_mask)];
+}
+
+static void *get_vram_bgb_ptr(mem_t *mem, uint32_t addr)
+{
+	if (!mem->vram_bgb_mask)
+		return NULL;
+	return &mem->vram[mem->vram_bgb_base + (addr & mem->vram_bgb_mask)];
+}
+
+static void *get_vram_obja_ptr(mem_t *mem, uint32_t addr)
+{
+	if (!mem->vram_obja_mask)
+		return NULL;
+	return &mem->vram[mem->vram_obja_base + (addr & mem->vram_obja_mask)];
+}
+
+static void *get_vram_objb_ptr(mem_t *mem, uint32_t addr)
+{
+	if (!mem->vram_objb_mask)
+		return NULL;
+	return &mem->vram[mem->vram_objb_base + (addr & mem->vram_objb_mask)];
+}
+
 static void *get_vram_ptr(mem_t *mem, uint32_t addr)
 {
 	switch ((addr >> 20) & 0xF)
 	{
 		case 0x0:
-			if (!mem->vram_bga_mask)
-				return NULL;
-			return &mem->vram[mem->vram_bga_base + (addr & mem->vram_bga_mask)];
+			return get_vram_bga_ptr(mem, addr);
 		case 0x2:
-			if (!mem->vram_bgb_mask)
-				return NULL;
-			return &mem->vram[mem->vram_bgb_base + (addr & mem->vram_bgb_mask)];
+			return get_vram_bgb_ptr(mem, addr);
 		case 0x4:
-			if (!mem->vram_obja_mask)
-				return NULL;
-			return &mem->vram[mem->vram_obja_base + (addr & mem->vram_obja_mask)];
+			return get_vram_obja_ptr(mem, addr);
 		case 0x6:
-			if (!mem->vram_objb_mask)
-				return NULL;
-			return &mem->vram[mem->vram_objb_base + (addr & mem->vram_objb_mask)];
+			return get_vram_objb_ptr(mem, addr);
 		case 0x8:
 			switch ((addr >> 16) & 0xF)
 			{
@@ -2875,6 +2955,34 @@ end: \
 	printf("[%08" PRIx32 "] unknown ARM9 get" #size " addr: %08" PRIx32 "\n", \
 	       cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr); \
 	return 0; \
+} \
+uint##size##_t mem_vram_bga_get##size(mem_t *mem, uint32_t addr) \
+{ \
+	void *ptr = get_vram_bga_ptr(mem, addr); \
+	if (!ptr) \
+		return 0; \
+	return *(uint##size##_t*)ptr; \
+} \
+uint##size##_t mem_vram_bgb_get##size(mem_t *mem, uint32_t addr) \
+{ \
+	void *ptr = get_vram_bgb_ptr(mem, addr); \
+	if (!ptr) \
+		return 0; \
+	return *(uint##size##_t*)ptr; \
+} \
+uint##size##_t mem_vram_obja_get##size(mem_t *mem, uint32_t addr) \
+{ \
+	void *ptr = get_vram_obja_ptr(mem, addr); \
+	if (!ptr) \
+		return 0; \
+	return *(uint##size##_t*)ptr; \
+} \
+uint##size##_t mem_vram_objb_get##size(mem_t *mem, uint32_t addr) \
+{ \
+	void *ptr = get_vram_objb_ptr(mem, addr); \
+	if (!ptr) \
+		return 0; \
+	return *(uint##size##_t*)ptr; \
 }
 
 MEM_ARM9_GET(8);

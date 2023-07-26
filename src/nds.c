@@ -107,6 +107,18 @@
  *       2104: while (i < nbytes)
  *       2108: while (b < 8)
  *             211C: read RTC bit
+ *
+ * 038033e8: touchscreen write byte (always 0x84)
+ * 038033f8: check for !busy bit
+ * 03803404: write SPI byte 0
+ * 03803414: check for !busy bit
+ * 0380341e: SPICNT = 0x8210
+ * 03803424: write SPI byte 0
+ * 03803434: check for !busy bit
+ * 03803442: return to 03802fa0
+ * 03802fa0: call 03803c24
+ * 03803c24: some WaitByLoop()-like fn with 0x10 iterations
+ * 03803c34: return to 03802fa4
  */
 
 nds_t *nds_new(const void *rom_data, size_t rom_size)
@@ -164,6 +176,7 @@ static void nds_cycles(nds_t *nds, uint32_t cycles)
 			mem_dma(nds->mem);
 		if (nds->cycle & 1)
 		{
+			apu_cycle(nds->apu);
 			mem_timers(nds->mem);
 			if (!nds->arm7->instr_delay)
 				cpu_cycle(nds->arm7);
@@ -174,8 +187,6 @@ static void nds_cycles(nds_t *nds, uint32_t cycles)
 			cpu_cycle(nds->arm9);
 		else
 			nds->arm9->instr_delay--;
-		if (!(nds->cycle & 0x1FF))
-			apu_cycle(nds->apu);
 		apu_sample(nds->apu);
 	}
 }
@@ -189,6 +200,9 @@ void nds_frame(nds_t *nds, uint8_t *video_buf, int16_t *audio_buf, uint32_t joyp
 	nds->apu->sample = 0;
 	nds->apu->next_sample = nds->apu->clock;
 	nds->joypad = joypad;
+	nds->touch = touch;
+	nds->touch_x = touch_x;
+	nds->touch_y = touch_y;
 	for (uint8_t y = 0; y < 192; ++y)
 	{
 		mem_arm9_set_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT, (mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) & 0xFFFC) | 0x0);
@@ -252,8 +266,17 @@ void nds_frame(nds_t *nds, uint8_t *video_buf, int16_t *audio_buf, uint32_t joyp
 		nds_cycles(nds, 99 * 12);
 	}
 
-	memcpy(video_buf                              , nds->gpu->enga.data, sizeof(nds->gpu->enga.data));
-	memcpy(video_buf + sizeof(nds->gpu->enga.data), nds->gpu->engb.data, sizeof(nds->gpu->engb.data));
+	uint32_t powcnt1 = mem_arm9_get_reg32(nds->mem, MEM_ARM9_REG_POWCNT1);
+	if (powcnt1 & (1 << 15))
+	{
+		memcpy(video_buf                              , nds->gpu->enga.data, sizeof(nds->gpu->enga.data));
+		memcpy(video_buf + sizeof(nds->gpu->enga.data), nds->gpu->engb.data, sizeof(nds->gpu->engb.data));
+	}
+	else
+	{
+		memcpy(video_buf                              , nds->gpu->engb.data, sizeof(nds->gpu->engb.data));
+		memcpy(video_buf + sizeof(nds->gpu->engb.data), nds->gpu->enga.data, sizeof(nds->gpu->enga.data));
+	}
 	memcpy(audio_buf, nds->apu->data, sizeof(nds->apu->data));
 }
 

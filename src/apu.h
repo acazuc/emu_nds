@@ -14,6 +14,7 @@ struct apu_channel
 	uint32_t sad;
 	uint32_t len;
 	uint32_t pos;
+	uint16_t clock;
 };
 
 typedef struct apu

@@ -25,6 +25,10 @@ mbc_t *mbc_new(nds_t *nds, const void *data, size_t size)
 
 	memcpy(mbc->data, data, size);
 	mbc->data_size = size;
+	mbc->chipid[0] = 0xC2;
+	mbc->chipid[1] = size / (1024 * 1024);
+	mbc->chipid[2] = 0x00;
+	mbc->chipid[3] = 0x00;
 	return mbc;
 }
 
@@ -198,6 +202,7 @@ void mbc_cmd(mbc_t *mbc)
 					for (size_t i = 0; i < 0x800; i += 8)
 						encrypt(mbc, &mbc->secure_area[i]);
 					init_keycode(mbc, ((uint32_t*)mbc->data)[0x3], 2, 2);
+					encrypt(mbc, &mbc->secure_area[0]);
 					end_cmd(mbc);
 					return;
 				default:
@@ -238,13 +243,7 @@ void mbc_cmd(mbc_t *mbc)
 					mbc->cmd = MBC_CMD_SECBLK;
 					mbc->cmd_count = 0;
 					mbc->cmd_off = 0x1000 * ((cmd >> 44) & 0xFFF);
-#if 1
-					printf("secblk %08" PRIx32 "\n", mbc->cmd_off);
-#endif
 					start_cmd(mbc);
-					return;
-				case 0x6:
-					/* XXX key2 disable */
 					return;
 				case 0xA:
 					mbc->enc = 2;
@@ -270,6 +269,9 @@ void mbc_cmd(mbc_t *mbc)
 					mbc->cmd = MBC_CMD_ENCREAD;
 					mbc->cmd_count = 0;
 					mbc->cmd_off = (cmd >> 24) & 0xFFFFFFFF;
+#if 0
+					printf("MBC read 0x%08" PRIx32 "\n", mbc->cmd_off);
+#endif
 					start_cmd(mbc);
 					return;
 				case 0xB8:
@@ -313,47 +315,29 @@ uint8_t mbc_read(mbc_t *mbc)
 			return v;
 		}
 		case MBC_CMD_ROMID1:
+		{
 #if 0
 			printf("romid1 0x%" PRIx32 "\n", mbc->cmd_count);
 #endif
-			switch (mbc->cmd_count)
-			{
-				case 0:
-					mbc->cmd_count++;
-					return 0xC2;
-				case 1:
-					mbc->cmd_count++;
-					return 0x00;
-				case 2:
-					mbc->cmd_count++;
-					return 0x00;
-				case 3:
-					end_cmd(mbc);
-					return 0x00;
-			}
-			assert(!"dead");
-			return 0;
+			uint8_t v = mbc->chipid[mbc->cmd_count];
+			if (mbc->cmd_count == 3)
+				end_cmd(mbc);
+			else
+				mbc->cmd_count++;
+			return v;
+		}
 		case MBC_CMD_ROMID2:
+		{
 #if 0
 			printf("romid2 0x%" PRIx32 "\n", mbc->cmd_count);
 #endif
-			switch (mbc->cmd_count)
-			{
-				case 0:
-					mbc->cmd_count++;
-					return key2_byte(mbc, 0xC2);
-				case 1:
-					mbc->cmd_count++;
-					return key2_byte(mbc, 0x00);
-				case 2:
-					mbc->cmd_count++;
-					return key2_byte(mbc, 0x00);
-				case 3:
-					end_cmd(mbc);
-					return key2_byte(mbc, 0x00);
-			}
-			assert(!"dead");
-			return key2_byte(mbc, 0);
+			uint8_t v = mbc->chipid[mbc->cmd_count];
+			if (mbc->cmd_count == 3)
+				end_cmd(mbc);
+			else
+				mbc->cmd_count++;
+			return key2_byte(mbc, v);
+		}
 		case MBC_CMD_SECBLK:
 		{
 #if 0

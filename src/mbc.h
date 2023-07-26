@@ -30,6 +30,7 @@ typedef struct mbc
 	uint32_t cmd_count;
 	uint32_t cmd_off;
 	uint8_t secure_area[0x800];
+	uint8_t chipid[4];
 } mbc_t;
 
 mbc_t *mbc_new(nds_t *nds, const void *data, size_t size);
