@@ -126,6 +126,8 @@ typedef struct cpu
 	uint8_t debug;
 	enum cpu_state state;
 	int arm9;
+	int irq_wait;
+	uint32_t irq_line;
 } cpu_t;
 
 cpu_t *cpu_new(mem_t *mem, int arm9);
@@ -133,6 +135,7 @@ void cpu_del(cpu_t *cpu);
 
 void cpu_cycle(cpu_t *cpu);
 void cpu_update_mode(cpu_t *cpu);
+void cpu_update_irq_state(cpu_t *cpu);
 
 uint32_t cp15_read(cpu_t *cpu, uint8_t cn, uint8_t cm, uint8_t cp);
 void cp15_write(cpu_t *cpu, uint8_t cn, uint8_t cm, uint8_t cp, uint32_t v);

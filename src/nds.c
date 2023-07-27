@@ -184,15 +184,21 @@ static void nds_cycles(nds_t *nds, uint32_t cycles)
 					apu_sample(nds->apu, 0x40);
 				}
 			}
-			if (!nds->arm7->instr_delay)
-				cpu_cycle(nds->arm7);
-			else
-				nds->arm7->instr_delay--;
+			if (!nds->arm7->irq_wait)
+			{
+				if (!nds->arm7->instr_delay)
+					cpu_cycle(nds->arm7);
+				else
+					nds->arm7->instr_delay--;
+			}
 		}
-		if (!nds->arm9->instr_delay)
-			cpu_cycle(nds->arm9);
-		else
-			nds->arm9->instr_delay--;
+		if (!nds->arm9->irq_wait)
+		{
+			if (!nds->arm9->instr_delay)
+				cpu_cycle(nds->arm9);
+			else
+				nds->arm9->instr_delay--;
+		}
 	}
 }
 

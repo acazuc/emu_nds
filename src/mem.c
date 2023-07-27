@@ -316,6 +316,18 @@ void mem_dscard(mem_t *mem)
 	arm9_dma_start(mem, 5);
 }
 
+void mem_arm9_if(mem_t *mem, uint32_t f)
+{
+	mem_arm9_set_reg32(mem, MEM_ARM9_REG_IF, mem_arm9_get_reg32(mem, MEM_ARM9_REG_IF) | f);
+	cpu_update_irq_state(mem->nds->arm9);
+}
+
+void mem_arm7_if(mem_t *mem, uint32_t f)
+{
+	mem_arm7_set_reg32(mem, MEM_ARM7_REG_IF, mem_arm7_get_reg32(mem, MEM_ARM7_REG_IF) | f);
+	cpu_update_irq_state(mem->nds->arm7);
+}
+
 static uint8_t powerman_read(mem_t *mem)
 {
 #if 0
@@ -828,6 +840,7 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 #if 0
 			printf("[ARM7] IE 0x%08" PRIx32 "\n", mem_arm7_get_reg32(mem, MEM_ARM7_REG_IE));
 #endif
+			cpu_update_irq_state(mem->nds->arm7);
 			return;
 		case MEM_ARM7_REG_IME:
 		case MEM_ARM7_REG_IME + 1:
@@ -1254,6 +1267,7 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM7_REG_IF + 2:
 		case MEM_ARM7_REG_IF + 3:
 			mem->arm7_regs[addr] &= ~v;
+			cpu_update_irq_state(mem->nds->arm7);
 			return;
 		case MEM_ARM7_REG_TM0CNT_H:
 			arm7_timer_control(mem, 0, v);
@@ -1294,9 +1308,11 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 					return;
 				case 2:
 					mem->nds->arm7->state = CPU_STATE_HALT;
+					cpu_update_irq_state(mem->nds->arm7);
 					return;
 				case 3:
 					mem->nds->arm7->state = CPU_STATE_STOP;
+					cpu_update_irq_state(mem->nds->arm7);
 					return;
 			}
 			return;
@@ -2308,6 +2324,7 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 #if 0
 			printf("[ARM9] IE 0x%08" PRIx32 "\n", mem_arm9_get_reg32(mem, MEM_ARM9_REG_IE));
 #endif
+			cpu_update_irq_state(mem->nds->arm9);
 			return;
 		case MEM_ARM9_REG_IME:
 		case MEM_ARM9_REG_IME + 1:
@@ -2630,6 +2647,7 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM9_REG_IF + 2:
 		case MEM_ARM9_REG_IF + 3:
 			mem->arm9_regs[addr] &= ~v;
+			cpu_update_irq_state(mem->nds->arm9);
 			return;
 		case MEM_ARM9_REG_TM0CNT_H:
 			arm9_timer_control(mem, 0, v);

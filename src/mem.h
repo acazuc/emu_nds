@@ -476,6 +476,9 @@ void mem_vblank(mem_t *mem);
 void mem_hblank(mem_t *mem);
 void mem_dscard(mem_t *mem);
 
+void mem_arm9_if(mem_t *mem, uint32_t f);
+void mem_arm7_if(mem_t *mem, uint32_t f);
+
 uint8_t  mem_arm7_get8 (mem_t *mem, uint32_t addr, enum mem_type type);
 uint16_t mem_arm7_get16(mem_t *mem, uint32_t addr, enum mem_type type);
 uint32_t mem_arm7_get32(mem_t *mem, uint32_t addr, enum mem_type type);
@@ -571,16 +574,6 @@ static inline uint32_t mem_arm7_get_reg32(mem_t *mem, uint32_t reg)
 static inline void mem_arm7_set_reg32(mem_t *mem, uint32_t reg, uint32_t val)
 {
 	*(uint32_t*)&mem->arm7_regs[reg] = val;
-}
-
-static inline void mem_arm9_if(mem_t *mem, uint32_t f)
-{
-	mem_arm9_set_reg32(mem, MEM_ARM9_REG_IF, mem_arm9_get_reg32(mem, MEM_ARM9_REG_IF) | f);
-}
-
-static inline void mem_arm7_if(mem_t *mem, uint32_t f)
-{
-	mem_arm7_set_reg32(mem, MEM_ARM7_REG_IF, mem_arm7_get_reg32(mem, MEM_ARM7_REG_IF) | f);
 }
 
 static inline uint16_t mem_get_oam16(mem_t *mem, uint32_t addr)

@@ -171,35 +171,28 @@ static void print_instr(cpu_t *cpu, const char *msg, const struct cpu_instr *ins
 
 static bool handle_interrupt(cpu_t *cpu)
 {
+	if (!cpu->irq_line)
+		return false;
 	if (cpu->state == CPU_STATE_RUN && CPU_GET_FLAG_I(cpu))
 		return false;
-	uint32_t reg_if;
-	uint32_t reg_ie;
 	uint16_t ime;
 	if (cpu->arm9)
 	{
-		reg_if = mem_arm9_get_reg32(cpu->mem, MEM_ARM9_REG_IF);
-		reg_ie = mem_arm9_get_reg32(cpu->mem, MEM_ARM9_REG_IE);
 		ime = mem_arm9_get_reg16(cpu->mem, MEM_ARM9_REG_IME);
 	}
 	else
 	{
-		reg_if = mem_arm7_get_reg32(cpu->mem, MEM_ARM7_REG_IF);
-		reg_ie = mem_arm7_get_reg32(cpu->mem, MEM_ARM7_REG_IE);
 		if (cpu->state != CPU_STATE_RUN)
 			ime = true;
 		else
 			ime = mem_arm7_get_reg16(cpu->mem, MEM_ARM7_REG_IME);
 	}
-	uint32_t ints = reg_ie & reg_if;
-	if (!ints)
-		return false;
 	cpu->state = CPU_STATE_RUN;
 	if (!ime)
 		return false;
 	for (uint8_t i = 0; i < 32; ++i)
 	{
-		if (!(ints & (1 << i)))
+		if (!(cpu->irq_line & (1 << i)))
 			continue;
 #if 0
 		printf("IRQ %02" PRIx8 "\n", i);
@@ -224,6 +217,31 @@ static bool handle_interrupt(cpu_t *cpu)
 		return true;
 	}
 	return false;
+}
+
+void cpu_update_irq_state(cpu_t *cpu)
+{
+	uint32_t reg_if;
+	uint32_t reg_ie;
+	if (cpu->arm9)
+	{
+		reg_if = mem_arm9_get_reg32(cpu->mem, MEM_ARM9_REG_IF);
+		reg_ie = mem_arm9_get_reg32(cpu->mem, MEM_ARM9_REG_IE);
+	}
+	else
+	{
+		reg_if = mem_arm7_get_reg32(cpu->mem, MEM_ARM7_REG_IF);
+		reg_ie = mem_arm7_get_reg32(cpu->mem, MEM_ARM7_REG_IE);
+	}
+	cpu->irq_line = reg_ie & reg_if;
+	if (cpu->state == CPU_STATE_RUN)
+		cpu->irq_wait = 0;
+	else
+		cpu->irq_wait = !cpu->irq_line;
+#if 0
+	printf("[ARM%c] updated IRQ state: IE=%08" PRIx32 " IF=%08" PRIx32 " -> %d/%d\n",
+	       cpu->arm9 ? '9' : '7', reg_ie, reg_if, cpu->has_irq, cpu->irq_wait);
+#endif
 }
 
 static bool decode_instruction(cpu_t *cpu)
@@ -490,6 +508,7 @@ void cp15_write(cpu_t *cpu, uint8_t cn, uint8_t cm, uint8_t cp, uint32_t v)
 		case 0x704:
 		case 0x782:
 			cpu->state = CPU_STATE_HALT;
+			cpu_update_irq_state(cpu);
 			return;
 		case 0x750: /* invalidate instruction cache */
 			return;
