@@ -403,3 +403,18 @@ void mbc_write(mbc_t *mbc, uint8_t v)
 			assert(!"unknown cmd");
 	}
 }
+
+uint8_t mbc_spi_read(mbc_t *mbc)
+{
+#if 1
+	printf("MBC SPI read\n");
+#endif
+	return 0;
+}
+
+void mbc_spi_write(mbc_t *mbc, uint8_t v)
+{
+#if 1
+	printf("MBC SPI write %02" PRIx8 "\n", v);
+#endif
+}

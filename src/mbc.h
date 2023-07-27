@@ -40,4 +40,7 @@ void mbc_cmd(mbc_t *mbc);
 uint8_t mbc_read(mbc_t *mbc);
 void mbc_write(mbc_t *mbc, uint8_t v);
 
+uint8_t mbc_spi_read(mbc_t *mbc);
+void mbc_spi_write(mbc_t *mbc, uint8_t v);
+
 #endif

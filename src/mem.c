@@ -1197,11 +1197,21 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 			mem->arm9_regs[addr] = v;
 			return;
 		case MEM_ARM7_REG_AUXSPICNT:
+#if 1
+			printf("[ARM7] AUXSPICNT[%08" PRIx32 "] = %02" PRIx8 "\n",
+			       addr, v);
+#endif
+			mem->arm9_regs[addr] = v & ~(1 << 7);
+			return;
 		case MEM_ARM7_REG_AUXSPICNT + 1:
-#if 0
-			printf("AUXSPICNT[%08" PRIx32 " = %02" PRIx8 "\n", addr, v);
+#if 1
+			printf("[ARM7] AUXSPICNT[%08" PRIx32 "] = %02" PRIx8 "\n",
+			       addr, v);
 #endif
 			mem->arm9_regs[addr] = v;
+			return;
+		case MEM_ARM7_REG_AUXSPIDATA:
+			mbc_spi_write(mem->mbc, v);
 			return;
 		case MEM_ARM7_REG_ROMDATA:
 		case MEM_ARM7_REG_ROMDATA + 1:
@@ -1586,8 +1596,6 @@ static uint8_t get_arm7_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM7_REG_ROMCMD + 5:
 		case MEM_ARM7_REG_ROMCMD + 6:
 		case MEM_ARM7_REG_ROMCMD + 7:
-		case MEM_ARM7_REG_AUXSPICNT:
-		case MEM_ARM7_REG_AUXSPICNT + 1:
 		case MEM_ARM7_REG_EXMEMSTAT:
 		case MEM_ARM7_REG_EXMEMSTAT + 1:
 		case MEM_ARM7_REG_KEYCNT:
@@ -1597,6 +1605,15 @@ static uint8_t get_arm7_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM7_REG_VCOUNT:
 		case MEM_ARM7_REG_VCOUNT + 1:
 			return mem->arm9_regs[addr];
+		case MEM_ARM7_REG_AUXSPICNT:
+		case MEM_ARM7_REG_AUXSPICNT + 1:
+#if 1
+			printf("[ARM7] [%08" PRIx32 "] AUXSPICNT[%08" PRIx32 "] read 0x%02" PRIx8 "\n",
+			       cpu_get_reg(mem->nds->arm7, CPU_REG_PC), addr, mem->arm9_regs[addr]);
+#endif
+			return mem->arm9_regs[addr];
+		case MEM_ARM7_REG_AUXSPIDATA:
+			return mbc_spi_read(mem->mbc);
 		case MEM_ARM7_REG_ROMDATA:
 		case MEM_ARM7_REG_ROMDATA + 1:
 		case MEM_ARM7_REG_ROMDATA + 2:
@@ -2027,8 +2044,6 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM9_REG_TM3CNT_L:
 		case MEM_ARM9_REG_TM3CNT_L + 1:
 		case MEM_ARM9_REG_TM3CNT_H + 1:
-		case MEM_ARM9_REG_AUXSPICNT:
-		case MEM_ARM9_REG_AUXSPICNT + 1:
 		case MEM_ARM9_REG_EXMEMCNT:
 		case MEM_ARM9_REG_EXMEMCNT + 1:
 		case MEM_ARM9_REG_DISPSTAT:
@@ -2275,6 +2290,23 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM9_REG_BLDY + 0x1000 + 3:
 			mem->arm9_regs[addr] = v;
 			return;
+		case MEM_ARM9_REG_AUXSPICNT:
+#if 1
+			printf("[ARM9] AUXSPICNT[%08" PRIx32 "] = %02" PRIx8 "\n",
+			       addr, v);
+#endif
+			mem->arm9_regs[addr] = v & ~(1 << 7);
+			return;
+		case MEM_ARM9_REG_AUXSPICNT + 1:
+#if 1
+			printf("[ARM9] AUXSPICNT[%08" PRIx32 "] = %02" PRIx8 "\n",
+			       addr, v);
+#endif
+			mem->arm9_regs[addr] = v;
+			return;
+		case MEM_ARM7_REG_AUXSPIDATA:
+			mbc_spi_write(mem->mbc, v);
+			return;
 		case MEM_ARM9_REG_ROMCTRL + 2:
 			mem->arm9_regs[addr] = (mem->arm9_regs[addr] & (1 << 7))
 			                     | (v & ~(1 << 7));
@@ -2502,8 +2534,6 @@ static uint8_t get_arm9_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM9_REG_ROMCMD + 5:
 		case MEM_ARM9_REG_ROMCMD + 6:
 		case MEM_ARM9_REG_ROMCMD + 7:
-		case MEM_ARM9_REG_AUXSPICNT:
-		case MEM_ARM9_REG_AUXSPICNT + 1:
 		case MEM_ARM9_REG_WRAMCNT:
 		case MEM_ARM9_REG_EXMEMCNT:
 		case MEM_ARM9_REG_EXMEMCNT + 1:
@@ -2666,6 +2696,15 @@ static uint8_t get_arm9_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM9_REG_BLDALPHA + 0x1000:
 		case MEM_ARM9_REG_BLDALPHA + 0x1000 + 1:
 			return mem->arm9_regs[addr];
+		case MEM_ARM9_REG_AUXSPICNT:
+		case MEM_ARM9_REG_AUXSPICNT + 1:
+#if 1
+			printf("[ARM9] [%08" PRIx32 "] AUXSPICNT[%08" PRIx32 "] read 0x%02" PRIx8 "\n",
+			       cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr, mem->arm9_regs[addr]);
+#endif
+			return mem->arm9_regs[addr];
+		case MEM_ARM9_REG_AUXSPIDATA:
+			return mbc_spi_read(mem->mbc);
 		case MEM_ARM9_REG_ROMDATA:
 		case MEM_ARM9_REG_ROMDATA + 1:
 		case MEM_ARM9_REG_ROMDATA + 2:
