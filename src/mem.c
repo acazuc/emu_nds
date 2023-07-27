@@ -147,14 +147,14 @@ void mem_timers(mem_t *mem, uint32_t cycles)
 }
 
 #define ARM_DMA(armv) \
-static void arm##armv##_dma(mem_t *mem) \
+static void arm##armv##_dma(mem_t *mem, uint8_t id, uint32_t cycles) \
 { \
-	for (size_t i = 0; i < 4; ++i) \
+	struct dma *dma = &mem->arm##armv##_dma[id]; \
+	if (dma->status != (MEM_DMA_ACTIVE | MEM_DMA_ENABLE) ) \
+		return; \
+	while (cycles--) \
 	{ \
-		struct dma *dma = &mem->arm##armv##_dma[i]; \
-		if (dma->status != (MEM_DMA_ACTIVE | MEM_DMA_ENABLE) ) \
-			continue; \
-		uint16_t cnt_h = mem_arm##armv##_get_reg16(mem, MEM_ARM##armv##_REG_DMA0CNT_H + 0xC * i); \
+		uint16_t cnt_h = mem_arm##armv##_get_reg16(mem, MEM_ARM##armv##_REG_DMA0CNT_H + 0xC * id); \
 		uint32_t step; \
 		if (cnt_h & (1 << 10)) \
 		{ \
@@ -200,24 +200,26 @@ static void arm##armv##_dma(mem_t *mem) \
 				break; \
 		} \
 		dma->cnt++; \
-		if (dma->cnt == dma->len) \
+		if (dma->cnt != dma->len) \
+			continue; \
+		if ((cnt_h & (1 << 9))) \
 		{ \
-			if ((cnt_h & (1 << 9))) \
-			{ \
-				if (((cnt_h >> 12) & 0x3) != 0x2 \
-				 || !(mem->arm9_regs[MEM_ARM9_REG_ROMCTRL + 3] & (1 << 7))) \
-					dma->status &= ~MEM_DMA_ACTIVE; \
-			} \
-			else \
-			{ \
-				dma->status = 0; \
-			} \
-			dma->cnt = 0; \
-			if (!(dma->status & MEM_DMA_ACTIVE)) \
-				mem_arm##armv##_set_reg16(mem, MEM_ARM##armv##_REG_DMA0CNT_H + 0xC * i, \
-				                          mem_arm##armv##_get_reg16(mem, MEM_ARM##armv##_REG_DMA0CNT_H + 0xC * i) & ~(1 << 15)); \
-			if (cnt_h & (1 << 14)) \
-				mem_arm##armv##_if(mem, (1 << (8 + i))); \
+			if (((cnt_h >> 12) & 0x3) != 0x2 \
+			 || !(mem->arm9_regs[MEM_ARM9_REG_ROMCTRL + 3] & (1 << 7))) \
+				dma->status &= ~MEM_DMA_ACTIVE; \
+		} \
+		else \
+		{ \
+			dma->status = 0; \
+		} \
+		dma->cnt = 0; \
+		if (cnt_h & (1 << 14)) \
+			mem_arm##armv##_if(mem, (1 << (8 + id))); \
+		if (!(dma->status & MEM_DMA_ACTIVE)) \
+		{ \
+			mem_arm##armv##_set_reg16(mem, MEM_ARM##armv##_REG_DMA0CNT_H + 0xC * id, \
+			                          mem_arm##armv##_get_reg16(mem, MEM_ARM##armv##_REG_DMA0CNT_H + 0xC * id) & ~(1 << 15)); \
+			break; \
 		} \
 	} \
 } \
@@ -306,10 +308,16 @@ static void arm##armv##_dma_start(mem_t *mem, uint8_t cond) \
 ARM_DMA(7);
 ARM_DMA(9);
 
-void mem_dma(mem_t *mem)
+void mem_dma(mem_t *mem, uint32_t cycles)
 {
-	arm7_dma(mem);
-	arm9_dma(mem);
+	arm7_dma(mem, 0, cycles);
+	arm7_dma(mem, 1, cycles);
+	arm7_dma(mem, 2, cycles);
+	arm7_dma(mem, 3, cycles);
+	arm9_dma(mem, 0, cycles);
+	arm9_dma(mem, 1, cycles);
+	arm9_dma(mem, 2, cycles);
+	arm9_dma(mem, 3, cycles);
 }
 
 void mem_vblank(mem_t *mem)
@@ -1838,9 +1846,7 @@ static uint32_t get_arm7_reg32(mem_t *mem, uint32_t addr)
 
 static void arm7_instr_delay(mem_t *mem, const uint8_t *table, enum mem_type type)
 {
-#if ENABLE_INSTR_DELAY == 1
 	mem->nds->arm7->instr_delay += table[type];
-#endif
 }
 
 #define MEM_ARM7_GET(size) \
@@ -3193,9 +3199,7 @@ static uint32_t get_arm9_reg32(mem_t *mem, uint32_t addr)
 
 static void arm9_instr_delay(mem_t *mem, const uint8_t *table, enum mem_type type)
 {
-#if ENABLE_INSTR_DELAY == 1
 	mem->nds->arm9->instr_delay += table[type];
-#endif
 }
 
 static void *get_vram_bga_ptr(mem_t *mem, uint32_t addr)

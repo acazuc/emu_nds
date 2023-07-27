@@ -122,7 +122,7 @@ typedef struct cpu
 	mem_t *mem;
 	const struct cpu_instr *instr;
 	uint32_t instr_opcode;
-	uint32_t instr_delay;
+	int32_t instr_delay;
 	uint8_t debug;
 	enum cpu_state state;
 	int arm9;

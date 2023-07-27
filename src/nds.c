@@ -9,6 +9,8 @@
 #include <string.h>
 #include <stdio.h>
 
+#define INACCURACY_SHIFT 3
+
 /*
  * 1130: bios call wrapper of 20BC (by 1164)
  * 1164: bios safe call
@@ -169,48 +171,44 @@ void nds_del(nds_t *nds)
 
 static void nds_cycles(nds_t *nds, uint32_t cycles)
 {
-	for (; cycles; --cycles)
+	for (; cycles; cycles -= 4)
 	{
-		nds->cycle++;
-		if (!(nds->cycle & 0x1))
+		nds->cycle += 4;
+		if (!(nds->cycle & ((0x8 << INACCURACY_SHIFT) - 1)))
 		{
-			if (!(nds->cycle & 0x7))
+			mem_dma(nds->mem, 0x1 << INACCURACY_SHIFT);
+			mem_timers(nds->mem, 0x4 << INACCURACY_SHIFT);
+			apu_cycles(nds->apu, 0x2 << INACCURACY_SHIFT);
+			apu_sample(nds->apu, 0x8 << INACCURACY_SHIFT);
+		}
+		if (!nds->arm7->irq_wait)
+		{
+			if (nds->arm7->instr_delay <= 0)
 			{
-				mem_dma(nds->mem);
-				if (!(nds->cycle & 0x3F))
-				{
-					mem_timers(nds->mem, 0x20);
-					apu_cycles(nds->apu, 0x10);
-					apu_sample(nds->apu, 0x40);
-				}
-			}
-			if (!nds->arm7->irq_wait)
-			{
-#if ENABLE_INSTR_DELAY == 1
-				if (!nds->arm7->instr_delay)
-					cpu_cycle(nds->arm7);
-				else
-					nds->arm7->instr_delay--;
-#else
 				cpu_cycle(nds->arm7);
-#endif
+				cpu_cycle(nds->arm7);
+			}
+			else
+			{
+				nds->arm7->instr_delay -= 2;
 			}
 		}
 		if (!nds->arm9->irq_wait)
 		{
-#if ENABLE_INSTR_DELAY == 1
-			if (!nds->arm9->instr_delay)
+			if (nds->arm9->instr_delay <= 0)
+			{
 				cpu_cycle(nds->arm9);
+				cpu_cycle(nds->arm9);
+				cpu_cycle(nds->arm9);
+				cpu_cycle(nds->arm9);
+			}
 			else
-				nds->arm9->instr_delay--;
-#else
-			cpu_cycle(nds->arm9);
-#endif
+			{
+				nds->arm9->instr_delay -= 4;
+			}
 		}
 	}
 }
-
-#include <inttypes.h>
 
 void nds_frame(nds_t *nds, uint8_t *video_buf, int16_t *audio_buf, uint32_t joypad,
                uint8_t touch_x, uint8_t touch_y, uint8_t touch)

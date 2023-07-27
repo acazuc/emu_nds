@@ -471,7 +471,7 @@ mem_t *mem_new(nds_t *nds, mbc_t *mbc);
 void mem_del(mem_t *mem);
 
 void mem_timers(mem_t *mem, uint32_t cycles);
-void mem_dma(mem_t *mem);
+void mem_dma(mem_t *mem, uint32_t cycles);
 void mem_vblank(mem_t *mem);
 void mem_hblank(mem_t *mem);
 void mem_dscard(mem_t *mem);
