@@ -1825,11 +1825,13 @@ static uint32_t get_arm7_reg32(mem_t *mem, uint32_t addr)
 
 static void arm7_instr_delay(mem_t *mem, const uint8_t *table, enum mem_type type)
 {
+#if ENABLE_INSTR_DELAY == 1
 	/* hacky: thummb are fetched in 32bits, skip wait cycles every two instructions */
 	if ((type == MEM_CODE_SEQ || type == MEM_CODE_NSEQ)
 	 && (cpu_get_reg(mem->nds->arm7, CPU_REG_PC) & 4))
 		return;
 	mem->nds->arm7->instr_delay += table[type] / 2; /* XXX implement cache to not fake it */
+#endif
 }
 
 #define MEM_ARM7_GET(size) \
@@ -3182,11 +3184,13 @@ static uint32_t get_arm9_reg32(mem_t *mem, uint32_t addr)
 
 static void arm9_instr_delay(mem_t *mem, const uint8_t *table, enum mem_type type)
 {
+#if ENABLE_INSTR_DELAY == 1
 	/* hacky: thummb are fetched in 32bits, skip wait cycles every two instructions */
 	if ((type == MEM_CODE_SEQ || type == MEM_CODE_NSEQ)
 	 && (cpu_get_reg(mem->nds->arm9, CPU_REG_PC) & 4))
 		return;
 	mem->nds->arm9->instr_delay += table[type] / 2; /* XXX implement cache to not fake it */
+#endif
 }
 
 static void *get_vram_bga_ptr(mem_t *mem, uint32_t addr)

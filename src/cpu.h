@@ -128,6 +128,8 @@ typedef struct cpu
 	int arm9;
 	int irq_wait;
 	uint32_t irq_line;
+	uint16_t next_thumb;
+	int has_next_thumb;
 } cpu_t;
 
 cpu_t *cpu_new(mem_t *mem, int arm9);
@@ -148,11 +150,13 @@ static inline uint32_t cpu_get_reg(cpu_t *cpu, uint32_t reg)
 static inline void cpu_set_reg(cpu_t *cpu, uint32_t reg, uint32_t v)
 {
 	*cpu->regs.rptr[reg] = v;
+	if (reg == CPU_REG_PC)
+		cpu->has_next_thumb = 0;
 }
 
 static inline void cpu_inc_pc(cpu_t *cpu, uint32_t v)
 {
-	*cpu->regs.rptr[15] += v;
+	*cpu->regs.rptr[CPU_REG_PC] += v;
 }
 
 #endif

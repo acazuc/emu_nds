@@ -4,6 +4,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define ENABLE_INSTR_DELAY 0
+
 typedef struct mbc mbc_t;
 typedef struct mem mem_t;
 typedef struct apu apu_t;

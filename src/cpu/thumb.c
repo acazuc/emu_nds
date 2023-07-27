@@ -888,6 +888,7 @@ THUMB_INSTR(n, \
 	{ \
 		int8_t nn = cpu->instr_opcode & 0xFF; \
 		cpu_inc_pc(cpu, (int32_t)nn * 2 + 4); \
+		cpu->has_next_thumb = 0; \
 	} \
 	else \
 	{ \

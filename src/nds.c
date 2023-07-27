@@ -186,21 +186,31 @@ static void nds_cycles(nds_t *nds, uint32_t cycles)
 			}
 			if (!nds->arm7->irq_wait)
 			{
+#if ENABLE_INSTR_DELAY == 1
 				if (!nds->arm7->instr_delay)
 					cpu_cycle(nds->arm7);
 				else
 					nds->arm7->instr_delay--;
+#else
+				cpu_cycle(nds->arm7);
+#endif
 			}
 		}
 		if (!nds->arm9->irq_wait)
 		{
+#if ENABLE_INSTR_DELAY == 1
 			if (!nds->arm9->instr_delay)
 				cpu_cycle(nds->arm9);
 			else
 				nds->arm9->instr_delay--;
+#else
+			cpu_cycle(nds->arm9);
+#endif
 		}
 	}
 }
+
+#include <inttypes.h>
 
 void nds_frame(nds_t *nds, uint8_t *video_buf, int16_t *audio_buf, uint32_t joypad,
                uint8_t touch_x, uint8_t touch_y, uint8_t touch)

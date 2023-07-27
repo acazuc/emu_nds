@@ -248,12 +248,31 @@ static bool decode_instruction(cpu_t *cpu)
 {
 	if (CPU_GET_FLAG_T(cpu))
 	{
-		uint32_t pc = cpu_get_reg(cpu, CPU_REG_PC);
-		cpu->instr_opcode = cpu->get16(cpu->mem, pc, cpu->arm9 ? MEM_CODE_NSEQ : MEM_CODE_SEQ);
+		if (cpu->has_next_thumb)
+		{
+			cpu->instr_opcode = cpu->next_thumb;
+			cpu->has_next_thumb = 0;
+		}
+		else
+		{
+			uint32_t pc = cpu_get_reg(cpu, CPU_REG_PC);
+			if (pc & 2)
+			{
+				cpu->instr_opcode = cpu->get16(cpu->mem, pc, cpu->arm9 ? MEM_CODE_NSEQ : MEM_CODE_SEQ);
+			}
+			else
+			{
+				uint32_t fetch = cpu->get32(cpu->mem, pc, cpu->arm9 ? MEM_CODE_NSEQ : MEM_CODE_SEQ);
+				cpu->instr_opcode = fetch & 0xFFFF;
+				cpu->has_next_thumb = 1;
+				cpu->next_thumb = (fetch >> 16) & 0xFFFF;
+			}
+		}
 		cpu->instr = cpu_instr_thumb[cpu->instr_opcode >> 6];
 	}
 	else
 	{
+		cpu->has_next_thumb = 0;
 		uint32_t pc = cpu_get_reg(cpu, CPU_REG_PC);
 		cpu->instr_opcode = cpu->get32(cpu->mem, pc, cpu->arm9 ? MEM_CODE_NSEQ : MEM_CODE_SEQ);
 		if (cpu->instr_opcode >> 25 == 0x7D) /* come on arm ISA.... wtf ? */
