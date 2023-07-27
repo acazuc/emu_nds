@@ -88,18 +88,17 @@ static void gen_sample(apu_t *apu, int16_t *dst)
 	dst[1] = r;
 }
 
-void apu_sample(apu_t *apu)
+void apu_sample(apu_t *apu, uint32_t cycles)
 {
-	if (apu->clock == apu->next_sample)
-	{
+	apu->clock += cycles;
+	if (apu->clock < apu->next_sample)
+		return;
 #if 0
-		printf("sample %u\n", apu->sample);
+	printf("sample %u\n", apu->sample);
 #endif
-		gen_sample(apu, &apu->data[apu->sample * 2]);
-		apu->sample++;
-		apu->next_sample = (1120380 * apu->sample) / 803;
-	}
-	apu->clock++;
+	gen_sample(apu, &apu->data[apu->sample * 2]);
+	apu->sample++;
+	apu->next_sample = (1120380 * apu->sample) / 803;
 }
 
 void apu_cycles(apu_t *apu, uint32_t cycles)

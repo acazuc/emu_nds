@@ -181,6 +181,7 @@ static void nds_cycles(nds_t *nds, uint32_t cycles)
 				{
 					mem_timers(nds->mem, 0x20);
 					apu_cycles(nds->apu, 0x10);
+					apu_sample(nds->apu, 0x40);
 				}
 			}
 			if (!nds->arm7->instr_delay)
@@ -192,7 +193,6 @@ static void nds_cycles(nds_t *nds, uint32_t cycles)
 			cpu_cycle(nds->arm9);
 		else
 			nds->arm9->instr_delay--;
-		apu_sample(nds->apu);
 	}
 }
 

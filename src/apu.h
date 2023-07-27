@@ -33,7 +33,7 @@ apu_t *apu_new(mem_t *mem);
 void apu_del(apu_t *apu);
 
 void apu_cycles(apu_t *cpu, uint32_t cycles);
-void apu_sample(apu_t *apu);
+void apu_sample(apu_t *apu, uint32_t cycles);
 
 void apu_start_channel(apu_t *apu, uint8_t channel);
 
