@@ -26,7 +26,7 @@ mbc_t *mbc_new(nds_t *nds, const void *data, size_t size)
 	memcpy(mbc->data, data, size);
 	mbc->data_size = size;
 	mbc->chipid[0] = 0xC2;
-	mbc->chipid[1] = size / (1024 * 1024);
+	mbc->chipid[1] = size / (1024 * 1024) - 1;
 	mbc->chipid[2] = 0x00;
 	mbc->chipid[3] = 0x00;
 	return mbc;
@@ -93,7 +93,7 @@ static void apply_keycode(mbc_t *mbc, uint32_t *keycode, uint8_t mod)
 	uint32_t scratch[2] = {0, 0};
 	for (size_t i = 0; i < 0x412; i += 2)
 	{
-		encrypt(mbc, scratch);
+		encrypt(mbc, &scratch[0]);
 		mbc->keybuf[i + 0] = scratch[1];
 		mbc->keybuf[i + 1] = scratch[0];
 	}
@@ -169,7 +169,18 @@ void mbc_cmd(mbc_t *mbc)
 	cmd |= (uint64_t)mbc->nds->mem->arm9_regs[MEM_ARM9_REG_ROMCMD + 6] << 8;
 	cmd |= (uint64_t)mbc->nds->mem->arm9_regs[MEM_ARM9_REG_ROMCMD + 7] << 0;
 #if 0
-	printf("CMD %016" PRIx64 "\n", cmd);
+	uint32_t romctrl = mem_arm9_get_reg32(mbc->nds->mem, MEM_ARM9_REG_ROMCTRL);
+	printf("CMD %016" PRIx64 " with ROMCTRL 0x%08" PRIx32 "\n",
+	       cmd, romctrl);
+#if 1
+	uint32_t length = (romctrl >> 24) & 0x7;
+	if (!length)
+		printf("length: 0\n");
+	else if (length == 7)
+		printf("length: 4\n");
+	else
+		printf("length: 0x%x\n", 0x100 << length);
+#endif
 #endif
 	switch (mbc->enc)
 	{
@@ -380,6 +391,9 @@ uint8_t mbc_read(mbc_t *mbc)
 			if (off < 0x8000)
 				off = 0x8000 + (off & 0x1FF);
 			v = mbc->data[off];
+#if 0
+			printf("mbc read [%08" PRIx32 "] = %02" PRIx8 "\n", off, v);
+#endif
 			mbc->cmd_count++;
 			if (mbc->cmd_count == 0x200)
 				end_cmd(mbc);

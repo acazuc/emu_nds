@@ -174,9 +174,10 @@ static void nds_cycles(nds_t *nds, uint32_t cycles)
 		nds->cycle++;
 		if (!(nds->cycle & 7))
 			mem_dma(nds->mem);
+		if (!(nds->cycle & 3))
+			apu_cycle(nds->apu);
 		if (nds->cycle & 1)
 		{
-			apu_cycle(nds->apu);
 			mem_timers(nds->mem);
 			if (!nds->arm7->instr_delay)
 				cpu_cycle(nds->arm7);
@@ -232,6 +233,7 @@ void nds_frame(nds_t *nds, uint8_t *video_buf, int16_t *audio_buf, uint32_t joyp
 		nds_cycles(nds, 99 * 12);
 	}
 
+	gpu_commit_bgpos(nds->gpu);
 	if (mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) & (1 << 3))
 	{
 		mem_arm7_if(nds->mem, 1 << 0);

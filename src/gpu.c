@@ -85,14 +85,29 @@ void gpu_del(gpu_t *gpu)
 	free(gpu);
 }
 
+static inline uint32_t eng_get_reg8(gpu_t *gpu, struct gpu_eng *eng, uint32_t reg)
+{
+	return mem_arm9_get_reg8(gpu->mem, reg + eng->reg_base);
+}
+
+static inline uint32_t eng_get_reg16(gpu_t *gpu, struct gpu_eng *eng, uint32_t reg)
+{
+	return mem_arm9_get_reg16(gpu->mem, reg + eng->reg_base);
+}
+
+static inline uint32_t eng_get_reg32(gpu_t *gpu, struct gpu_eng *eng, uint32_t reg)
+{
+	return mem_arm9_get_reg32(gpu->mem, reg + eng->reg_base);
+}
+
 static void draw_background_text(gpu_t *gpu, struct gpu_eng *eng, uint8_t y, uint8_t bg, uint8_t *data)
 {
 	static const uint32_t mapwidths[]  = {32 * 8, 64 * 8, 32 * 8, 64 * 8};
 	static const uint32_t mapheights[] = {32 * 8, 32 * 8, 64 * 8, 64 * 8};
-	uint32_t dispcnt = mem_arm9_get_reg32(gpu->mem, MEM_ARM9_REG_DISPCNT + eng->reg_base);
-	uint16_t bgcnt = mem_arm9_get_reg16(gpu->mem, MEM_ARM9_REG_BG0CNT + eng->reg_base + bg * 2);
-	uint16_t bghofs = mem_arm9_get_reg16(gpu->mem, MEM_ARM9_REG_BG0HOFS + eng->reg_base + bg * 4) & 0x1FF;
-	uint16_t bgvofs = mem_arm9_get_reg16(gpu->mem, MEM_ARM9_REG_BG0VOFS + eng->reg_base + bg * 4) & 0x1FF;
+	uint32_t dispcnt = eng_get_reg32(gpu, eng, MEM_ARM9_REG_DISPCNT);
+	uint16_t bgcnt = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BG0CNT + bg * 2);
+	uint16_t bghofs = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BG0HOFS + bg * 4) & 0x1FF;
+	uint16_t bgvofs = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BG0VOFS + bg * 4) & 0x1FF;
 	uint8_t size = (bgcnt >> 14) & 0x3;
 	uint32_t tilebase = ((bgcnt >> 2) & 0xF) * 0x4000;
 	uint32_t mapbase = ((bgcnt >> 8) & 0x1F) * 0x800;
@@ -182,15 +197,15 @@ static void draw_background_affine(gpu_t *gpu, struct gpu_eng *eng, uint8_t y, u
 {
 	(void)y;
 	static const uint32_t mapsizes[]  = {16 * 8, 32 * 8, 64 * 8, 128 * 8};
-	uint16_t bgcnt = mem_arm9_get_reg16(gpu->mem, MEM_ARM9_REG_BG0CNT + eng->reg_base + bg * 2);
+	uint16_t bgcnt = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BG0CNT + bg * 2);
 	uint8_t size = (bgcnt >> 14) & 0x3;
-	uint32_t dispcnt = mem_arm9_get_reg32(gpu->mem, MEM_ARM9_REG_DISPCNT + eng->reg_base);
+	uint32_t dispcnt = eng_get_reg32(gpu, eng, MEM_ARM9_REG_DISPCNT);
 	uint32_t tilebase = ((bgcnt >> 2) & 0xF) * 0x4000 + ((dispcnt >> 24) & 0x3) * 0x10000;
 	uint32_t mapbase = ((bgcnt >> 8) & 0x1F) * 0x800 + ((dispcnt >> 27) & 0x3) * 0x10000;
 	uint32_t mapsize = mapsizes[size];
 	uint8_t overflow = (bgcnt >> 13) & 1;
-	int16_t pa = mem_arm9_get_reg16(gpu->mem, MEM_ARM9_REG_BG2PA + eng->reg_base + 0x10 * (bg - 2));
-	int16_t pc = mem_arm9_get_reg16(gpu->mem, MEM_ARM9_REG_BG2PC + eng->reg_base + 0x10 * (bg - 2));
+	int16_t pa = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BG2PA + 0x10 * (bg - 2));
+	int16_t pc = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BG2PC + 0x10 * (bg - 2));
 	int32_t bgx = bg == 2 ? eng->bg2x : eng->bg3x;
 	int32_t bgy = bg == 2 ? eng->bg2y : eng->bg3y;
 	for (int32_t x = 0; x < 256; ++x)
@@ -237,8 +252,8 @@ static void draw_background_affine(gpu_t *gpu, struct gpu_eng *eng, uint8_t y, u
 static void draw_background_bitmap_3(gpu_t *gpu, struct gpu_eng *eng, uint8_t y, uint8_t *data)
 {
 	(void)y;
-	int16_t pa = mem_arm9_get_reg16(gpu->mem, MEM_ARM9_REG_BG2PA + eng->reg_base);
-	int16_t pc = mem_arm9_get_reg16(gpu->mem, MEM_ARM9_REG_BG2PC + eng->reg_base);
+	int16_t pa = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BG2PA);
+	int16_t pc = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BG2PC);
 	int32_t bgx = eng->bg2x;
 	int32_t bgy = eng->bg2y;
 	for (int32_t x = 0; x < 256; ++x)
@@ -259,11 +274,11 @@ static void draw_background_bitmap_3(gpu_t *gpu, struct gpu_eng *eng, uint8_t y,
 static void draw_background_bitmap_4(gpu_t *gpu, struct gpu_eng *eng, uint8_t y, uint8_t *data)
 {
 	(void)y;
-	int16_t pa = mem_arm9_get_reg16(gpu->mem, MEM_ARM9_REG_BG2PA + eng->reg_base);
-	int16_t pc = mem_arm9_get_reg16(gpu->mem, MEM_ARM9_REG_BG2PC + eng->reg_base);
+	int16_t pa = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BG2PA);
+	int16_t pc = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BG2PC);
 	int32_t bgx = eng->bg2x;
 	int32_t bgy = eng->bg2y;
-	uint32_t dispcnt = mem_arm9_get_reg32(gpu->mem, MEM_ARM9_REG_DISPCNT + eng->reg_base);
+	uint32_t dispcnt = eng_get_reg32(gpu, eng, MEM_ARM9_REG_DISPCNT);
 	uint32_t addr_offset = (dispcnt & (1 << 4)) ? 0xA000 : 0;
 	for (int32_t x = 0; x < 256; ++x)
 	{
@@ -292,11 +307,11 @@ static void draw_background_bitmap_5(gpu_t *gpu, struct gpu_eng *eng, uint8_t y,
 	}
 	memset(&data[0], 0, 4 * 40);
 	memset(&data[200 * 4], 0, 4 * 40);
-	int16_t pa = mem_arm9_get_reg16(gpu->mem, MEM_ARM9_REG_BG2PA + eng->reg_base);
-	int16_t pc = mem_arm9_get_reg16(gpu->mem, MEM_ARM9_REG_BG2PC + eng->reg_base);
+	int16_t pa = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BG2PA);
+	int16_t pc = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BG2PC);
 	int32_t bgx = eng->bg2x;
 	int32_t bgy = eng->bg2y;
-	uint8_t baseaddr = (mem_arm9_get_reg32(gpu->mem, MEM_ARM9_REG_DISPCNT + eng->reg_base) & (1 << 4)) ? 0xA000 : 0;
+	uint8_t baseaddr = (eng_get_reg32(gpu, eng, MEM_ARM9_REG_DISPCNT) & (1 << 4)) ? 0xA000 : 0;
 	for (int32_t x = 0; x < 192; ++x)
 	{
 		int32_t vx = bgx / 256;
@@ -330,7 +345,7 @@ static void draw_objects(gpu_t *gpu, struct gpu_eng *eng, uint8_t y, uint8_t *da
 	};
 	for (size_t i = 0; i < 256; ++i)
 		data[i * 4 + 3] = 0xE;
-	uint32_t dispcnt = mem_arm9_get_reg32(gpu->mem, MEM_ARM9_REG_DISPCNT + eng->reg_base);
+	uint32_t dispcnt = eng_get_reg32(gpu, eng, MEM_ARM9_REG_DISPCNT);
 	for (uint8_t i = 0; i < 128; ++i)
 	{
 		uint16_t attr0 = mem_get_oam16(gpu->mem, eng->oam_base + i * 8);
@@ -338,7 +353,7 @@ static void draw_objects(gpu_t *gpu, struct gpu_eng *eng, uint8_t y, uint8_t *da
 			continue;
 		uint8_t mode = (attr0 >> 10) & 0x3;
 		if (mode == 3)
-			continue;
+			printf("unhandled obj3\n");
 		int16_t objy = attr0 & 0xFF;
 		if (objy >= 192)
 			objy -= 256;
@@ -514,13 +529,13 @@ static const uint8_t *layer_data(struct line_buff *line, enum layer_type layer, 
 
 static void calcwindow(gpu_t *gpu, struct gpu_eng *eng, struct line_buff *line, uint8_t x, uint8_t y, uint8_t *winflags)
 {
-	uint32_t dispcnt = mem_arm9_get_reg32(gpu->mem, MEM_ARM9_REG_DISPCNT + eng->reg_base);
-	uint16_t win0h = mem_arm9_get_reg16(gpu->mem, MEM_ARM9_REG_WIN0H + eng->reg_base);
-	uint16_t win0v = mem_arm9_get_reg16(gpu->mem, MEM_ARM9_REG_WIN0V + eng->reg_base);
-	uint16_t win1h = mem_arm9_get_reg16(gpu->mem, MEM_ARM9_REG_WIN1H + eng->reg_base);
-	uint16_t win1v = mem_arm9_get_reg16(gpu->mem, MEM_ARM9_REG_WIN1V + eng->reg_base);
-	uint16_t winin = mem_arm9_get_reg16(gpu->mem, MEM_ARM9_REG_WININ + eng->reg_base);
-	uint16_t winout = mem_arm9_get_reg16(gpu->mem, MEM_ARM9_REG_WINOUT + eng->reg_base);
+	uint32_t dispcnt = eng_get_reg32(gpu, eng, MEM_ARM9_REG_DISPCNT);
+	uint16_t win0h = eng_get_reg16(gpu, eng, MEM_ARM9_REG_WIN0H);
+	uint16_t win0v = eng_get_reg16(gpu, eng, MEM_ARM9_REG_WIN0V);
+	uint16_t win1h = eng_get_reg16(gpu, eng, MEM_ARM9_REG_WIN1H);
+	uint16_t win1v = eng_get_reg16(gpu, eng, MEM_ARM9_REG_WIN1V);
+	uint16_t winin = eng_get_reg16(gpu, eng, MEM_ARM9_REG_WININ);
+	uint16_t winout = eng_get_reg16(gpu, eng, MEM_ARM9_REG_WINOUT);
 	uint8_t win0l = win0h >> 8;
 	uint8_t win0r = win0h & 0xFF;
 	uint8_t win0t = win0v >> 8;
@@ -686,7 +701,7 @@ static void compose(gpu_t *gpu, struct gpu_eng *eng, struct line_buff *line, uin
 	{
 		for (size_t j = 0; j < 4; ++j)
 		{
-			uint8_t bgp = mem_arm9_get_reg16(gpu->mem, MEM_ARM9_REG_BG0CNT + eng->reg_base + 2 * j) & 3;
+			uint8_t bgp = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BG0CNT + 2 * j) & 3;
 			if (bgp == i)
 			{
 				bg_order[bg_order_cnt] = j;
@@ -695,14 +710,14 @@ static void compose(gpu_t *gpu, struct gpu_eng *eng, struct line_buff *line, uin
 			}
 		}
 	}
-	uint32_t dispcnt = mem_arm9_get_reg32(gpu->mem, MEM_ARM9_REG_DISPCNT + eng->reg_base);
+	uint32_t dispcnt = eng_get_reg32(gpu, eng, MEM_ARM9_REG_DISPCNT);
 	bool has_window = (dispcnt & (7 << 13)) != 0;
-	uint16_t bldcnt = mem_arm9_get_reg16(gpu->mem, MEM_ARM9_REG_BLDCNT + eng->reg_base);
+	uint16_t bldcnt = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BLDCNT);
 	uint8_t top_mask = (bldcnt >> 0) & 0x3F;
 	uint8_t bot_mask = (bldcnt >> 8) & 0x3F;
 	uint8_t blending = (bldcnt >> 6) & 3;
-	uint16_t bldalpha = mem_arm9_get_reg16(gpu->mem, MEM_ARM9_REG_BLDALPHA + eng->reg_base);
-	uint8_t bldy = mem_arm9_get_reg16(gpu->mem, MEM_ARM9_REG_BLDY + eng->reg_base) & 0x1F;
+	uint16_t bldalpha = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BLDALPHA);
+	uint8_t bldy = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BLDY) & 0x1F;
 	uint8_t eva = (bldalpha >> 0) & 0x1F;
 	uint8_t evb = (bldalpha >> 8) & 0x1F;
 	for (size_t x = 0; x < 256; ++x)
@@ -849,7 +864,7 @@ static void compose(gpu_t *gpu, struct gpu_eng *eng, struct line_buff *line, uin
 			}
 		}
 	}
-	uint16_t master_bright = mem_arm9_get_reg16(gpu->mem, MEM_ARM9_REG_MASTER_BRIGHT + eng->reg_base);
+	uint16_t master_bright = eng_get_reg16(gpu, eng, MEM_ARM9_REG_MASTER_BRIGHT);
 	switch ((master_bright >> 14) & 0x3)
 	{
 		case 0:
@@ -859,9 +874,9 @@ static void compose(gpu_t *gpu, struct gpu_eng *eng, struct line_buff *line, uin
 			uint16_t factor = master_bright & 0x1F;
 			if (factor > 16)
 				factor = 16;
-			for (size_t i = 0; i < 256 * 4; ++i)
+			for (size_t x = 0; x < 256; ++x)
 			{
-				uint8_t *ptr = &eng->data[y * 256 * 4 + i];
+				uint8_t *ptr = &eng->data[(y * 256 + x) * 4];
 				ptr[0] += ~ptr[0] * factor / 16;
 				ptr[1] += ~ptr[1] * factor / 16;
 				ptr[2] += ~ptr[2] * factor / 16;
@@ -873,9 +888,9 @@ static void compose(gpu_t *gpu, struct gpu_eng *eng, struct line_buff *line, uin
 			uint16_t factor = master_bright & 0x1F;
 			if (factor > 16)
 				factor = 16;
-			for (size_t i = 0; i < 256 * 4; ++i)
+			for (size_t x = 0; x < 256; ++x)
 			{
-				uint8_t *ptr = &eng->data[y * 256 * 4 + i];
+				uint8_t *ptr = &eng->data[(y * 256 + x) * 4];
 				ptr[0] -= ptr[0] * factor / 16;
 				ptr[1] -= ptr[1] * factor / 16;
 				ptr[2] -= ptr[2] * factor / 16;
@@ -888,7 +903,10 @@ static void compose(gpu_t *gpu, struct gpu_eng *eng, struct line_buff *line, uin
 static void draw_eng(gpu_t *gpu, struct gpu_eng *eng, uint8_t y)
 {
 	struct line_buff line;
-	uint32_t dispcnt = mem_arm9_get_reg32(gpu->mem, MEM_ARM9_REG_DISPCNT + eng->reg_base);
+	uint32_t dispcnt = eng_get_reg32(gpu, eng, MEM_ARM9_REG_DISPCNT);
+#if 0
+	printf("[ENG%c] DISPCNT: %08" PRIx32 "\n", eng->engb ? 'B' : 'A', dispcnt);
+#endif
 	switch ((dispcnt >> 16) & 0x3)
 	{
 		case 0:
@@ -903,9 +921,6 @@ static void draw_eng(gpu_t *gpu, struct gpu_eng *eng, uint8_t y)
 			assert(!"unimp");
 			break;
 	}
-#if 0
-	printf("[ENG%c] DISPCNT: %08" PRIx32 "\n", eng->engb ? 'B' : 'A', dispcnt);
-#endif
 	memset(&line, 0, sizeof(line));
 	switch (dispcnt & 0x7)
 	{
@@ -952,10 +967,10 @@ static void draw_eng(gpu_t *gpu, struct gpu_eng *eng, uint8_t y)
 	if (dispcnt & (1 << 0xC))
 		draw_objects(gpu, eng, y, line.obj);
 	compose(gpu, eng, &line, y);
-	int16_t bg2pb = mem_arm9_get_reg16(gpu->mem, MEM_ARM9_REG_BG2PB + eng->reg_base);
-	int16_t bg2pd = mem_arm9_get_reg16(gpu->mem, MEM_ARM9_REG_BG2PD + eng->reg_base);
-	int16_t bg3pb = mem_arm9_get_reg16(gpu->mem, MEM_ARM9_REG_BG3PB + eng->reg_base);
-	int16_t bg3pd = mem_arm9_get_reg16(gpu->mem, MEM_ARM9_REG_BG3PD + eng->reg_base);
+	int16_t bg2pb = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BG2PB);
+	int16_t bg2pd = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BG2PD);
+	int16_t bg3pb = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BG3PB);
+	int16_t bg3pd = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BG3PD);
 	eng->bg2x += bg2pb;
 	eng->bg2y += bg2pd;
 	eng->bg3x += bg3pb;
@@ -965,6 +980,9 @@ static void draw_eng(gpu_t *gpu, struct gpu_eng *eng, uint8_t y)
 void gpu_draw(gpu_t *gpu, uint8_t y)
 {
 	uint32_t powcnt1 = mem_arm9_get_reg32(gpu->mem, MEM_ARM9_REG_POWCNT1);
+#if 0
+	printf("powcnt1: %08" PRIx32 "\n", powcnt1);
+#endif
 	if (powcnt1 & (1 << 1))
 		draw_eng(gpu, &gpu->enga, y);
 	else
@@ -973,4 +991,22 @@ void gpu_draw(gpu_t *gpu, uint8_t y)
 		draw_eng(gpu, &gpu->engb, y);
 	else
 		memset(&gpu->engb.data[y * 256 * 4], 0, 256 * 4);
+}
+
+static void eng_commit_bgpos(gpu_t *gpu, struct gpu_eng *eng)
+{
+	eng->bg2x = eng_get_reg32(gpu, eng, MEM_ARM9_REG_BG2X) & 0xFFFFFFF;
+	eng->bg2y = eng_get_reg32(gpu, eng, MEM_ARM9_REG_BG2Y) & 0xFFFFFFF;
+	eng->bg3x = eng_get_reg32(gpu, eng, MEM_ARM9_REG_BG3X) & 0xFFFFFFF;
+	eng->bg3y = eng_get_reg32(gpu, eng, MEM_ARM9_REG_BG3Y) & 0xFFFFFFF;
+	TRANSFORM_INT28(eng->bg2x);
+	TRANSFORM_INT28(eng->bg2y);
+	TRANSFORM_INT28(eng->bg3x);
+	TRANSFORM_INT28(eng->bg3y);
+}
+
+void gpu_commit_bgpos(gpu_t *gpu)
+{
+	eng_commit_bgpos(gpu, &gpu->enga);
+	eng_commit_bgpos(gpu, &gpu->engb);
 }

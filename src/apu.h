@@ -13,8 +13,10 @@ struct apu_channel
 	uint16_t pnt;
 	uint32_t sad;
 	uint32_t len;
-	uint32_t pos;
+	uint32_t pos; /* in 4 bits units, for adpcm simplicity */
 	uint16_t clock;
+	int16_t sample;
+	uint8_t adpcm_idx;
 };
 
 typedef struct apu

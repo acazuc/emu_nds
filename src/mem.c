@@ -67,6 +67,14 @@ mem_t *mem_new(nds_t *nds, mbc_t *mbc)
 	mem->vram_objb_mask = MEM_VRAM_D_MASK;
 	mem->spi_powerman.regs[0x0] = 0x0C; /* enable backlight */
 	mem->spi_powerman.regs[0x4] = 0x42; /* high brightness */
+	for (size_t i = 0; i < 32; ++i)
+		mem->vram_bga_bases[i] = 0xFFFFFFFF;
+	for (size_t i = 0; i < 8; ++i)
+		mem->vram_bgb_bases[i] = 0xFFFFFFFF;
+	for (size_t i = 0; i < 16; ++i)
+		mem->vram_obja_bases[i] = 0xFFFFFFFF;
+	for (size_t i = 0; i < 8; ++i)
+		mem->vram_objb_bases[i] = 0xFFFFFFFF;
 	return mem;
 }
 
@@ -200,7 +208,6 @@ static void arm##armv##_dma(mem_t *mem) \
 			if (cnt_h & (1 << 14)) \
 				mem_arm##armv##_if(mem, (1 << (8 + i))); \
 		} \
-		return; \
 	} \
 } \
 static void arm##armv##_load_dma_length(mem_t *mem, size_t id) \
@@ -253,8 +260,9 @@ static void arm##armv##_dma_control(mem_t *mem, uint8_t id) \
 			dma->status |= MEM_DMA_ACTIVE; \
 	} \
 	if (0 && (dma->status & MEM_DMA_ENABLE)) \
-		printf("enable DMA %" PRIu8 " of %08" PRIx32 " words from %08" PRIx32 " to %08" PRIx32 ": %04" PRIx16 "\n", \
-		       id, dma->len, dma->src, dma->dst, cnt_h); \
+		printf("[ARM" #armv "] enable DMA %" PRIu8 " type %" PRId32 " of %08" PRIx32 " words from %08" PRIx32 " to %08" PRIx32 ": %04" PRIx16 "\n", \
+		       id, armv == 7 ? ((cnt_h >> 12) & 3) : ((cnt_h >> 11) & 7), \
+		       dma->len, dma->src, dma->dst, cnt_h); \
 } \
 static void arm##armv##_dma_start(mem_t *mem, uint8_t cond) \
 { \
@@ -450,18 +458,22 @@ static void touchscreen_write(mem_t *mem, uint8_t v)
 		mem->spi_touchscreen.has_channel = 1;
 		return;
 	}
+	/* use values matching initial firmware calibration:
+	 * p1: 0x000 / 0x000 -> 0x00 / 0x00
+	 * p2: 0xFF0 / 0xBF0 -> 0xFF / 0xBF
+	 */
 	switch (mem->spi_touchscreen.channel)
 	{
 		case 0x1:
 			if (mem->nds->touch)
-				mem->spi_touchscreen.read_latch = 0xB0 + mem->nds->touch_y * 0x13;
+				mem->spi_touchscreen.read_latch = mem->nds->touch_y * 0x10;
 			else
 				mem->spi_touchscreen.read_latch = 0xFFF;
 			mem->spi_touchscreen.read_pos = 0;
 			break;
 		case 0x5:
 			if (mem->nds->touch)
-				mem->spi_touchscreen.read_latch = 0x100 + mem->nds->touch_x * 0xE;
+				mem->spi_touchscreen.read_latch = mem->nds->touch_x * 0x10;
 			else
 				mem->spi_touchscreen.read_latch = 0x000;
 			mem->spi_touchscreen.read_pos = 0;
@@ -1176,6 +1188,9 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM7_REG_SOUNDXCNT(14) + 3:
 		case MEM_ARM7_REG_SOUNDXCNT(15) + 3:
 		{
+#if 0
+			printf("SND[%08" PRIx32 "] = %02" PRIx8 "\n", addr, v);
+#endif
 			bool start = ((v & (1 << 7)) != (mem->arm7_regs[addr] & (1 << 7)));
 			mem->arm7_regs[addr] = v;
 			if (start)
@@ -1197,14 +1212,14 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 			mem->arm9_regs[addr] = v;
 			return;
 		case MEM_ARM7_REG_AUXSPICNT:
-#if 1
+#if 0
 			printf("[ARM7] AUXSPICNT[%08" PRIx32 "] = %02" PRIx8 "\n",
 			       addr, v);
 #endif
 			mem->arm9_regs[addr] = v & ~(1 << 7);
 			return;
 		case MEM_ARM7_REG_AUXSPICNT + 1:
-#if 1
+#if 0
 			printf("[ARM7] AUXSPICNT[%08" PRIx32 "] = %02" PRIx8 "\n",
 			       addr, v);
 #endif
@@ -1334,6 +1349,7 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM7_REG_EXMEMSTAT + 1:
 		case MEM_ARM7_REG_IPCFIFOCNT + 2:
 		case MEM_ARM7_REG_IPCFIFOCNT + 3:
+		case MEM_ARM7_REG_AUXSPIDATA + 1:
 			return;
 		case MEM_ARM7_REG_KEYCNT:
 		case MEM_ARM7_REG_KEYCNT + 1:
@@ -1389,6 +1405,19 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 #if 0
 			printf("ARM7 IPCFIFO write (now %" PRIu8 ")\n", mem->arm9_fifo.len);
 #endif
+			return;
+		case MEM_ARM7_REG_ROMSEED0_L:
+		case MEM_ARM7_REG_ROMSEED0_L + 1:
+		case MEM_ARM7_REG_ROMSEED0_L + 2:
+		case MEM_ARM7_REG_ROMSEED0_L + 3:
+		case MEM_ARM7_REG_ROMSEED1_L:
+		case MEM_ARM7_REG_ROMSEED1_L + 1:
+		case MEM_ARM7_REG_ROMSEED1_L + 2:
+		case MEM_ARM7_REG_ROMSEED1_L + 3:
+		case MEM_ARM7_REG_ROMSEED0_H:
+		case MEM_ARM7_REG_ROMSEED0_H + 1:
+		case MEM_ARM7_REG_ROMSEED1_H:
+		case MEM_ARM7_REG_ROMSEED1_H + 1:
 			return;
 		default:
 			printf("[%08" PRIx32 "] unknown ARM7 set register %08" PRIx32 " = %02" PRIx8 "\n",
@@ -1607,7 +1636,7 @@ static uint8_t get_arm7_reg8(mem_t *mem, uint32_t addr)
 			return mem->arm9_regs[addr];
 		case MEM_ARM7_REG_AUXSPICNT:
 		case MEM_ARM7_REG_AUXSPICNT + 1:
-#if 1
+#if 0
 			printf("[ARM7] [%08" PRIx32 "] AUXSPICNT[%08" PRIx32 "] read 0x%02" PRIx8 "\n",
 			       cpu_get_reg(mem->nds->arm7, CPU_REG_PC), addr, mem->arm9_regs[addr]);
 #endif
@@ -1650,6 +1679,7 @@ static uint8_t get_arm7_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM7_REG_SIOCNT + 2:
 		case MEM_ARM7_REG_SIOCNT + 3:
 		case MEM_ARM7_REG_EXTKEYIN + 1:
+		case MEM_ARM7_REG_AUXSPIDATA + 1:
 			return 0;
 		case MEM_ARM7_REG_WRAMSTAT:
 			return mem->arm9_regs[MEM_ARM9_REG_WRAMCNT];
@@ -1819,9 +1849,16 @@ uint##size##_t mem_arm7_get##size(mem_t *mem, uint32_t addr, enum mem_type type)
 			return get_arm7_reg##size(mem, addr - 0x4000000); \
 		case 0x6: /* vram */ \
 			break; \
-		case 0x8: /* GBA */ \
+		case 0x8: /* GBA rom */ \
 		case 0x9: \
-		case 0xA: \
+			if (!(mem->arm9_regs[MEM_ARM9_REG_EXMEMCNT] & (1 << 7))) \
+				return 0; \
+			if (size == 8 || size == 16) \
+				return addr >> 1; \
+			return (addr >> 1) | (((addr + 1) >> 1) << 16); \
+		case 0xA: /* GBA ram */ \
+			if (!(mem->arm9_regs[MEM_ARM9_REG_EXMEMCNT] & (1 << 7))) \
+				return 0; \
 			return 0xFF; \
 		default: \
 			break; \
@@ -1983,6 +2020,261 @@ static void run_div(mem_t *mem)
 			mem_arm9_set_reg64(mem, MEM_ARM9_REG_DIV_RESULT, div);
 			mem_arm9_set_reg64(mem, MEM_ARM9_REG_DIVREM_RESULT, rem);
 			break;
+		}
+	}
+}
+
+static void run_sqrt(mem_t *mem)
+{
+	uint64_t param;
+	if (mem_arm9_get_reg32(mem, MEM_ARM9_REG_SQRTCNT) & (1 << 0))
+		param = mem_arm9_get_reg64(mem, MEM_ARM9_REG_SQRT_PARAM);
+	else
+		param = mem_arm9_get_reg32(mem, MEM_ARM9_REG_SQRT_PARAM);
+	uint64_t l = 0;
+	uint64_t m;
+	uint64_t r = param + 1;
+	while (l != r - 1)
+	{
+		m = (l + r) / 2;
+		if (m * m <= param)
+			l = m;
+		else
+			r = m;
+	}
+#if 0
+	printf("SQRT(%" PRIu64 ") = %" PRIu64 "\n", param, l);
+#endif
+	mem_arm9_set_reg32(mem, MEM_ARM9_REG_SQRT_RESULT, l);
+}
+
+static void update_vram_maps(mem_t *mem)
+{
+	for (size_t i = 0; i < 32; ++i)
+		mem->vram_bga_bases[i] = 0xFFFFFFFF;
+	for (size_t i = 0; i < 8; ++i)
+		mem->vram_bgb_bases[i] = 0xFFFFFFFF;
+	for (size_t i = 0; i < 16; ++i)
+		mem->vram_obja_bases[i] = 0xFFFFFFFF;
+	for (size_t i = 0; i < 8; ++i)
+		mem->vram_objb_bases[i] = 0xFFFFFFFF;
+	uint8_t cnt_a = mem_arm9_get_reg8(mem, MEM_ARM9_REG_VRAMCNT_A);
+	if (cnt_a & (1 << 7))
+	{
+		uint8_t ofs_a = (cnt_a >> 3) & 0x3;
+		switch (cnt_a & 0x3)
+		{
+			case 0:
+				break;
+			case 1:
+				for (size_t i = 0; i < 8; ++i)
+					mem->vram_bga_bases[ofs_a * 8 + i] = MEM_VRAM_A_BASE + i * 0x4000;
+				break;
+			case 2:
+				ofs_a &= 1;
+				for (size_t i = 0; i < 8; ++i)
+					mem->vram_obja_bases[ofs_a * 8 + i] = MEM_VRAM_A_BASE + i * 0x4000;
+				break;
+			case 3:
+				/* XXX texture / rear plane image */
+				break;
+		}
+	}
+	uint8_t cnt_b = mem_arm9_get_reg8(mem, MEM_ARM9_REG_VRAMCNT_B);
+	if (cnt_b & (1 << 7))
+	{
+		uint8_t ofs_b = (cnt_b >> 3) & 0x3;
+		switch (cnt_b & 0x3)
+		{
+			case 0:
+				break;
+			case 1:
+				for (size_t i = 0; i < 8; ++i)
+					mem->vram_bga_bases[ofs_b * 8 + i] = MEM_VRAM_B_BASE + i * 0x4000;
+				break;
+			case 2:
+				ofs_b &= 1;
+				for (size_t i = 0; i < 8; ++i)
+					mem->vram_bga_bases[ofs_b * 8 + i] = MEM_VRAM_B_BASE + i * 0x4000;
+				break;
+			case 3:
+				/* XXX texture / rear plane image */
+				break;
+		}
+	}
+	uint8_t cnt_c = mem_arm9_get_reg8(mem, MEM_ARM9_REG_VRAMCNT_C);
+	if (cnt_c & (1 << 7))
+	{
+		uint8_t ofs_c = (cnt_c >> 3) & 0x3;
+		switch (cnt_c & 0x7)
+		{
+			case 0:
+				break;
+			case 1:
+				for (size_t i = 0; i < 8; ++i)
+					mem->vram_bga_bases[ofs_c * 8 + i] = MEM_VRAM_C_BASE + i * 0x4000;
+				break;
+			case 2:
+				/* XXX arm7 */
+				break;
+			case 3:
+				/* XXX texture / rear plane image */
+				break;
+			case 4:
+				for (size_t i = 0; i < 8; ++i)
+					mem->vram_bgb_bases[i] = MEM_VRAM_C_BASE + i * 0x4000;
+				break;
+			case 5:
+			case 6:
+			case 7:
+				break;
+		}
+	}
+	uint8_t cnt_d = mem_arm9_get_reg8(mem, MEM_ARM9_REG_VRAMCNT_D);
+	if (cnt_d & (1 << 7))
+	{
+		uint8_t ofs_d = (cnt_d >> 3) & 0x3;
+		switch (cnt_d & 0x7)
+		{
+			case 0:
+				break;
+			case 1:
+				for (size_t i = 0; i < 8; ++i)
+					mem->vram_bga_bases[ofs_d * 8 + i] = MEM_VRAM_D_BASE + i * 0x4000;
+				break;
+			case 2:
+				/* XXX arm7 */
+				break;
+			case 3:
+				/* XXX texture / rear plane image */
+				break;
+			case 4:
+				for (size_t i = 0; i < 8; ++i)
+					mem->vram_objb_bases[i] = MEM_VRAM_D_BASE + i * 0x4000;
+				break;
+			case 5:
+			case 6:
+			case 7:
+				break;
+		}
+	}
+	uint8_t cnt_e = mem_arm9_get_reg8(mem, MEM_ARM9_REG_VRAMCNT_E);
+	if (cnt_e & (1 << 7))
+	{
+		switch (cnt_e & 0x7)
+		{
+			case 0:
+				break;
+			case 1:
+				for (size_t i = 0; i < 4; ++i)
+					mem->vram_bga_bases[i] = MEM_VRAM_E_BASE + i * 0x4000;
+				break;
+			case 2:
+				for (size_t i = 0; i < 4; ++i)
+					mem->vram_obja_bases[i] = MEM_VRAM_E_BASE + i * 0x4000;
+				break;
+			case 3:
+				/* XXX texture palette */
+				break;
+			case 4:
+				/* XXX bga ext palette */
+				break;
+			case 5:
+			case 6:
+			case 7:
+				break;
+		}
+	}
+	uint8_t cnt_f = mem_arm9_get_reg8(mem, MEM_ARM9_REG_VRAMCNT_F);
+	if (cnt_f & (1 << 7))
+	{
+		uint8_t ofs_f = (cnt_f >> 3) & 0x3;
+		switch (cnt_f & 0x7)
+		{
+			case 0:
+				break;
+			case 1:
+				mem->vram_bga_bases[(ofs_f & 1) | ((ofs_f & 2) << 1)] = MEM_VRAM_F_BASE;
+				break;
+			case 2:
+				mem->vram_obja_bases[(ofs_f & 1) | ((ofs_f & 2) << 1)] = MEM_VRAM_F_BASE;
+				break;
+			case 3:
+				/* XXX texture palette */
+				break;
+			case 4:
+				/* XXX bga ext palette */
+				break;
+			case 5:
+				/* XXX obja ext palette */
+				break;
+			case 6:
+			case 7:
+				break;
+		}
+	}
+	uint8_t cnt_g = mem_arm9_get_reg8(mem, MEM_ARM9_REG_VRAMCNT_G);
+	if (cnt_g & (1 << 7))
+	{
+		uint8_t ofs_g = (cnt_g >> 3) & 0x3;
+		switch (cnt_g & 0x7)
+		{
+			case 0:
+				break;
+			case 1:
+				mem->vram_bga_bases[(ofs_g & 1) | ((ofs_g & 2) << 1)] = MEM_VRAM_G_BASE;
+				break;
+			case 2:
+				mem->vram_obja_bases[(ofs_g & 1) | ((ofs_g & 2) << 1)] = MEM_VRAM_G_BASE;
+				break;
+			case 3:
+				/* XXX texture palette */
+				break;
+			case 4:
+				/* XXX bga ext palette */
+				break;
+			case 5:
+				/* XXX obja ext palette */
+				break;
+			case 6:
+			case 7:
+				break;
+		}
+	}
+	uint8_t cnt_h = mem_arm9_get_reg8(mem, MEM_ARM9_REG_VRAMCNT_H);
+	if (cnt_h & (1 << 7))
+	{
+		switch (cnt_h & 0x3)
+		{
+			case 0:
+				break;
+			case 1:
+				mem->vram_bgb_bases[0] = MEM_VRAM_H_BASE;
+				mem->vram_bgb_bases[1] = MEM_VRAM_H_BASE + 0x4000;
+				break;
+			case 2:
+				/* XXX bgb ext palette */
+				break;
+			case 3:
+				break;
+		}
+	}
+	uint8_t cnt_i = mem_arm9_get_reg8(mem, MEM_ARM9_REG_VRAMCNT_I);
+	if (cnt_i & (1 << 7))
+	{
+		switch (cnt_i & 0x3)
+		{
+			case 0:
+				break;
+			case 1:
+				mem->vram_bgb_bases[2] = MEM_VRAM_I_BASE;
+				break;
+			case 2:
+				mem->vram_objb_bases[0] = MEM_VRAM_I_BASE;
+				break;
+			case 3:
+				/* XXX objb ext palette */
+				break;
 		}
 	}
 }
@@ -2291,14 +2583,14 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 			mem->arm9_regs[addr] = v;
 			return;
 		case MEM_ARM9_REG_AUXSPICNT:
-#if 1
+#if 0
 			printf("[ARM9] AUXSPICNT[%08" PRIx32 "] = %02" PRIx8 "\n",
 			       addr, v);
 #endif
 			mem->arm9_regs[addr] = v & ~(1 << 7);
 			return;
 		case MEM_ARM9_REG_AUXSPICNT + 1:
-#if 1
+#if 0
 			printf("[ARM9] AUXSPICNT[%08" PRIx32 "] = %02" PRIx8 "\n",
 			       addr, v);
 #endif
@@ -2475,6 +2767,33 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM9_REG_DIV_DENOM + 7:
 			mem->arm9_regs[addr] = v;
 			run_div(mem);
+			return;
+		case MEM_ARM9_REG_VRAMCNT_A:
+		case MEM_ARM9_REG_VRAMCNT_B:
+		case MEM_ARM9_REG_VRAMCNT_C:
+		case MEM_ARM9_REG_VRAMCNT_D:
+		case MEM_ARM9_REG_VRAMCNT_E:
+		case MEM_ARM9_REG_VRAMCNT_F:
+		case MEM_ARM9_REG_VRAMCNT_G:
+		case MEM_ARM9_REG_VRAMCNT_H:
+		case MEM_ARM9_REG_VRAMCNT_I:
+			mem->arm9_regs[addr] = v;
+			//update_vram_maps(mem);
+			return;
+		case MEM_ARM9_REG_SQRTCNT + 1:
+			v &= ~(1 << 7);
+			/* FALLTHROUGH */
+		case MEM_ARM9_REG_SQRTCNT:
+		case MEM_ARM9_REG_SQRT_PARAM:
+		case MEM_ARM9_REG_SQRT_PARAM + 1:
+		case MEM_ARM9_REG_SQRT_PARAM + 2:
+		case MEM_ARM9_REG_SQRT_PARAM + 3:
+		case MEM_ARM9_REG_SQRT_PARAM + 4:
+		case MEM_ARM9_REG_SQRT_PARAM + 5:
+		case MEM_ARM9_REG_SQRT_PARAM + 6:
+		case MEM_ARM9_REG_SQRT_PARAM + 7:
+			mem->arm9_regs[addr] = v;
+			run_sqrt(mem);
 			return;
 		default:
 			printf("[%08" PRIx32 "] unknown ARM9 set register %08" PRIx32 " = %02" PRIx8 "\n",
@@ -2695,10 +3014,24 @@ static uint8_t get_arm9_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM9_REG_BLDCNT + 0x1000 + 1:
 		case MEM_ARM9_REG_BLDALPHA + 0x1000:
 		case MEM_ARM9_REG_BLDALPHA + 0x1000 + 1:
+		case MEM_ARM9_REG_SQRTCNT:
+		case MEM_ARM9_REG_SQRTCNT + 1:
+		case MEM_ARM9_REG_SQRT_RESULT:
+		case MEM_ARM9_REG_SQRT_RESULT + 1:
+		case MEM_ARM9_REG_SQRT_RESULT + 2:
+		case MEM_ARM9_REG_SQRT_RESULT + 3:
+		case MEM_ARM9_REG_SQRT_PARAM:
+		case MEM_ARM9_REG_SQRT_PARAM + 1:
+		case MEM_ARM9_REG_SQRT_PARAM + 2:
+		case MEM_ARM9_REG_SQRT_PARAM + 3:
+		case MEM_ARM9_REG_SQRT_PARAM + 4:
+		case MEM_ARM9_REG_SQRT_PARAM + 5:
+		case MEM_ARM9_REG_SQRT_PARAM + 6:
+		case MEM_ARM9_REG_SQRT_PARAM + 7:
 			return mem->arm9_regs[addr];
 		case MEM_ARM9_REG_AUXSPICNT:
 		case MEM_ARM9_REG_AUXSPICNT + 1:
-#if 1
+#if 0
 			printf("[ARM9] [%08" PRIx32 "] AUXSPICNT[%08" PRIx32 "] read 0x%02" PRIx8 "\n",
 			       cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr, mem->arm9_regs[addr]);
 #endif
@@ -2833,9 +3166,16 @@ static void arm9_instr_delay(mem_t *mem, const uint8_t *table, enum mem_type typ
 
 static void *get_vram_bga_ptr(mem_t *mem, uint32_t addr)
 {
+#if 0
+	uint32_t base = mem->vram_bga_bases[(addr / 0x40000) & 0x1F];
+	if (base == 0xFFFFFFFF)
+		return NULL;
+	return &mem->vram[base];
+#else
 	if (!mem->vram_bga_mask)
 		return NULL;
 	return &mem->vram[mem->vram_bga_base + (addr & mem->vram_bga_mask)];
+#endif
 }
 
 static void *get_vram_bgb_ptr(mem_t *mem, uint32_t addr)
@@ -2876,31 +3216,49 @@ static void *get_vram_ptr(mem_t *mem, uint32_t addr)
 			{
 				case 0x0:
 				case 0x1:
+					if ((mem_arm9_get_reg8(mem, MEM_ARM9_REG_VRAMCNT_A) & 0x83) != 0x80)
+						return NULL;
 					return &mem->vram[MEM_VRAM_A_BASE + (addr & MEM_VRAM_A_MASK)];
 				case 0x2:
 				case 0x3:
+					if ((mem_arm9_get_reg8(mem, MEM_ARM9_REG_VRAMCNT_B) & 0x83) != 0x80)
+						return NULL;
 					return &mem->vram[MEM_VRAM_B_BASE + (addr & MEM_VRAM_B_MASK)];
 				case 0x4:
 				case 0x5:
+					if ((mem_arm9_get_reg8(mem, MEM_ARM9_REG_VRAMCNT_C) & 0x87) != 0x80)
+						return NULL;
 					return &mem->vram[MEM_VRAM_C_BASE + (addr & MEM_VRAM_C_MASK)];
 				case 0x6:
 				case 0x7:
+					if ((mem_arm9_get_reg8(mem, MEM_ARM9_REG_VRAMCNT_D) & 0x87) != 0x80)
+						return NULL;
 					return &mem->vram[MEM_VRAM_D_BASE + (addr & MEM_VRAM_D_MASK)];
 				case 0x8:
+					if ((mem_arm9_get_reg8(mem, MEM_ARM9_REG_VRAMCNT_E) & 0x87) != 0x80)
+						return NULL;
 					return &mem->vram[MEM_VRAM_E_BASE + (addr & MEM_VRAM_E_MASK)];
 				case 0x9:
 					switch ((addr >> 14) & 0x3)
 					{
 						case 0x0:
+							if ((mem_arm9_get_reg8(mem, MEM_ARM9_REG_VRAMCNT_F) & 0x87) != 0x80)
+								return NULL;
 							return &mem->vram[MEM_VRAM_F_BASE + (addr & MEM_VRAM_F_MASK)];
 						case 0x1:
+							if ((mem_arm9_get_reg8(mem, MEM_ARM9_REG_VRAMCNT_G) & 0x87) != 0x80)
+								return NULL;
 							return &mem->vram[MEM_VRAM_G_BASE + (addr & MEM_VRAM_G_MASK)];
 						case 0x2:
 						case 0x3:
+							if ((mem_arm9_get_reg8(mem, MEM_ARM9_REG_VRAMCNT_H) & 0x83) != 0x80)
+								return NULL;
 							return &mem->vram[MEM_VRAM_H_BASE + (addr & MEM_VRAM_H_MASK)];
 					}
 					break;
 				case 0xA:
+					if ((mem_arm9_get_reg8(mem, MEM_ARM9_REG_VRAMCNT_I) & 0x83) != 0x80)
+						return NULL;
 					return &mem->vram[MEM_VRAM_I_BASE + (addr & MEM_VRAM_I_MASK)];
 			}
 			break;
@@ -2983,9 +3341,16 @@ uint##size##_t mem_arm9_get##size(mem_t *mem, uint32_t addr, enum mem_type type)
 		case 0x7: /* oam */ \
 			arm9_instr_delay(mem, arm9_wram_cycles_##size, type); \
 			return *(uint##size##_t*)&mem->oam[addr & 0x7FF]; \
-		case 0x8: /* GBA */ \
+		case 0x8: /* GBA rom */ \
 		case 0x9: \
-		case 0xA: \
+			if (mem->arm9_regs[MEM_ARM9_REG_EXMEMCNT] & (1 << 7)) \
+				return 0; \
+			if (size == 8 || size == 16) \
+				return addr >> 1; \
+			return (addr >> 1) | (((addr + 1) >> 1) << 16); \
+		case 0xA: /* GBA ram */ \
+			if (mem->arm9_regs[MEM_ARM9_REG_EXMEMCNT] & (1 << 7)) \
+				return 0; \
 			return 0xFF; \
 		default: \
 			break; \

@@ -217,7 +217,7 @@ static bool handle_interrupt(cpu_t *cpu)
 		{
 			cpu_set_reg(cpu, CPU_REG_LR, cpu_get_reg(cpu, CPU_REG_PC) + 4);
 		}
-		if (cpu->arm9 && (cpu->cp15.cr & 0x2000))
+		if (cpu->cp15.cr & 0x2000)
 			cpu_set_reg(cpu, CPU_REG_PC, 0xFFFF0018);
 		else
 			cpu_set_reg(cpu, CPU_REG_PC, 0x18);
