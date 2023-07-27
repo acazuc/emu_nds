@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define ENABLE_INSTR_DELAY 0
+#define ENABLE_INSTR_DELAY 1
 
 typedef struct mbc mbc_t;
 typedef struct mem mem_t;

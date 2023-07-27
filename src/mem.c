@@ -14,9 +14,16 @@ static const uint16_t timer_increments[4] = {1 << 10, 1 << 4, 1 << 2, 1 << 0};
 
 static const uint32_t dma_len_max[4] = {0x4000, 0x4000, 0x4000, 0x10000};
 
+/* XXX until cache is implemented, use this */
+#if 0
 static const uint8_t arm7_mram_cycles_32[] = {0, 2, 10, 2,  9};
 static const uint8_t arm7_mram_cycles_16[] = {0, 1,  9, 1,  8};
 static const uint8_t arm7_mram_cycles_8[]  = {0, 1,  9, 1,  8};
+#else
+static const uint8_t arm7_mram_cycles_32[] = {0, 0, 0, 0, 0};
+static const uint8_t arm7_mram_cycles_16[] = {0, 0, 0, 0, 0};
+static const uint8_t arm7_mram_cycles_8[]  = {0, 0, 0, 0, 0};
+#endif
 
 static const uint8_t arm7_wram_cycles_32[] = {0, 1,  1, 1,  1};
 static const uint8_t arm7_wram_cycles_16[] = {0, 1,  1, 1,  1};
@@ -26,9 +33,15 @@ static const uint8_t arm7_vram_cycles_32[] = {0, 2,  1, 2,  2};
 static const uint8_t arm7_vram_cycles_16[] = {0, 1,  1, 1,  1};
 static const uint8_t arm7_vram_cycles_8[]  = {0, 1,  1, 1,  1};
 
+#if 0
 static const uint8_t arm9_mram_cycles_32[] = {0, 4, 20, 18, 18};
 static const uint8_t arm9_mram_cycles_16[] = {0, 2, 18,  9,  9};
 static const uint8_t arm9_mram_cycles_8[]  = {0, 2, 18,  9,  9};
+#else
+static const uint8_t arm9_mram_cycles_32[] = {0, 0, 0, 0, 0};
+static const uint8_t arm9_mram_cycles_16[] = {0, 0, 0, 0, 0};
+static const uint8_t arm9_mram_cycles_8[]  = {0, 0, 0, 0, 0};
+#endif
 
 static const uint8_t arm9_wram_cycles_32[] = {0, 2,  8,  8,  8};
 static const uint8_t arm9_wram_cycles_16[] = {0, 2,  8,  4,  4};
@@ -1826,11 +1839,7 @@ static uint32_t get_arm7_reg32(mem_t *mem, uint32_t addr)
 static void arm7_instr_delay(mem_t *mem, const uint8_t *table, enum mem_type type)
 {
 #if ENABLE_INSTR_DELAY == 1
-	/* hacky: thummb are fetched in 32bits, skip wait cycles every two instructions */
-	if ((type == MEM_CODE_SEQ || type == MEM_CODE_NSEQ)
-	 && (cpu_get_reg(mem->nds->arm7, CPU_REG_PC) & 4))
-		return;
-	mem->nds->arm7->instr_delay += table[type] / 2; /* XXX implement cache to not fake it */
+	mem->nds->arm7->instr_delay += table[type];
 #endif
 }
 
@@ -3185,11 +3194,7 @@ static uint32_t get_arm9_reg32(mem_t *mem, uint32_t addr)
 static void arm9_instr_delay(mem_t *mem, const uint8_t *table, enum mem_type type)
 {
 #if ENABLE_INSTR_DELAY == 1
-	/* hacky: thummb are fetched in 32bits, skip wait cycles every two instructions */
-	if ((type == MEM_CODE_SEQ || type == MEM_CODE_NSEQ)
-	 && (cpu_get_reg(mem->nds->arm9, CPU_REG_PC) & 4))
-		return;
-	mem->nds->arm9->instr_delay += table[type] / 2; /* XXX implement cache to not fake it */
+	mem->nds->arm9->instr_delay += table[type];
 #endif
 }
 
