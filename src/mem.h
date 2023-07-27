@@ -329,7 +329,7 @@ enum mem_type
 
 struct timer
 {
-	uint16_t v;
+	uint32_t v;
 };
 
 #define MEM_DMA_ACTIVE (1 << 0)
@@ -470,7 +470,7 @@ typedef struct mem
 mem_t *mem_new(nds_t *nds, mbc_t *mbc);
 void mem_del(mem_t *mem);
 
-void mem_timers(mem_t *mem);
+void mem_timers(mem_t *mem, uint32_t cycles);
 void mem_dma(mem_t *mem);
 void mem_vblank(mem_t *mem);
 void mem_hblank(mem_t *mem);

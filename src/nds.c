@@ -172,13 +172,17 @@ static void nds_cycles(nds_t *nds, uint32_t cycles)
 	for (; cycles; --cycles)
 	{
 		nds->cycle++;
-		if (!(nds->cycle & 7))
-			mem_dma(nds->mem);
-		if (!(nds->cycle & 3))
-			apu_cycle(nds->apu);
-		if (nds->cycle & 1)
+		if (!(nds->cycle & 0x1))
 		{
-			mem_timers(nds->mem);
+			if (!(nds->cycle & 0x7))
+			{
+				mem_dma(nds->mem);
+				if (!(nds->cycle & 0x3F))
+				{
+					mem_timers(nds->mem, 0x20);
+					apu_cycles(nds->apu, 0x10);
+				}
+			}
 			if (!nds->arm7->instr_delay)
 				cpu_cycle(nds->arm7);
 			else
@@ -199,6 +203,7 @@ void nds_frame(nds_t *nds, uint8_t *video_buf, int16_t *audio_buf, uint32_t joyp
 	printf("touch: %d @ %dx%d\n", touch, touch_x, touch_y);
 #endif
 	nds->apu->sample = 0;
+	nds->apu->clock = 0;
 	nds->apu->next_sample = nds->apu->clock;
 	nds->joypad = joypad;
 	nds->touch = touch;

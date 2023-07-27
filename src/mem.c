@@ -10,7 +10,7 @@
 #include <stdio.h>
 #include <time.h>
 
-static const uint16_t timer_masks[4] = {0, 0x7E, 0x1FE, 0x7FE};
+static const uint16_t timer_increments[4] = {1 << 10, 1 << 4, 1 << 2, 1 << 0};
 
 static const uint32_t dma_len_max[4] = {0x4000, 0x4000, 0x4000, 0x10000};
 
@@ -86,36 +86,34 @@ void mem_del(mem_t *mem)
 }
 
 #define ARM_TIMERS(armv) \
-static void arm##armv##_timers(mem_t *mem) \
+static void arm##armv##_timers(mem_t *mem, uint32_t cycles) \
 { \
-	bool prev_overflowed = false; \
+	uint16_t prev_overflow = 0; \
 	for (unsigned i = 0; i < 4; ++i) \
 	{ \
 		uint8_t cnt_h = mem_arm##armv##_get_reg8(mem, MEM_ARM##armv##_REG_TM0CNT_H + i * 4); \
 		if (!(cnt_h & (1 << 7))) \
-			goto next_timer; \
-		if (i && (cnt_h & (1 << 2))) \
 		{ \
-			if (!prev_overflowed) \
-				goto next_timer; \
-		} \
-		else \
-		{ \
-			if ((mem->nds->cycle & timer_masks[cnt_h & 3])) \
-				goto next_timer; \
-		} \
-		mem->arm##armv##_timers[i].v++; \
-		if (!mem->arm##armv##_timers[i].v) \
-		{ \
-			/* printf("[ARM" #armv "] timer %u overflow (cnt_h: %02" PRIx8 ")\n", i, cnt_h); */ \
-			mem->arm##armv##_timers[i].v = mem_arm##armv##_get_reg16(mem, MEM_ARM##armv##_REG_TM0CNT_L + i * 4); \
-			if (cnt_h & (1 << 6)) \
-				mem_arm##armv##_if(mem, 1 << (3 + i)); \
-			prev_overflowed = true; \
+			prev_overflow = 0; \
 			continue; \
 		} \
-next_timer: \
-		prev_overflowed = false; \
+		if (cnt_h & (1 << 2)) \
+			mem->arm##armv##_timers[i].v += cycles * (prev_overflow << 10); \
+		else \
+			mem->arm##armv##_timers[i].v += cycles * timer_increments[cnt_h & 3]; \
+		prev_overflow = 0; \
+		if (mem->arm##armv##_timers[i].v < (0x10000 << 10)) \
+			continue; \
+		do \
+		{ \
+			/* printf("[ARM" #armv "] timer %u overflow (cnt_h: %02" PRIx8 ")\n", i, cnt_h); */ \
+			mem->arm##armv##_timers[i].v -= (0x10000 << 10); \
+			mem->arm##armv##_timers[i].v += mem_arm##armv##_get_reg16(mem, MEM_ARM##armv##_REG_TM0CNT_L + i * 4) << 10; \
+			if (cnt_h & (1 << 6)) \
+				mem_arm##armv##_if(mem, 1 << (3 + i)); \
+			prev_overflow++; \
+		} \
+		while (mem->arm##armv##_timers[i].v >= (0x10000 << 10)); \
 	} \
 } \
 static void arm##armv##_timer_control(mem_t *mem, uint8_t timer, uint8_t v) \
@@ -123,16 +121,16 @@ static void arm##armv##_timer_control(mem_t *mem, uint8_t timer, uint8_t v) \
 	uint8_t prev = mem_arm##armv##_get_reg8(mem, MEM_ARM##armv##_REG_TM0CNT_H + timer * 4); \
 	mem_arm##armv##_set_reg8(mem, MEM_ARM##armv##_REG_TM0CNT_H + timer * 4, v); \
 	if ((v & (1 << 7)) && !(prev & (1 << 7))) \
-		mem->arm##armv##_timers[timer].v = mem_arm##armv##_get_reg16(mem, MEM_ARM##armv##_REG_TM0CNT_L + timer * 4); \
+		mem->arm##armv##_timers[timer].v = mem_arm##armv##_get_reg16(mem, MEM_ARM##armv##_REG_TM0CNT_L + timer * 4) << 10; \
 }
 
 ARM_TIMERS(7);
 ARM_TIMERS(9);
 
-void mem_timers(mem_t *mem)
+void mem_timers(mem_t *mem, uint32_t cycles)
 {
-	arm7_timers(mem);
-	arm9_timers(mem);
+	arm7_timers(mem, cycles);
+	arm9_timers(mem, cycles);
 }
 
 #define ARM_DMA(armv) \
@@ -1649,21 +1647,21 @@ static uint8_t get_arm7_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM7_REG_ROMDATA + 3:
 			return mbc_read(mem->mbc);
 		case MEM_ARM7_REG_TM0CNT_L:
-			return mem->arm7_timers[0].v;
+			return mem->arm7_timers[0].v >> 10;
 		case MEM_ARM7_REG_TM0CNT_L + 1:
-			return mem->arm7_timers[0].v >> 8;
+			return mem->arm7_timers[0].v >> 18;
 		case MEM_ARM7_REG_TM1CNT_L:
-			return mem->arm7_timers[1].v;
+			return mem->arm7_timers[1].v >> 10;
 		case MEM_ARM7_REG_TM1CNT_L + 1:
-			return mem->arm7_timers[1].v >> 8;
+			return mem->arm7_timers[1].v >> 18;
 		case MEM_ARM7_REG_TM2CNT_L:
-			return mem->arm7_timers[2].v;
+			return mem->arm7_timers[2].v >> 10;
 		case MEM_ARM7_REG_TM2CNT_L + 1:
-			return mem->arm7_timers[2].v >> 8;
+			return mem->arm7_timers[2].v >> 18;
 		case MEM_ARM7_REG_TM3CNT_L:
-			return mem->arm7_timers[3].v;
+			return mem->arm7_timers[3].v >> 10;
 		case MEM_ARM7_REG_TM3CNT_L + 1:
-			return mem->arm7_timers[3].v >> 8;
+			return mem->arm7_timers[3].v >> 18;
 		case MEM_ARM7_REG_SPIDATA:
 			return spi_read(mem);
 		case MEM_ARM7_REG_SPIDATA + 1:
@@ -1815,7 +1813,7 @@ static void arm7_instr_delay(mem_t *mem, const uint8_t *table, enum mem_type typ
 	if ((type == MEM_CODE_SEQ || type == MEM_CODE_NSEQ)
 	 && (cpu_get_reg(mem->nds->arm7, CPU_REG_PC) & 4))
 		return;
-	mem->nds->arm7->instr_delay += table[type];
+	mem->nds->arm7->instr_delay += table[type] / 2; /* XXX implement cache to not fake it */
 }
 
 #define MEM_ARM7_GET(size) \
@@ -2054,6 +2052,7 @@ static void run_sqrt(mem_t *mem)
 
 static void update_vram_maps(mem_t *mem)
 {
+	return;
 	for (size_t i = 0; i < 32; ++i)
 		mem->vram_bga_bases[i] = 0xFFFFFFFF;
 	for (size_t i = 0; i < 8; ++i)
@@ -2782,7 +2781,7 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM9_REG_VRAMCNT_H:
 		case MEM_ARM9_REG_VRAMCNT_I:
 			mem->arm9_regs[addr] = v;
-			//update_vram_maps(mem);
+			update_vram_maps(mem);
 			return;
 		case MEM_ARM9_REG_SQRTCNT + 1:
 			v &= ~(1 << 7);
@@ -3048,21 +3047,21 @@ static uint8_t get_arm9_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM9_REG_ROMDATA + 3:
 			return mbc_read(mem->mbc);
 		case MEM_ARM9_REG_TM0CNT_L:
-			return mem->arm9_timers[0].v;
+			return mem->arm9_timers[0].v >> 10;
 		case MEM_ARM9_REG_TM0CNT_L + 1:
-			return mem->arm9_timers[0].v >> 8;
+			return mem->arm9_timers[0].v >> 18;
 		case MEM_ARM9_REG_TM1CNT_L:
-			return mem->arm9_timers[1].v;
+			return mem->arm9_timers[1].v >> 10;
 		case MEM_ARM9_REG_TM1CNT_L + 1:
-			return mem->arm9_timers[1].v >> 8;
+			return mem->arm9_timers[1].v >> 18;
 		case MEM_ARM9_REG_TM2CNT_L:
-			return mem->arm9_timers[2].v;
+			return mem->arm9_timers[2].v >> 10;
 		case MEM_ARM9_REG_TM2CNT_L + 1:
-			return mem->arm9_timers[2].v >> 8;
+			return mem->arm9_timers[2].v >> 18;
 		case MEM_ARM9_REG_TM3CNT_L:
-			return mem->arm9_timers[3].v;
+			return mem->arm9_timers[3].v >> 10;
 		case MEM_ARM9_REG_TM3CNT_L + 1:
-			return mem->arm9_timers[3].v >> 8;
+			return mem->arm9_timers[3].v >> 18;
 		case MEM_ARM9_REG_KEYINPUT:
 		{
 			uint8_t v = 0;
@@ -3169,7 +3168,7 @@ static void arm9_instr_delay(mem_t *mem, const uint8_t *table, enum mem_type typ
 	if ((type == MEM_CODE_SEQ || type == MEM_CODE_NSEQ)
 	 && (cpu_get_reg(mem->nds->arm9, CPU_REG_PC) & 4))
 		return;
-	mem->nds->arm9->instr_delay += table[type];
+	mem->nds->arm9->instr_delay += table[type] / 2; /* XXX implement cache to not fake it */
 }
 
 static void *get_vram_bga_ptr(mem_t *mem, uint32_t addr)

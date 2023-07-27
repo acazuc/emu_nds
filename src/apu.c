@@ -96,13 +96,13 @@ void apu_sample(apu_t *apu)
 		printf("sample %u\n", apu->sample);
 #endif
 		gen_sample(apu, &apu->data[apu->sample * 2]);
-		apu->sample = (apu->sample + 1) % APU_FRAME_SAMPLES;
-		apu->next_sample = (apu->clock + 1395);
+		apu->sample++;
+		apu->next_sample = (1120380 * apu->sample) / 803;
 	}
 	apu->clock++;
 }
 
-void apu_cycle(apu_t *apu)
+void apu_cycles(apu_t *apu, uint32_t cycles)
 {
 	uint32_t powcnt2 = mem_arm7_get_reg32(apu->mem, MEM_ARM7_REG_POWCNT2);
 	if (!(powcnt2 & (1 << 0)))
@@ -113,93 +113,96 @@ void apu_cycle(apu_t *apu)
 		if (!(cnt & (1 << 31)))
 			continue;
 		struct apu_channel *channel = &apu->channels[i];
-		if (++channel->clock)
-			continue;
-		channel->clock = channel->tmr;
-		switch ((cnt >> 29) & 0x3)
+		channel->clock += cycles;
+		while (channel->clock >= 0x10000)
 		{
-			case 0:
-			{
-				uint8_t v = mem_arm7_get16(apu->mem,
-				                            channel->sad + channel->pos / 2,
-				                            MEM_DIRECT);
-#if 0
-				printf("8bit: [0x%08" PRIx32 "] = 0x%02" PRIx8 "\n",
-				       channel->sad + channel->pos, v);
-#endif
-				channel->sample = (int8_t)v * 256;
-				channel->pos += 2;
-				break;
-			}
-			case 1:
-			{
-				uint16_t v = mem_arm7_get16(apu->mem,
-				                            channel->sad + channel->pos / 2,
-				                            MEM_DIRECT);
-#if 0
-				printf("16bit: [0x%08" PRIx32 "] = 0x%04" PRIx16 "\n",
-				       channel->sad + channel->pos, v);
-#endif
-				channel->sample = (int16_t)v;
-				channel->pos += 4;
-				break;
-			}
-			case 2:
-			{
-				uint8_t v = mem_arm7_get8(apu->mem,
-				                          channel->sad + channel->pos / 2,
-				                          MEM_DIRECT);
-#if 0
-				printf("adpcm: [0x%08" PRIx32 "] = 0x%02" PRIx8 "\n",
-				       channel->sad + channel->pos / 2, v);
-#endif
-				if (channel->pos & 1)
-					v >>= 4;
-				else
-					v &= 0xF;
-				int32_t diff = adpcm_table[channel->adpcm_idx] / 8;
-				if (v & 0x1)
-					diff += adpcm_table[channel->adpcm_idx] / 4;
-				if (v & 0x2)
-					diff += adpcm_table[channel->adpcm_idx] / 2;
-				if (v & 0x4)
-					diff += adpcm_table[channel->adpcm_idx] / 1;
-				if (v & 0x8)
-				{
-					int32_t tmp = channel->sample - diff;
-					channel->sample = tmp < -0x7FFF ? -0x7FFF : tmp;
-				}
-				else
-				{
-					int32_t tmp = channel->sample + diff;
-					channel->sample = tmp > 0x7FFF ? 0x7FFF : tmp;
-				}
-				int32_t tmp = channel->adpcm_idx + adpcm_index_table[v & 0x7];
-				if (tmp < 0)
-					channel->adpcm_idx = 0;
-				else if (tmp > 88)
-					channel->adpcm_idx = 88;
-				else
-					channel->adpcm_idx = tmp;
-				channel->pos += 1;
-				break;
-			}
-			case 3:
-				break;
-		}
-		if (channel->pos >= channel->len + channel->pnt)
-		{
-			switch ((cnt >> 27) & 0x3)
+			channel->clock -= 0x10000;
+			channel->clock += channel->tmr;
+			switch ((cnt >> 29) & 0x3)
 			{
 				case 0:
-				case 2:
-				case 3:
-					mem_arm7_set_reg32(apu->mem, MEM_ARM7_REG_SOUNDXCNT(i), 
-					                   mem_arm7_get_reg32(apu->mem, MEM_ARM7_REG_SOUNDXCNT(i)) & ~(1 << 31));
+				{
+					uint8_t v = mem_arm7_get16(apu->mem,
+					                            channel->sad + channel->pos / 2,
+					                            MEM_DIRECT);
+#if 0
+					printf("8bit: [0x%08" PRIx32 "] = 0x%02" PRIx8 "\n",
+					       channel->sad + channel->pos, v);
+#endif
+					channel->sample = (int8_t)v * 256;
+					channel->pos += 2;
 					break;
+				}
 				case 1:
-					channel->pos = channel->pnt;
+				{
+					uint16_t v = mem_arm7_get16(apu->mem,
+					                            channel->sad + channel->pos / 2,
+					                            MEM_DIRECT);
+#if 0
+					printf("16bit: [0x%08" PRIx32 "] = 0x%04" PRIx16 "\n",
+					       channel->sad + channel->pos, v);
+#endif
+					channel->sample = (int16_t)v;
+					channel->pos += 4;
 					break;
+				}
+				case 2:
+				{
+					uint8_t v = mem_arm7_get8(apu->mem,
+					                          channel->sad + channel->pos / 2,
+					                          MEM_DIRECT);
+#if 0
+					printf("adpcm: [0x%08" PRIx32 "] = 0x%02" PRIx8 "\n",
+					       channel->sad + channel->pos / 2, v);
+#endif
+					if (channel->pos & 1)
+						v >>= 4;
+					else
+						v &= 0xF;
+					int32_t diff = adpcm_table[channel->adpcm_idx] / 8;
+					if (v & 0x1)
+						diff += adpcm_table[channel->adpcm_idx] / 4;
+					if (v & 0x2)
+						diff += adpcm_table[channel->adpcm_idx] / 2;
+					if (v & 0x4)
+						diff += adpcm_table[channel->adpcm_idx] / 1;
+					if (v & 0x8)
+					{
+						int32_t tmp = channel->sample - diff;
+						channel->sample = tmp < -0x7FFF ? -0x7FFF : tmp;
+					}
+					else
+					{
+						int32_t tmp = channel->sample + diff;
+						channel->sample = tmp > 0x7FFF ? 0x7FFF : tmp;
+					}
+					int32_t tmp = channel->adpcm_idx + adpcm_index_table[v & 0x7];
+					if (tmp < 0)
+						channel->adpcm_idx = 0;
+					else if (tmp > 88)
+						channel->adpcm_idx = 88;
+					else
+						channel->adpcm_idx = tmp;
+					channel->pos += 1;
+					break;
+				}
+				case 3:
+					break;
+			}
+			if (channel->pos >= channel->len + channel->pnt)
+			{
+				switch ((cnt >> 27) & 0x3)
+				{
+					case 0:
+					case 2:
+					case 3:
+						mem_arm7_set_reg32(apu->mem, MEM_ARM7_REG_SOUNDXCNT(i),
+						                   mem_arm7_get_reg32(apu->mem, MEM_ARM7_REG_SOUNDXCNT(i)) & ~(1 << 31));
+						break;
+					case 1:
+						channel->pos = channel->pnt;
+						break;
+				}
 			}
 		}
 	}
