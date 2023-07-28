@@ -164,6 +164,47 @@
  * icon/title offset: 0x30C800
  */
 
+/* this multithreading looks stupid (and it is)
+ * but it gives about 15% more fps on firmware titlescreen
+ * it doesn't have any drawbacks (maybe some race conditions
+ * if cpu changes vram mapping but nothing more)
+ *
+ * forgive me scheduler gods though...
+ */
+//#define MULTITHREAD
+
+#ifdef MULTITHREAD
+
+#include <pthread.h>
+
+static pthread_t gpu_thread;
+static pthread_cond_t gpu_cond;
+static pthread_mutex_t gpu_mutex;
+static int gpu_y;
+static int nds_y;
+
+static void *gpu_loop(void *arg)
+{
+	nds_t *nds = arg;
+	while (1)
+	{
+		pthread_mutex_lock(&gpu_mutex);
+		pthread_cond_wait(&gpu_cond, &gpu_mutex);
+		__atomic_store_n(&gpu_y, 0, __ATOMIC_SEQ_CST);
+		pthread_mutex_unlock(&gpu_mutex);
+		for (uint8_t y = 0; y < 192; ++y)
+		{
+			gpu_draw(nds->gpu, y);
+			__atomic_store_n(&gpu_y, y + 1, __ATOMIC_SEQ_CST);
+			while (__atomic_load_n(&nds_y, __ATOMIC_SEQ_CST) < gpu_y)
+				;
+		}
+	}
+	return NULL;
+}
+
+#endif
+
 nds_t *nds_new(const void *rom_data, size_t rom_size)
 {
 	nds_t *nds = calloc(sizeof(*nds), 1);
@@ -194,6 +235,11 @@ nds_t *nds_new(const void *rom_data, size_t rom_size)
 	if (!nds->gpu)
 		return NULL;
 
+#ifdef MULTITHREAD
+	pthread_cond_init(&gpu_cond, NULL);
+	pthread_mutex_init(&gpu_mutex, NULL);
+	gpu_thread = pthread_create(&gpu_thread, NULL, gpu_loop, nds);
+#endif
 	return nds;
 }
 
@@ -276,6 +322,12 @@ void nds_frame(nds_t *nds, uint8_t *video_buf, int16_t *audio_buf, uint32_t joyp
 	nds->touch = touch;
 	nds->touch_x = touch_x;
 	nds->touch_y = touch_y;
+#ifdef MULTITHREAD
+	pthread_mutex_lock(&gpu_mutex);
+	__atomic_store_n(&nds_y, 0, __ATOMIC_SEQ_CST);
+	pthread_cond_signal(&gpu_cond);
+	pthread_mutex_unlock(&gpu_mutex);
+#endif
 	for (uint8_t y = 0; y < 192; ++y)
 	{
 		mem_arm9_set_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT, (mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) & 0xFFFC) | 0x0);
@@ -289,9 +341,14 @@ void nds_frame(nds_t *nds, uint8_t *video_buf, int16_t *audio_buf, uint32_t joyp
 			mem_arm9_if(nds->mem, 1 << 2);
 		}
 
+		nds_cycles(nds, 256 * 12);
+#ifdef MULTITHREAD
+		while (__atomic_load_n(&gpu_y, __ATOMIC_SEQ_CST) < y + 1)
+			;
+#else
 		/* draw */
 		gpu_draw(nds->gpu, y);
-		nds_cycles(nds, 256 * 12);
+#endif
 
 		/* hblank */
 		mem_arm9_set_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT, (mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) & 0xFFFC) | 0x2);
@@ -303,6 +360,9 @@ void nds_frame(nds_t *nds, uint8_t *video_buf, int16_t *audio_buf, uint32_t joyp
 		mem_hblank(nds->mem);
 
 		nds_cycles(nds, 99 * 12);
+#ifdef MULTITHREAD
+		__atomic_store_n(&nds_y, y + 1, __ATOMIC_SEQ_CST);
+#endif
 	}
 
 	gpu_commit_bgpos(nds->gpu);
