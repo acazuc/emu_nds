@@ -55,6 +55,12 @@ static void gen_sample(apu_t *apu, int16_t *dst)
 		dst[1] = 0;
 		return;
 	}
+	if (!(apu->mem->spi_powerman.regs[0] & (1 << 0)))
+	{
+		dst[0] = 0;
+		dst[1] = 0;
+		return;
+	}
 	int32_t l = 0;
 	int32_t r = 0;
 	for (size_t i = 0; i < 16; ++i)
@@ -98,7 +104,7 @@ void apu_sample(apu_t *apu, uint32_t cycles)
 #endif
 	gen_sample(apu, &apu->data[apu->sample * 2]);
 	apu->sample++;
-	apu->next_sample = (1120380 * apu->sample) / 803;
+	apu->next_sample = (1120380 * apu->sample) / (APU_FRAME_SAMPLES - 1);
 }
 
 void apu_cycles(apu_t *apu, uint32_t cycles)

@@ -70,14 +70,6 @@ mem_t *mem_new(nds_t *nds, mbc_t *mbc)
 	mem->arm9_regs[MEM_ARM7_REG_ROMCTRL + 2] = 0x80;
 	mem_arm7_set_reg32(mem, MEM_ARM7_REG_SOUNDBIAS, 0x200);
 	mem_arm7_set_reg32(mem, MEM_ARM7_REG_POWCNT2, 1);
-	mem->vram_bga_base = MEM_VRAM_A_BASE;
-	mem->vram_bga_mask = MEM_VRAM_A_MASK;
-	mem->vram_bgb_base = MEM_VRAM_C_BASE;
-	mem->vram_bgb_mask = MEM_VRAM_C_MASK;
-	mem->vram_obja_base = MEM_VRAM_B_BASE;
-	mem->vram_obja_mask = MEM_VRAM_B_MASK;
-	mem->vram_objb_base = MEM_VRAM_D_BASE;
-	mem->vram_objb_mask = MEM_VRAM_D_MASK;
 	mem->spi_powerman.regs[0x0] = 0x0C; /* enable backlight */
 	mem->spi_powerman.regs[0x4] = 0x42; /* high brightness */
 	for (size_t i = 0; i < 32; ++i)
@@ -88,6 +80,13 @@ mem_t *mem_new(nds_t *nds, mbc_t *mbc)
 		mem->vram_obja_bases[i] = 0xFFFFFFFF;
 	for (size_t i = 0; i < 8; ++i)
 		mem->vram_objb_bases[i] = 0xFFFFFFFF;
+	mem->sram_size = 0x40000;
+	mem->sram = calloc(mem->sram_size, 1);
+	if (!mem->sram)
+	{
+		free(mem);
+		return NULL;
+	}
 	return mem;
 }
 
@@ -158,7 +157,7 @@ static void arm##armv##_dma(mem_t *mem, uint8_t id, uint32_t cycles) \
 		uint32_t step; \
 		if (cnt_h & (1 << 10)) \
 		{ \
-			/* printf("DMA 32 from 0x%" PRIx32 " to 0x%" PRIx32 "\n", dma->src, dma->dst); */ \
+			/* printf("[ARM" #armv "] DMA %" PRIu8 " 32 bits from 0x%" PRIx32 " to 0x%" PRIx32 "\n", id, dma->src, dma->dst); */ \
 			mem_arm##armv##_set32(mem, dma->dst, \
 			                      mem_arm##armv##_get32(mem, dma->src, MEM_DIRECT), \
 			                      MEM_DIRECT); \
@@ -166,7 +165,7 @@ static void arm##armv##_dma(mem_t *mem, uint8_t id, uint32_t cycles) \
 		} \
 		else \
 		{ \
-			/* printf("DMA 16 from 0x%" PRIx32 " to 0x%" PRIx32 "\n", dma->src, dma->dst); */ \
+			/* printf("[ARM" #armv "] DMA %" PRIu8 " 16 bits from 0x%" PRIx32 " to 0x%" PRIx32 "\n", id, dma->src, dma->dst); */ \
 			mem_arm##armv##_set16(mem, dma->dst, \
 			                      mem_arm##armv##_get16(mem, dma->src, MEM_DIRECT), \
 			                      MEM_DIRECT); \
@@ -204,9 +203,19 @@ static void arm##armv##_dma(mem_t *mem, uint8_t id, uint32_t cycles) \
 			continue; \
 		if ((cnt_h & (1 << 9))) \
 		{ \
-			if (((cnt_h >> 12) & 0x3) != 0x2 \
-			 || !(mem->arm9_regs[MEM_ARM9_REG_ROMCTRL + 3] & (1 << 7))) \
+			if ((armv == 7 && ((cnt_h >> 12) & 0x3) == 0x2) \
+			 || (armv == 9 && ((cnt_h >> 11) & 0x7) == 0x5)) \
+			{ \
+				if (!(mem->arm9_regs[MEM_ARM9_REG_ROMCTRL + 3] & (1 << 7))) \
+				{ \
+					dma->status &= ~(MEM_DMA_ACTIVE | MEM_DMA_ENABLE); \
+					mem->dscard_dma_count--; \
+				} \
+			} \
+			else \
+			{ \
 				dma->status &= ~MEM_DMA_ACTIVE; \
+			} \
 		} \
 		else \
 		{ \
@@ -279,7 +288,7 @@ static void arm##armv##_dma_control(mem_t *mem, uint8_t id) \
 } \
 static void arm##armv##_dma_start(mem_t *mem, uint8_t cond) \
 { \
-	for (unsigned i = 0; i < 4; ++i) \
+	for (uint8_t i = 0; i < 4; ++i) \
 	{ \
 		struct dma *dma = &mem->arm##armv##_dma[i]; \
 		if (!(dma->status & MEM_DMA_ENABLE) \
@@ -301,7 +310,17 @@ static void arm##armv##_dma_start(mem_t *mem, uint8_t cond) \
 		arm##armv##_load_dma_length(mem, i); \
 		dma->cnt = 0; \
 		dma->status |= MEM_DMA_ACTIVE; \
-		/* printf("start DMA %u of %08" PRIx32 " words from %08" PRIx32 " to %08" PRIx32 "\n", i, dma->len, dma->src, dma->dst); */ \
+		if (armv == 7) \
+		{ \
+			if (cond == 2) \
+				mem->dscard_dma_count++; \
+		} \
+		else \
+		{ \
+			if (cond == 5) \
+				mem->dscard_dma_count++; \
+		} \
+		/* printf("[ARM" #armv "] start DMA %" PRIu8 " of %08" PRIx32 " words from %08" PRIx32 " to %08" PRIx32 "\n", i, dma->len, dma->src, dma->dst); */ \
 	} \
 }
 
@@ -435,22 +454,32 @@ static void firmware_write(mem_t *mem, uint8_t v)
 #endif
 	switch (mem->spi_firmware.cmd)
 	{
-		case 0x0:
+		case SPI_FIRMWARE_CMD_NONE:
 			mem->spi_firmware.cmd = v;
 			switch (v)
 			{
-				case 0x3:
+				case SPI_FIRMWARE_CMD_READ:
 					mem->spi_firmware.cmd_data.read.posb = 0;
 					mem->spi_firmware.cmd_data.read.addr = 0;
 					break;
-				case 0x5:
+				case SPI_FIRMWARE_CMD_RDSR:
+					break;
+				case SPI_FIRMWARE_CMD_WREN:
+					mem->spi_firmware.write = 1;
+					break;
+				case SPI_FIRMWARE_CMD_WRDI:
+					mem->spi_firmware.write = 0;
+					break;
+				case SPI_FIRMWARE_CMD_PW:
+					mem->spi_firmware.cmd_data.write.posb = 0;
+					mem->spi_firmware.cmd_data.write.addr = 0;
 					break;
 				default:
 					printf("unknown SPI firmware cmd: 0x%02" PRIx8 "\n", v);
 					return;
 			}
 			return;
-		case 0x3:
+		case SPI_FIRMWARE_CMD_READ:
 			if (mem->spi_firmware.cmd_data.read.posb < 3)
 			{
 				mem->spi_firmware.cmd_data.read.addr <<= 8;
@@ -471,9 +500,29 @@ static void firmware_write(mem_t *mem, uint8_t v)
 #endif
 			mem->spi_firmware.cmd_data.read.addr++;
 			return;
-		case 0x5:
-			mem->spi_firmware.read_latch = 0;
+		case SPI_FIRMWARE_CMD_RDSR:
+			mem->spi_firmware.read_latch = (mem->spi_firmware.write & 1) << 1;
 			return;
+		case SPI_FIRMWARE_CMD_PW:
+		{
+			if (mem->spi_firmware.cmd_data.write.posb < 3)
+			{
+				mem->spi_firmware.cmd_data.write.addr <<= 8;
+				mem->spi_firmware.cmd_data.write.addr |= v;
+				mem->spi_firmware.cmd_data.write.posb++;
+				return;
+			}
+			uint32_t addr = mem->spi_firmware.cmd_data.write.addr & 0x3FFFF;
+#if 0
+			printf("[%08" PRIx32 "] firmware write: [%05" PRIx32 "] = %02" PRIx8 "\n",
+			       cpu_get_reg(mem->nds->arm7, CPU_REG_PC),
+			       addr, v);
+#endif
+			if (addr < 0x200 || addr >= 0x3FA00)
+				mem->firmware[mem->spi_firmware.cmd_data.write.addr & 0x3FFFF] = v;
+			mem->spi_firmware.cmd_data.write.addr++;
+			break;
+		}
 	}
 }
 
@@ -610,6 +659,7 @@ static void spi_write(mem_t *mem, uint8_t v)
 
 /* the fact that every single RTC on earth uses BCD scares me */
 #define BCD(n) (((n) % 10) + (((n) / 10) * 16))
+#define DAA(n) (((n) % 16) + (((n) / 16) * 10))
 
 static void rtc_write(mem_t *mem, uint8_t v)
 {
@@ -665,7 +715,7 @@ static void rtc_write(mem_t *mem, uint8_t v)
 						break;
 					case 0xA6:
 					{
-						time_t t = time(NULL);
+						time_t t = time(NULL) + mem->rtc.offset;
 						struct tm *tm = localtime(&t);
 						mem->rtc.outbuf[0] = BCD(tm->tm_year - 100);
 						mem->rtc.outbuf[1] = BCD(tm->tm_mon + 1);
@@ -767,10 +817,60 @@ static void rtc_write(mem_t *mem, uint8_t v)
 				mem->rtc.sr2 = mem->rtc.inbuf;
 				break;
 			case 0x26:
-				printf("XXX rtc set date\n");
+				switch (mem->rtc.wpos)
+				{
+					case 0:
+						mem->rtc.tm.tm_year = DAA(mem->rtc.inbuf) + 100;
+						break;
+					case 1:
+						mem->rtc.tm.tm_mon = DAA(mem->rtc.inbuf) - 1;
+						break;
+					case 2:
+						mem->rtc.tm.tm_mday = DAA(mem->rtc.inbuf);
+						break;
+					case 3:
+						mem->rtc.tm.tm_wday = DAA(mem->rtc.inbuf);
+						break;
+					case 4:
+						mem->rtc.tm.tm_hour = DAA(mem->rtc.inbuf);
+						break;
+					case 5:
+						mem->rtc.tm.tm_min = DAA(mem->rtc.inbuf);
+						break;
+					case 6:
+					{
+						mem->rtc.tm.tm_sec = DAA(mem->rtc.inbuf);
+						time_t cur = time(NULL);
+						time_t t = mktime(&mem->rtc.tm);
+						mem->rtc.offset = t - cur;
+						break;
+					}
+				}
 				break;
 			case 0x66:
-				printf("XXX rtc set time\n");
+				switch (mem->rtc.wpos)
+				{
+					case 0:
+						mem->rtc.tm.tm_hour = DAA(mem->rtc.inbuf);
+						break;
+					case 1:
+						mem->rtc.tm.tm_min = DAA(mem->rtc.inbuf);
+						break;
+					case 2:
+					{
+						mem->rtc.tm.tm_sec = DAA(mem->rtc.inbuf);
+						time_t cur = time(NULL);
+						time_t rtc_cur = cur + mem->rtc.offset;
+						struct tm *cur_tm = localtime(&rtc_cur);
+						mem->rtc.tm.tm_year = cur_tm->tm_year;
+						mem->rtc.tm.tm_mon = cur_tm->tm_mon;
+						mem->rtc.tm.tm_mday = cur_tm->tm_mday;
+						mem->rtc.tm.tm_wday = cur_tm->tm_wday; /* not required */
+						time_t t = mktime(&mem->rtc.tm);
+						mem->rtc.offset = t - cur;
+						break;
+					}
+				}
 				break;
 			case 0x16:
 				switch (mem->rtc.sr2 & 0xF)
@@ -835,7 +935,7 @@ static uint8_t rtc_read(mem_t *mem)
 static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 {
 #if 0
-	printf("ARM7 register [%08" PRIx32 "] = %02" PRIx8 "\n", addr, v);
+	printf("[ARM7] register [%08" PRIx32 "] = %02" PRIx8 "\n", addr, v);
 #endif
 	switch (addr)
 	{
@@ -847,7 +947,7 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 			 && (mem->arm9_regs[MEM_ARM9_REG_IPCSYNC + 1] & (1 << 6)))
 				mem_arm9_if(mem, 1 << 16);
 #if 0
-			printf("ARM7 IPCSYNC write 0x%02" PRIx8 "\n", v);
+			printf("[ARM7] IPCSYNC write 0x%02" PRIx8 "\n", v);
 #endif
 			return;
 		case MEM_ARM7_REG_IPCSYNC + 2:
@@ -1278,7 +1378,7 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 			if (v & 0x80)
 			{
 #if 0
-				printf("[ARM9] MBC cmd %02" PRIx8 "\n", v);
+				printf("[ARM7] MBC cmd %02" PRIx8 "\n", v);
 #endif
 				mbc_cmd(mem->mbc);
 			}
@@ -1650,7 +1750,6 @@ static uint8_t get_arm7_reg8(mem_t *mem, uint32_t addr)
 			return mem->arm7_regs[addr];
 		case MEM_ARM7_REG_ROMCTRL:
 		case MEM_ARM7_REG_ROMCTRL + 1:
-		case MEM_ARM7_REG_ROMCTRL + 2:
 		case MEM_ARM7_REG_ROMCTRL + 3:
 		case MEM_ARM7_REG_ROMCMD:
 		case MEM_ARM7_REG_ROMCMD + 1:
@@ -1822,6 +1921,10 @@ static uint8_t get_arm7_reg8(mem_t *mem, uint32_t addr)
 				v |= (1 << 1);
 			return v;
 		}
+		case MEM_ARM7_REG_ROMCTRL + 2:
+			if (mem->dscard_dma_count)  /* nasty hack: fake non-availibility if dma is running */
+				return mem->arm9_regs[addr] & ~(1 << 7);
+			return mem->arm9_regs[addr];
 		default:
 			printf("[%08" PRIx32 "] unknown ARM7 get register %08" PRIx32 "\n",
 			       cpu_get_reg(mem->nds->arm7, CPU_REG_PC), addr);
@@ -1852,24 +1955,20 @@ static void arm7_instr_delay(mem_t *mem, const uint8_t *table, enum mem_type typ
 #define MEM_ARM7_GET(size) \
 uint##size##_t mem_arm7_get##size(mem_t *mem, uint32_t addr, enum mem_type type) \
 { \
-	if (addr >= 0x10000000) \
-		goto end; \
 	if (size == 16) \
 		addr &= ~1; \
 	if (size == 32) \
 		addr &= ~3; \
-	switch ((addr >> 24) & 0xF) \
+	switch ((addr >> 24) & 0xFF) \
 	{ \
 		case 0x0: /* ARM7 bios */ \
-			if (addr < sizeof(mem->arm7_bios)) \
-			{ \
-				uint32_t biosprot = mem_arm7_get_reg32(mem, MEM_ARM7_REG_BIOSPROT); \
-				if (addr < biosprot && cpu_get_reg(mem->nds->arm7, CPU_REG_PC) >= biosprot) \
-					return (uint##size##_t)0xFFFFFFFF; \
-				arm7_instr_delay(mem, arm7_wram_cycles_##size, type); \
-				return *(uint##size##_t*)&mem->arm7_bios[addr]; \
-			} \
-			break; \
+			if (addr >= sizeof(mem->arm7_bios)) \
+				break; \
+			uint32_t biosprot = mem_arm7_get_reg32(mem, MEM_ARM7_REG_BIOSPROT); \
+			if (addr < biosprot && cpu_get_reg(mem->nds->arm7, CPU_REG_PC) >= biosprot) \
+				return (uint##size##_t)0xFFFFFFFF; \
+			arm7_instr_delay(mem, arm7_wram_cycles_##size, type); \
+			return *(uint##size##_t*)&mem->arm7_bios[addr]; \
 		case 0x2: /* main memory */ \
 			arm7_instr_delay(mem, arm7_mram_cycles_##size, type); \
 			return *(uint##size##_t*)&mem->mram[addr & 0x3FFFFF]; \
@@ -1895,10 +1994,7 @@ uint##size##_t mem_arm7_get##size(mem_t *mem, uint32_t addr, enum mem_type type)
 			if (!(mem->arm9_regs[MEM_ARM9_REG_EXMEMCNT] & (1 << 7))) \
 				return 0; \
 			return 0xFF; \
-		default: \
-			break; \
 	} \
-end: \
 	printf("[%08" PRIx32 "] unknown ARM7 get" #size " addr: %08" PRIx32 "\n", \
 	       cpu_get_reg(mem->nds->arm7, CPU_REG_PC), addr); \
 	return 0; \
@@ -1911,13 +2007,11 @@ MEM_ARM7_GET(32);
 #define MEM_ARM7_SET(size) \
 void mem_arm7_set##size(mem_t *mem, uint32_t addr, uint##size##_t v, enum mem_type type) \
 { \
-	if (addr >= 0x10000000) \
-		goto end; \
 	if (size == 16) \
 		addr &= ~1; \
 	if (size == 32) \
 		addr &= ~3; \
-	switch ((addr >> 24) & 0xF) \
+	switch ((addr >> 24) & 0xFF) \
 	{ \
 		case 0x0: /* ARM7 bios */ \
 			arm7_instr_delay(mem, arm7_wram_cycles_##size, type); \
@@ -1944,10 +2038,7 @@ void mem_arm7_set##size(mem_t *mem, uint32_t addr, uint##size##_t v, enum mem_ty
 		case 0x9: \
 		case 0xA: \
 			return; \
-		default: \
-			break; \
 	} \
-end:; \
 	printf("[%08" PRIx32 "] unknown ARM7 set" #size " addr: %08" PRIx32 "\n", \
 	       cpu_get_reg(mem->nds->arm7, CPU_REG_PC), addr); \
 }
@@ -2085,7 +2176,6 @@ static void run_sqrt(mem_t *mem)
 
 static void update_vram_maps(mem_t *mem)
 {
-	return;
 	for (size_t i = 0; i < 32; ++i)
 		mem->vram_bga_bases[i] = 0xFFFFFFFF;
 	for (size_t i = 0; i < 8; ++i)
@@ -2131,7 +2221,7 @@ static void update_vram_maps(mem_t *mem)
 			case 2:
 				ofs_b &= 1;
 				for (size_t i = 0; i < 8; ++i)
-					mem->vram_bga_bases[ofs_b * 8 + i] = MEM_VRAM_B_BASE + i * 0x4000;
+					mem->vram_obja_bases[ofs_b * 8 + i] = MEM_VRAM_B_BASE + i * 0x4000;
 				break;
 			case 3:
 				/* XXX texture / rear plane image */
@@ -2327,7 +2417,7 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 			 && (mem->arm7_regs[MEM_ARM7_REG_IPCSYNC + 1] & (1 << 6)))
 				mem_arm7_if(mem, 1 << 16);
 #if 0
-			printf("ARM9 IPCSYNC write 0x%02" PRIx8 "\n", v);
+			printf("[ARM9] IPCSYNC write 0x%02" PRIx8 "\n", v);
 #endif
 			return;
 		case MEM_ARM9_REG_IPCSYNC + 2:
@@ -2833,6 +2923,39 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 			mem->arm9_regs[addr] = v;
 			run_sqrt(mem);
 			return;
+		case 0x58: /* silent these. they are memset(0) on boot with all engine registers */
+		case 0x59:
+		case 0x5A:
+		case 0x5B:
+		case 0x5C:
+		case 0x5D:
+		case 0x5E:
+		case 0x5F:
+		case 0x1004:
+		case 0x1005:
+		case 0x1006:
+		case 0x1007:
+		case 0x1058:
+		case 0x1059:
+		case 0x105A:
+		case 0x105B:
+		case 0x105C:
+		case 0x105D:
+		case 0x105E:
+		case 0x105F:
+		case 0x1060:
+		case 0x1061:
+		case 0x1062:
+		case 0x1063:
+		case 0x1064:
+		case 0x1065:
+		case 0x1066:
+		case 0x1067:
+		case 0x1068:
+		case 0x1069:
+		case 0x106A:
+		case 0x106B:
+			return;
 		default:
 			printf("[%08" PRIx32 "] unknown ARM9 set register %08" PRIx32 " = %02" PRIx8 "\n",
 			       cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr, v);
@@ -2881,7 +3004,6 @@ static uint8_t get_arm9_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM9_REG_POSTFLG + 3:
 		case MEM_ARM9_REG_ROMCTRL:
 		case MEM_ARM9_REG_ROMCTRL + 1:
-		case MEM_ARM9_REG_ROMCTRL + 2:
 		case MEM_ARM9_REG_ROMCTRL + 3:
 		case MEM_ARM9_REG_ROMCMD:
 		case MEM_ARM9_REG_ROMCMD + 1:
@@ -3175,6 +3297,10 @@ static uint8_t get_arm9_reg8(mem_t *mem, uint32_t addr)
 				mem_arm7_if(mem, 1 << 17);
 			return v;
 		}
+		case MEM_ARM9_REG_ROMCTRL + 2:
+			if (mem->dscard_dma_count) /* nasty hack: fake non-availibility if dma is running */
+				return mem->arm9_regs[addr] & ~(1 << 7);
+			return mem->arm9_regs[addr];
 		default:
 			printf("[%08" PRIx32 "] unknown ARM9 get register %08" PRIx32 "\n",
 			       cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr);
@@ -3204,37 +3330,34 @@ static void arm9_instr_delay(mem_t *mem, const uint8_t *table, enum mem_type typ
 
 static void *get_vram_bga_ptr(mem_t *mem, uint32_t addr)
 {
-#if 0
-	uint32_t base = mem->vram_bga_bases[(addr / 0x40000) & 0x1F];
+	uint32_t base = mem->vram_bga_bases[(addr / 0x4000) & 0x1F];
 	if (base == 0xFFFFFFFF)
 		return NULL;
-	return &mem->vram[base];
-#else
-	if (!mem->vram_bga_mask)
-		return NULL;
-	return &mem->vram[mem->vram_bga_base + (addr & mem->vram_bga_mask)];
-#endif
+	return &mem->vram[base + (addr & 0x3FFF)];
 }
 
 static void *get_vram_bgb_ptr(mem_t *mem, uint32_t addr)
 {
-	if (!mem->vram_bgb_mask)
+	uint32_t base = mem->vram_bgb_bases[(addr / 0x4000) & 0x7];
+	if (base == 0xFFFFFFFF)
 		return NULL;
-	return &mem->vram[mem->vram_bgb_base + (addr & mem->vram_bgb_mask)];
+	return &mem->vram[base + (addr & 0x3FFF)];
 }
 
 static void *get_vram_obja_ptr(mem_t *mem, uint32_t addr)
 {
-	if (!mem->vram_obja_mask)
+	uint32_t base = mem->vram_obja_bases[(addr / 0x4000) & 0xF];
+	if (base == 0xFFFFFFFF)
 		return NULL;
-	return &mem->vram[mem->vram_obja_base + (addr & mem->vram_obja_mask)];
+	return &mem->vram[base + (addr & 0x3FFF)];
 }
 
 static void *get_vram_objb_ptr(mem_t *mem, uint32_t addr)
 {
-	if (!mem->vram_objb_mask)
+	uint32_t base = mem->vram_objb_bases[(addr / 0x4000) & 0x7];
+	if (base == 0xFFFFFFFF)
 		return NULL;
-	return &mem->vram[mem->vram_objb_base + (addr & mem->vram_objb_mask)];
+	return &mem->vram[base + (addr & 0x3FFF)];
 }
 
 static void *get_vram_ptr(mem_t *mem, uint32_t addr)
@@ -3314,30 +3437,21 @@ uint##size##_t mem_arm9_get##size(mem_t *mem, uint32_t addr, enum mem_type type)
 		addr &= ~3; \
 	if (addr != MEM_DIRECT) \
 	{ \
-		if (mem->nds->arm9->cp15.cr & (1 << 18)) \
+		if (addr < mem->itcm_size) \
 		{ \
-			uint32_t itcm_size = 0x200 << ((mem->nds->arm9->cp15.itcm & 0x3E) >> 1); \
-			if (addr < itcm_size) \
-			{ \
-				uint32_t a = addr; \
-				a &= itcm_size - 1; \
-				a &= 0x7FFF; \
-				arm9_instr_delay(mem, arm9_tcm_cycles_##size, type); \
-				return *(uint##size##_t*)&mem->itcm[a]; \
-			} \
+			uint32_t a = addr; \
+			a &= mem->itcm_size - 1; \
+			a &= 0x7FFF; \
+			arm9_instr_delay(mem, arm9_tcm_cycles_##size, type); \
+			return *(uint##size##_t*)&mem->itcm[a]; \
 		} \
-		if (mem->nds->arm9->cp15.cr & (1 << 16)) \
+		if (addr >= mem->dtcm_base && addr < mem->dtcm_base + mem->dtcm_size) \
 		{ \
-			uint32_t dtcm_base = mem->nds->arm9->cp15.dtcm & 0xFFFFF000; \
-			uint32_t dtcm_size = 0x200 << ((mem->nds->arm9->cp15.dtcm & 0x3E) >> 1); \
-			if (addr >= dtcm_base && addr < dtcm_base + dtcm_size) \
-			{ \
-				uint32_t a = addr - dtcm_base; \
-				a &= dtcm_size - 1; \
-				a &= 0x3FFF; \
-				arm9_instr_delay(mem, arm9_tcm_cycles_##size, type); \
-				return *(uint##size##_t*)&mem->dtcm[a]; \
-			} \
+			uint32_t a = addr - mem->dtcm_base; \
+			a &= mem->dtcm_size - 1; \
+			a &= 0x3FFF; \
+			arm9_instr_delay(mem, arm9_tcm_cycles_##size, type); \
+			return *(uint##size##_t*)&mem->dtcm[a]; \
 		} \
 	} \
 	if (addr >= 0xFFFF0000) \
@@ -3347,8 +3461,6 @@ uint##size##_t mem_arm9_get##size(mem_t *mem, uint32_t addr, enum mem_type type)
 		arm9_instr_delay(mem, arm9_wram_cycles_##size, type); \
 		return *(uint##size##_t*)&mem->arm9_bios[a]; \
 	} \
-	if (addr >= 0x10000000) \
-		goto end; \
 	switch ((addr >> 24) & 0xFF) \
 	{ \
 		case 0x2: /* main memory */ \
@@ -3369,12 +3481,10 @@ uint##size##_t mem_arm9_get##size(mem_t *mem, uint32_t addr, enum mem_type type)
 		case 0x6: /* vram */ \
 		{ \
 			void *ptr = get_vram_ptr(mem, addr & 0xFFFFFF); \
-			if (ptr) \
-			{ \
-				arm9_instr_delay(mem, arm9_vram_cycles_##size, type); \
-				return *(uint##size##_t*)ptr; \
-			} \
-			return 0; \
+			if (!ptr) \
+				break; \
+			arm9_instr_delay(mem, arm9_vram_cycles_##size, type); \
+			return *(uint##size##_t*)ptr; \
 		} \
 		case 0x7: /* oam */ \
 			arm9_instr_delay(mem, arm9_wram_cycles_##size, type); \
@@ -3390,10 +3500,7 @@ uint##size##_t mem_arm9_get##size(mem_t *mem, uint32_t addr, enum mem_type type)
 			if (mem->arm9_regs[MEM_ARM9_REG_EXMEMCNT] & (1 << 7)) \
 				return 0; \
 			return 0xFF; \
-		default: \
-			break; \
 	} \
-end: \
 	printf("[%08" PRIx32 "] unknown ARM9 get" #size " addr: %08" PRIx32 "\n", \
 	       cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr); \
 	return 0; \
@@ -3441,39 +3548,28 @@ void mem_arm9_set##size(mem_t *mem, uint32_t addr, uint##size##_t v, enum mem_ty
 		addr &= ~3; \
 	if (addr != MEM_DIRECT) \
 	{ \
-		if (mem->nds->arm9->cp15.cr & (1 << 18)) \
+		if (addr < mem->itcm_size) \
 		{ \
-			uint32_t itcm_size = 0x200 << ((mem->nds->arm9->cp15.itcm & 0x3E) >> 1); \
-			if (addr < itcm_size) \
-			{ \
-				/* printf("[%08" PRIx32 "] ITCM[%08" PRIx32 "] = %x\n", cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr, v); */ \
-				uint32_t a = addr; \
-				a &= itcm_size - 1; \
-				a &= 0x7FFF; \
-				*(uint##size##_t*)&mem->itcm[a] = v; \
-				arm9_instr_delay(mem, arm9_tcm_cycles_##size, type); \
-				return; \
-			} \
+			/* printf("[%08" PRIx32 "] ITCM[%08" PRIx32 "] = %x\n", cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr, v); */ \
+			uint32_t a = addr; \
+			a &= mem->itcm_size - 1; \
+			a &= 0x7FFF; \
+			*(uint##size##_t*)&mem->itcm[a] = v; \
+			arm9_instr_delay(mem, arm9_tcm_cycles_##size, type); \
+			return; \
 		} \
-		if (mem->nds->arm9->cp15.cr & (1 << 16)) \
+		if (addr >= mem->dtcm_base && addr < mem->dtcm_base + mem->dtcm_size) \
 		{ \
-			uint32_t dtcm_base = mem->nds->arm9->cp15.dtcm & 0xFFFFF000; \
-			uint32_t dtcm_size = 0x200 << ((mem->nds->arm9->cp15.dtcm & 0x3E) >> 1); \
-			if (addr >= dtcm_base && addr < dtcm_base + dtcm_size) \
-			{ \
-				/* printf("[%08" PRIx32 "] DTCM[%08" PRIx32 "] = %x\n", cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr, v); */ \
-				uint32_t a = addr - dtcm_base; \
-				a &= dtcm_size - 1; \
-				a &= 0x3FFF; \
-				*(uint##size##_t*)&mem->dtcm[a] = v; \
-				arm9_instr_delay(mem, arm9_tcm_cycles_##size, type); \
-				return; \
-			} \
+			/* printf("[%08" PRIx32 "] DTCM[%08" PRIx32 "] = %x\n", cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr, v); */ \
+			uint32_t a = addr - mem->dtcm_base; \
+			a &= mem->dtcm_size - 1; \
+			a &= 0x3FFF; \
+			*(uint##size##_t*)&mem->dtcm[a] = v; \
+			arm9_instr_delay(mem, arm9_tcm_cycles_##size, type); \
+			return; \
 		} \
 	} \
-	if (addr >= 0x10000000) \
-		goto end; \
-	switch ((addr >> 24) & 0xF) \
+	switch ((addr >> 24) & 0xFF) \
 	{ \
 		case 0x2: /* main memory */ \
 			*(uint##size##_t*)&mem->mram[addr & 0x3FFFFF] = v; \
@@ -3499,15 +3595,10 @@ void mem_arm9_set##size(mem_t *mem, uint32_t addr, uint##size##_t v, enum mem_ty
 		{ \
 			/* printf("vram write [%08" PRIx32 "] = %x\n", addr, v); */ \
 			void *ptr = get_vram_ptr(mem, addr & 0xFFFFFF); \
-			if (ptr) \
-			{ \
-				arm9_instr_delay(mem, arm9_vram_cycles_##size, type); \
-				*(uint##size##_t*)ptr = v; \
-			} \
-			else \
-			{ \
+			if (!ptr) \
 				break; \
-			} \
+			arm9_instr_delay(mem, arm9_vram_cycles_##size, type); \
+			*(uint##size##_t*)ptr = v; \
 			return; \
 		} \
 		case 0x7: /* oam */ \
@@ -3519,10 +3610,7 @@ void mem_arm9_set##size(mem_t *mem, uint32_t addr, uint##size##_t v, enum mem_ty
 		case 0x9: \
 		case 0xA: \
 			return; \
-		default: \
-			break; \
 	} \
-end:; \
 	printf("[%08" PRIx32 "] unknown ARM9 set" #size " addr: %08" PRIx32 "\n", \
 	       cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr); \
 }

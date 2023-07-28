@@ -21,7 +21,7 @@ struct apu_channel
 
 typedef struct apu
 {
-	int16_t data[APU_FRAME_SAMPLES * 2];
+	int16_t *data;
 	struct apu_channel channels[16];
 	mem_t *mem;
 	uint32_t clock;

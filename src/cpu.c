@@ -175,21 +175,18 @@ static bool handle_interrupt(cpu_t *cpu)
 		return false;
 	if (cpu->state == CPU_STATE_RUN && CPU_GET_FLAG_I(cpu))
 		return false;
-	uint16_t ime;
 	if (cpu->arm9)
 	{
-		ime = mem_arm9_get_reg16(cpu->mem, MEM_ARM9_REG_IME);
+		if (!mem_arm9_get_reg16(cpu->mem, MEM_ARM9_REG_IME))
+			return false;
 	}
 	else
 	{
-		if (cpu->state != CPU_STATE_RUN)
-			ime = true;
-		else
-			ime = mem_arm7_get_reg16(cpu->mem, MEM_ARM7_REG_IME);
+		if (cpu->state == CPU_STATE_RUN
+		 && !mem_arm7_get_reg16(cpu->mem, MEM_ARM7_REG_IME))
+			return false;
 	}
 	cpu->state = CPU_STATE_RUN;
-	if (!ime)
-		return false;
 	for (uint8_t i = 0; i < 32; ++i)
 	{
 		if (!(cpu->irq_line & (1 << i)))
@@ -239,8 +236,8 @@ void cpu_update_irq_state(cpu_t *cpu)
 	else
 		cpu->irq_wait = !cpu->irq_line;
 #if 0
-	printf("[ARM%c] updated IRQ state: IE=%08" PRIx32 " IF=%08" PRIx32 " -> %d/%d\n",
-	       cpu->arm9 ? '9' : '7', reg_ie, reg_if, cpu->has_irq, cpu->irq_wait);
+	printf("[ARM%c] updated IRQ state: IE=%08" PRIx32 " IF=%08" PRIx32 " -> LINE=%08" PRIx32 " WAIT=%d\n",
+	       cpu->arm9 ? '9' : '7', reg_ie, reg_if, cpu->irq_line, cpu->irq_wait);
 #endif
 }
 
@@ -303,30 +300,18 @@ void cpu_cycle(cpu_t *cpu)
 		cpu->debug = CPU_DEBUG_REGS | CPU_DEBUG_INSTR;
 #endif
 #if 0
-	if (cpu_get_reg(cpu, CPU_REG_PC) == 0x0380)
+	if (cpu_get_reg(cpu, CPU_REG_PC) == 0x2327c28)
 		cpu->debug = CPU_DEBUG_ALL_ML;
 #endif
 
-	if (!cpu->instr)
-	{
-		if (!decode_instruction(cpu))
-			return;
-	}
-
+	handle_interrupt(cpu);
 	if (cpu->state != CPU_STATE_RUN)
-	{
-		if (!handle_interrupt(cpu))
-			return;
-		if (!decode_instruction(cpu))
-			return;
-	}
-
+		return;
+	if (!decode_instruction(cpu))
+		return;
 	if (cpu->debug)
 		print_instr(cpu, "EXEC", cpu->instr);
 	cpu->instr->exec(cpu);
-
-	(void)handle_interrupt(cpu);
-	(void)decode_instruction(cpu);
 }
 
 void cpu_update_mode(cpu_t *cpu)
@@ -445,6 +430,28 @@ uint32_t cp15_read(cpu_t *cpu, uint8_t cn, uint8_t cm, uint8_t cp)
 	return 0;
 }
 
+static void update_itcm(cpu_t *cpu)
+{
+	if (!(cpu->cp15.cr & (1 << 18)))
+	{
+		cpu->mem->itcm_size = 0;
+		return;
+	}
+	cpu->mem->itcm_size = 0x200 << ((cpu->cp15.itcm & 0x3E) >> 1);
+}
+
+static void update_dtcm(cpu_t *cpu)
+{
+	if (!(cpu->cp15.cr & (1 << 16)))
+	{
+		cpu->mem->dtcm_base = 0xFFFFFFFF;
+		cpu->mem->dtcm_size = 0;
+		return;
+	}
+	cpu->mem->dtcm_base = cpu->cp15.dtcm & 0xFFFFF000;
+	cpu->mem->dtcm_size = 0x200 << ((cpu->cp15.dtcm & 0x3E) >> 1);
+}
+
 void cp15_write(cpu_t *cpu, uint8_t cn, uint8_t cm, uint8_t cp, uint32_t v)
 {
 #if 0
@@ -454,6 +461,8 @@ void cp15_write(cpu_t *cpu, uint8_t cn, uint8_t cm, uint8_t cp, uint32_t v)
 	{
 		case 0x100:
 			cpu->cp15.cr = (cpu->cp15.cr & ~0xFF085) | (v & 0xFF085);
+			update_itcm(cpu);
+			update_dtcm(cpu);
 			break;
 		case 0x200:
 			cpu->cp15.dpr = v;
@@ -559,6 +568,7 @@ void cp15_write(cpu_t *cpu, uint8_t cn, uint8_t cm, uint8_t cp, uint32_t v)
 			break;
 		case 0x910:
 			cpu->cp15.dtcm = v;
+			update_dtcm(cpu);
 #if 0
 			printf("DTCM 0x%08" PRIx32 " @ 0x%08" PRIx32 "\n",
 			       (uint32_t)(0x200 << ((cpu->cp15.dtcm & 0x3E) >> 1)),
@@ -567,6 +577,7 @@ void cp15_write(cpu_t *cpu, uint8_t cn, uint8_t cm, uint8_t cp, uint32_t v)
 			break;
 		case 0x911:
 			cpu->cp15.itcm = v;
+			update_itcm(cpu);
 #if 0
 			printf("ITCM 0x%08" PRIx32 " @ 0x%08" PRIx32 "\n",
 			       (uint32_t)(0x200 << ((cpu->cp15.itcm & 0x3E) >> 1)),

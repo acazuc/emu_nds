@@ -17,7 +17,7 @@ typedef struct mem mem_t;
 
 struct gpu_eng
 {
-	uint8_t data[256 * 192 * 4];
+	uint8_t *data;
 	uint8_t  (*get_vram_bg8 )(mem_t *mem, uint32_t addr);
 	uint16_t (*get_vram_bg16)(mem_t *mem, uint32_t addr);
 	uint32_t (*get_vram_bg32)(mem_t *mem, uint32_t addr);

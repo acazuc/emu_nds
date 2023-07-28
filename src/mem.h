@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <time.h>
 
 #define MEM_ARM9_REG_DISPCNT         0x000
 #define MEM_ARM9_REG_DISPSTAT        0x004
@@ -352,6 +353,20 @@ struct fifo
 	uint8_t latch[4];
 };
 
+#define SPI_FIRMWARE_CMD_NONE 0x00
+#define SPI_FIRMWARE_CMD_PP   0x02
+#define SPI_FIRMWARE_CMD_READ 0x03
+#define SPI_FIRMWARE_CMD_WRDI 0x04
+#define SPI_FIRMWARE_CMD_RDSR 0x05
+#define SPI_FIRMWARE_CMD_WREN 0x06
+#define SPI_FIRMWARE_CMD_PW   0x0A
+#define SPI_FIRMWARE_CMD_FAST 0x0B
+#define SPI_FIRMWARE_CMD_RDP  0xAB
+#define SPI_FIRMWARE_CMD_DP   0xB9
+#define SPI_FIRMWARE_CMD_SE   0xD8
+#define SPI_FIRMWARE_CMD_PE   0xDB
+#define SPI_FIRMWARE_CMD_RDID 0x9F
+
 struct spi_firmware
 {
 	uint8_t cmd;
@@ -363,7 +378,13 @@ struct spi_firmware
 			uint8_t posb;
 			uint32_t addr;
 		} read;
+		struct
+		{
+			uint8_t posb;
+			uint32_t addr;
+		} write;
 	} cmd_data;
+	int write;
 };
 
 struct spi_powerman
@@ -400,6 +421,8 @@ struct rtc
 	uint8_t int1_steady_freq;
 	uint8_t alarm1[3];
 	uint8_t alarm2[3];
+	int64_t offset;
+	struct tm tm; /* for date / time set */
 };
 
 #define MEM_VRAM_A_BASE 0x00000
@@ -457,14 +480,12 @@ typedef struct mem
 	uint32_t vram_bgb_bases[8]; /* 0x4000 units */
 	uint32_t vram_obja_bases[16]; /* 0x4000 units */
 	uint32_t vram_objb_bases[8]; /* 0x4000 units */
-	uint32_t vram_bga_base;
-	uint32_t vram_bga_mask;
-	uint32_t vram_bgb_base;
-	uint32_t vram_bgb_mask;
-	uint32_t vram_obja_base;
-	uint32_t vram_obja_mask;
-	uint32_t vram_objb_base;
-	uint32_t vram_objb_mask;
+	uint8_t *sram; /* backup + firmware sram */
+	size_t sram_size;
+	uint8_t dscard_dma_count;
+	uint32_t itcm_size;
+	uint32_t dtcm_base;
+	uint32_t dtcm_size;
 } mem_t;
 
 mem_t *mem_new(nds_t *nds, mbc_t *mbc);

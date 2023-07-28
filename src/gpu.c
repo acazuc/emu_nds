@@ -122,28 +122,33 @@ static void draw_background_text(gpu_t *gpu, struct gpu_eng *eng, uint8_t y, uin
 #endif
 	uint32_t mapw = mapwidths[size];
 	uint32_t maph = mapheights[size];
+	int32_t vy = y + bgvofs;
+	vy %= maph;
+	if (vy < 0)
+		vy += maph;
+	uint32_t mapy = vy / 8;
+	uint32_t tiley = vy % 8;
+	uint32_t mapyoff;
+	if (mapy >= 32)
+	{
+		mapy -= 32;
+		mapyoff = 0x800;
+		if (size == 3)
+			mapyoff += 0x800;
+	}
+	else
+	{
+		mapyoff = 0;
+	}
 	for (int32_t x = 0; x < 256; ++x)
 	{
 		int32_t vx = x + bghofs;
-		int32_t vy = y + bgvofs;
 		vx %= mapw;
-		vy %= maph;
 		if (vx < 0)
 			vx += mapw;
-		if (vy < 0)
-			vy += maph;
 		uint32_t mapx = vx / 8;
-		uint32_t mapy = vy / 8;
 		uint32_t tilex = vx % 8;
-		uint32_t tiley = vy % 8;
-		uint32_t mapoff = 0;
-		if (mapy >= 32)
-		{
-			mapy -= 32;
-			mapoff += 0x800;
-			if (size == 3)
-				mapoff += 0x800;
-		}
+		uint32_t mapoff = mapyoff;
 		if (mapx >= 32)
 		{
 			mapx -= 32;
@@ -375,6 +380,8 @@ static void draw_objects(gpu_t *gpu, struct gpu_eng *eng, uint8_t y, uint8_t *da
 			width *= 2;
 			height *= 2;
 		}
+		if (objx + width <= 0)
+			continue;
 		if (objy + height <= y)
 			continue;
 		uint8_t affine = (attr0 >> 8) & 0x1;
@@ -649,9 +656,10 @@ static void compose(gpu_t *gpu, struct gpu_eng *eng, struct line_buff *line, uin
 {
 	uint16_t bd_col = mem_get_bg_palette(gpu->mem, eng->pal_base + 0);
 	uint8_t bd_color[4] = RGB5TO8(bd_col, 0xFF);
-	for (size_t x = 0; x < 256; ++x)
+	uint8_t *dst = &eng->data[y * 256 * 4];
+	for (size_t x = 0; x < 256; ++x, dst += 4)
 	{
-		memcpy(&eng->data[(256 * y + x) * 4], bd_color, 4);
+		*(uint32_t*)dst = *(uint32_t*)bd_color;
 #if 0
 		line->bg0[x * 4 + 0] = line->bg0[x * 4 + 0] / 4 + 0xBF;
 		line->bg0[x * 4 + 1] = line->bg0[x * 4 + 1] / 4;
@@ -720,9 +728,9 @@ static void compose(gpu_t *gpu, struct gpu_eng *eng, struct line_buff *line, uin
 	uint8_t bldy = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BLDY) & 0x1F;
 	uint8_t eva = (bldalpha >> 0) & 0x1F;
 	uint8_t evb = (bldalpha >> 8) & 0x1F;
-	for (size_t x = 0; x < 256; ++x)
+	dst = &eng->data[y * 256 * 4];
+	for (size_t x = 0; x < 256; ++x, dst += 4)
 	{
-		uint8_t *dst = &eng->data[(y * 256 + x) * 4];
 		uint8_t winflags;
 		if (has_window)
 		{
@@ -755,7 +763,7 @@ static void compose(gpu_t *gpu, struct gpu_eng *eng, struct line_buff *line, uin
 				if ((obj & 0x80) && ((obj >> 1) & 3) <= priority)
 					layer = LAYER_OBJ;
 			}
-			memcpy(dst, layer_data(line, layer, bd_color, x * 4, 0xFF), 3);
+			*(uint32_t*)dst = *(uint32_t*)layer_data(line, layer, bd_color, x * 4, 0xFF);
 			continue;
 		}
 		enum layer_type top_layer = LAYER_BD;
@@ -815,7 +823,7 @@ static void compose(gpu_t *gpu, struct gpu_eng *eng, struct line_buff *line, uin
 		{
 			case 0:
 				top_layer_data = layer_data(line, top_layer, bd_color, x * 4, 0xFF);
-				memcpy(dst, top_layer_data, 3);
+				*(uint32_t*)dst = *(uint32_t*)top_layer_data;
 				break;
 			case 1:
 				if (top_layer_data && bot_layer_data)
@@ -831,7 +839,7 @@ static void compose(gpu_t *gpu, struct gpu_eng *eng, struct line_buff *line, uin
 				else
 				{
 					top_layer_data = layer_data(line, top_layer, bd_color, x * 4, 0xFF);
-					memcpy(dst, top_layer_data, 3);
+					*(uint32_t*)dst = *(uint32_t*)top_layer_data;
 				}
 				break;
 			case 2:
@@ -844,7 +852,7 @@ static void compose(gpu_t *gpu, struct gpu_eng *eng, struct line_buff *line, uin
 				else
 				{
 					top_layer_data = layer_data(line, top_layer, bd_color, x * 4, 0xFF);
-					memcpy(dst, top_layer_data, 3);
+					*(uint32_t*)dst = *(uint32_t*)top_layer_data;
 				}
 				break;
 			}
@@ -858,7 +866,7 @@ static void compose(gpu_t *gpu, struct gpu_eng *eng, struct line_buff *line, uin
 				else
 				{
 					top_layer_data = layer_data(line, top_layer, bd_color, x * 4, 0xFF);
-					memcpy(dst, top_layer_data, 3);
+					*(uint32_t*)dst = *(uint32_t*)top_layer_data;
 				}
 				break;
 			}
@@ -874,12 +882,13 @@ static void compose(gpu_t *gpu, struct gpu_eng *eng, struct line_buff *line, uin
 			uint16_t factor = master_bright & 0x1F;
 			if (factor > 16)
 				factor = 16;
+			uint8_t *ptr = &eng->data[y * 256 * 4];
 			for (size_t x = 0; x < 256; ++x)
 			{
-				uint8_t *ptr = &eng->data[(y * 256 + x) * 4];
 				ptr[0] += ~ptr[0] * factor / 16;
 				ptr[1] += ~ptr[1] * factor / 16;
 				ptr[2] += ~ptr[2] * factor / 16;
+				ptr += 4;
 			}
 			break;
 		}
@@ -888,15 +897,57 @@ static void compose(gpu_t *gpu, struct gpu_eng *eng, struct line_buff *line, uin
 			uint16_t factor = master_bright & 0x1F;
 			if (factor > 16)
 				factor = 16;
+			uint8_t *ptr = &eng->data[y * 256 * 4];
 			for (size_t x = 0; x < 256; ++x)
 			{
-				uint8_t *ptr = &eng->data[(y * 256 + x) * 4];
 				ptr[0] -= ptr[0] * factor / 16;
 				ptr[1] -= ptr[1] * factor / 16;
 				ptr[2] -= ptr[2] * factor / 16;
+				ptr += 4;
 			}
 			break;
 		}
+	}
+	switch (gpu->mem->spi_powerman.regs[0x4] & 0x3)
+	{
+		case 0:
+		{
+			uint8_t *ptr = &eng->data[y * 256 * 4];
+			for (size_t x = 0; x < 256; ++x)
+			{
+				ptr[0] /= 4;
+				ptr[1] /= 4;
+				ptr[2] /= 4;
+				ptr += 4;
+			}
+			break;
+		}
+		case 1:
+		{
+			uint8_t *ptr = &eng->data[y * 256 * 4];
+			for (size_t x = 0; x < 256; ++x)
+			{
+				ptr[0] /= 2;
+				ptr[1] /= 2;
+				ptr[2] /= 2;
+				ptr += 4;
+			}
+			break;
+		}
+		case 2:
+		{
+			uint8_t *ptr = &eng->data[y * 256 * 4];
+			for (size_t x = 0; x < 256; ++x)
+			{
+				ptr[0] = ptr[0] / 2 + ptr[0] / 4;
+				ptr[1] = ptr[1] / 2 + ptr[1] / 4;
+				ptr[2] = ptr[2] / 2 + ptr[2] / 4;
+				ptr += 4;
+			}
+			break;
+		}
+		case 3:
+			break;
 	}
 }
 

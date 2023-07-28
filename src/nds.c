@@ -9,7 +9,7 @@
 #include <string.h>
 #include <stdio.h>
 
-#define INACCURACY_SHIFT 3
+#define INACCURACY_SHIFT 3 /* the power of two of the "batch" size for cycles interpretation */
 
 /*
  * 1130: bios call wrapper of 20BC (by 1164)
@@ -41,6 +41,12 @@
  *             read firmware up to 14F18
  *       24F2: if (SVC_LZ77UnCompReadBycallbackWrite16bit(r0=0xCA20, r1=0x037FA800, r2=0x33E0, r3=0x33E0) > 0)
  *       2500:     SVC_GetCRC16(r0=0x245F, r1=0x037FA800, r2=0x0B2B0) = 0x0F1F
+ * 27F8: decrypt secure area
+ *       2850: call decrypt on first 8 bytes
+ *       285A: cmp first 4 bytes of "encryObj"
+ *       2862: cmp last 4 bytes of "encryObj"
+ *       286E: while (remaining > 0) decrypt 8 bytes
+ *       289E: CpuFastSet(r0=0x037f90c4, r1=0x02000000, r2=0x200): copy the decrypted to 0x2000000
  * 2A2A: LZ77UnCompReadByCallbackWrite16bit
  * 3344: thumb wrapper of 1130
  * 33A4: read spi bytes + WaitByLoop (r0 = dst, r1 = bytes count, r2 = unk (unused?))
@@ -121,6 +127,41 @@
  * 03802fa0: call 03803c24
  * 03803c24: some WaitByLoop()-like fn with 0x10 iterations
  * 03803c34: return to 03802fa4
+ *
+ * unk:
+ *           02327c28: 02327b98(r0=01da6a00, r1=023556e0, r2=00000200)
+
+ * 02327b98: function (r0=cartridge addr, r1=data destination, r2=bytes)
+ *           02327bb0: 02327b60(r0=0x03002ef4)
+ *           02327bbc: start transfer of cartridge icon / name read transfer (DMA to 0x002002200 - 0x02002400)
+ *           02327bc6: if (ROMCTRL & (1 << 23)) goto 02327bde
+ *           02327bd0: read word from ROMDATA
+ *           02327bde: while (ROMCTRL & (1 << 31)) goto 02327bc6
+ *
+ * 02327b60: function (r0=cmd ptr)
+ *           02327b66: AUXSPICNT[1] = 0x80
+ *           02327b76: ROMCMD[0] = cmd[0x4]
+ *           02327b7a: ROMCMD[1] = cmd[0x5]
+ *           02327b7e: ROMCMD[2] = cmd[0x6]
+ *           02327b80: ROMCMD[3] = cmd[0x7]
+ *           02327b76: ROMCMD[0] = cmd[0x0]
+ *           02327b7a: ROMCMD[1] = cmd[0x1]
+ *           02327b7e: ROMCMD[2] = cmd[0x2]
+ *           02327b80: ROMCMD[3] = cmd[0x3]
+ *
+ * 02002000: 0x01da6a00 (0x200 bytes)
+ * 02002200: 0x0030c800 (0xA00 bytes) (all the icon + names) (seems to be "ASLR" in 4*0x1000 box, gets overwritten by next copy)
+ * 02004000: 0x00008000 (0x2E4800 bytes)
+ *
+ * arm9 rom offset:   0x4000
+ * arm9 entry:        0x02000800
+ * arm9 ram address:  0x02000000
+ * arm9 size:         0xEE238
+ * arm7 rom offset:   0x2E3800
+ * arm7 entry:        0x02380000
+ * arm7 ram address:  0x02380000
+ * arm7 size:         0x2869C
+ * icon/title offset: 0x30C800
  */
 
 nds_t *nds_new(const void *rom_data, size_t rom_size)
@@ -216,6 +257,18 @@ void nds_frame(nds_t *nds, uint8_t *video_buf, int16_t *audio_buf, uint32_t joyp
 #if 0
 	printf("touch: %d @ %dx%d\n", touch, touch_x, touch_y);
 #endif
+	uint32_t powcnt1 = mem_arm9_get_reg32(nds->mem, MEM_ARM9_REG_POWCNT1);
+	if (powcnt1 & (1 << 15))
+	{
+		nds->gpu->enga.data = &video_buf[0];
+		nds->gpu->engb.data = &video_buf[256 * 192 * 4];
+	}
+	else
+	{
+		nds->gpu->enga.data = &video_buf[256 * 192 * 4];
+		nds->gpu->engb.data = &video_buf[0];
+	}
+	nds->apu->data = audio_buf;
 	nds->apu->sample = 0;
 	nds->apu->clock = 0;
 	nds->apu->next_sample = nds->apu->clock;
@@ -286,19 +339,6 @@ void nds_frame(nds_t *nds, uint8_t *video_buf, int16_t *audio_buf, uint32_t joyp
 
 		nds_cycles(nds, 99 * 12);
 	}
-
-	uint32_t powcnt1 = mem_arm9_get_reg32(nds->mem, MEM_ARM9_REG_POWCNT1);
-	if (powcnt1 & (1 << 15))
-	{
-		memcpy(video_buf                              , nds->gpu->enga.data, sizeof(nds->gpu->enga.data));
-		memcpy(video_buf + sizeof(nds->gpu->enga.data), nds->gpu->engb.data, sizeof(nds->gpu->engb.data));
-	}
-	else
-	{
-		memcpy(video_buf                              , nds->gpu->engb.data, sizeof(nds->gpu->engb.data));
-		memcpy(video_buf + sizeof(nds->gpu->engb.data), nds->gpu->enga.data, sizeof(nds->gpu->enga.data));
-	}
-	memcpy(audio_buf, nds->apu->data, sizeof(nds->apu->data));
 }
 
 void nds_set_arm7_bios(nds_t *nds, const uint8_t *data)
@@ -314,20 +354,19 @@ void nds_set_arm9_bios(nds_t *nds, const uint8_t *data)
 void nds_set_firmware(nds_t *nds, const uint8_t *data)
 {
 	memcpy(nds->mem->firmware, data, 0x40000);
+	memcpy(nds->mem->sram, data, 0x40000);
 }
 
 void nds_get_mbc_ram(nds_t *nds, uint8_t **data, size_t *size)
 {
-	(void)nds;
-	*data = NULL;
-	*size = 0;
+	*data = nds->mem->sram;
+	*size = nds->mem->sram_size;
 }
 
 void nds_get_mbc_rtc(nds_t *nds, uint8_t **data, size_t *size)
 {
-	(void)nds;
-	*data = NULL;
-	*size = 0;
+	*size = sizeof(nds->mem->rtc.offset);
+	*data = (uint8_t*)&nds->mem->rtc.offset;
 }
 
 void nds_test_keypad_int(nds_t *nds)
