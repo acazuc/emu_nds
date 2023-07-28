@@ -487,7 +487,7 @@ static void firmware_write(mem_t *mem, uint8_t v)
 				mem->spi_firmware.cmd_data.read.posb++;
 				return;
 			}
-			mem->spi_firmware.read_latch = mem->firmware[mem->spi_firmware.cmd_data.read.addr & 0x3FFFF];
+			mem->spi_firmware.read_latch = mem->sram[mem->spi_firmware.cmd_data.read.addr & 0x3FFFF];
 #if 0
 			printf("[%08" PRIx32 "] firmware read: [%05" PRIx32 "] = %02" PRIx8 "\n",
 			       cpu_get_reg(mem->nds->arm7, CPU_REG_PC),
@@ -519,7 +519,7 @@ static void firmware_write(mem_t *mem, uint8_t v)
 			       addr, v);
 #endif
 			if (addr < 0x200 || addr >= 0x3FA00)
-				mem->firmware[mem->spi_firmware.cmd_data.write.addr & 0x3FFFF] = v;
+				mem->sram[mem->spi_firmware.cmd_data.write.addr & 0x3FFFF] = v;
 			mem->spi_firmware.cmd_data.write.addr++;
 			break;
 		}
