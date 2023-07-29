@@ -820,6 +820,7 @@ static void rtc_write(mem_t *mem, uint8_t v)
 				switch (mem->rtc.wpos)
 				{
 					case 0:
+						/* XXX for unknown reasons, firmware sends something not ok for year (not bcd?)*/
 						mem->rtc.tm.tm_year = DAA(mem->rtc.inbuf) + 100;
 						break;
 					case 1:
@@ -846,6 +847,7 @@ static void rtc_write(mem_t *mem, uint8_t v)
 						break;
 					}
 				}
+				mem->rtc.wpos++;
 				break;
 			case 0x66:
 				switch (mem->rtc.wpos)
