@@ -740,7 +740,7 @@ static void rtc_write(mem_t *mem, uint8_t v)
 					}
 					case 0xE6:
 					{
-						time_t t = time(NULL);
+						time_t t = time(NULL) + mem->rtc.offset;
 						struct tm *tm = localtime(&t);
 						mem->rtc.outbuf[0] = BCD(tm->tm_hour);
 						mem->rtc.outbuf[1] = BCD(tm->tm_min);
