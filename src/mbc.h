@@ -47,7 +47,9 @@ struct mbc_spi
 {
 	uint8_t cmd;
 	uint8_t read_latch;
-	int write;
+	uint8_t posb;
+	uint8_t write;
+	uint32_t addr;
 };
 
 typedef struct mbc

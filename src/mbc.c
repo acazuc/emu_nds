@@ -34,6 +34,9 @@ mbc_t *mbc_new(nds_t *nds, const void *data, size_t size)
 		case 0x50434D41:
 			mbc->backup_type = MBC_FLASH_256K;
 			break;
+		case 0x50395941:
+			mbc->backup_type = MBC_EEPROM_64K;
+			break;
 		default:
 			mbc->backup_type = MBC_BACKUP_UNKNOWN;
 			printf("unknown backup for gamecode %08" PRIx32 "\n",
@@ -470,7 +473,7 @@ void mbc_write(mbc_t *mbc, uint8_t v)
 
 uint8_t mbc_spi_read(mbc_t *mbc)
 {
-#if 1
+#if 0
 	printf("MBC SPI read 0x%02" PRIx8 "\n", mbc->spi.read_latch);
 #endif
 	return mbc->spi.read_latch;
@@ -478,31 +481,306 @@ uint8_t mbc_spi_read(mbc_t *mbc)
 
 void mbc_spi_write(mbc_t *mbc, uint8_t v)
 {
-#if 1
+#if 0
 	printf("MBC SPI write %02" PRIx8 "\n", v);
 #endif
 	switch (mbc->spi.cmd)
 	{
 		case MBC_SPI_CMD_NONE:
 			mbc->spi.cmd = v;
-			return;
+			switch (mbc->spi.cmd)
+			{
+				case MBC_SPI_CMD_RDLO:
+				case MBC_SPI_CMD_RDHI:
+					mbc->spi.posb = 0;
+					break;
+				case MBC_SPI_CMD_WRLO:
+				case MBC_SPI_CMD_WRHI:
+					mbc->spi.posb = 0;
+					break;
+				case MBC_SPI_CMD_WREN:
+					mbc->spi.write = 1;
+					break;
+				case MBC_SPI_CMD_WRDI:
+					mbc->spi.write = 0;
+					break;
+			}
+			break;
 		case MBC_SPI_CMD_RDSR:
 			mbc->spi.read_latch = (mbc->spi.write & 1) << 1;
-			return;
+			break;
 		case MBC_SPI_CMD_WREN:
-			mbc->spi.write = 1;
-			return;
+			break;
 		case MBC_SPI_CMD_WRDI:
-			mbc->spi.write = 0;
-			return;
+			break;
+		case MBC_SPI_CMD_RDLO:
+			switch (mbc->backup_type)
+			{
+				case MBC_BACKUP_UNKNOWN:
+					mbc->spi.read_latch = 0;
+					break;
+				case MBC_EEPROM_512:
+					if (!mbc->spi.posb)
+					{
+						mbc->spi.posb = 1;
+						mbc->spi.addr = v;
+						break;
+					}
+					if (mbc->spi.addr < mbc->backup_size)
+						mbc->spi.read_latch = mbc->backup[mbc->spi.addr];
+					else
+						mbc->spi.read_latch = 0;
+#if 0
+					printf("MBC SPI read addr8 [%02" PRIx32 "] = %02" PRIx8 "\n",
+					       mbc->spi.addr,
+					       mbc->spi.read_latch);
+#endif
+					mbc->spi.addr++;
+					break;
+				case MBC_EEPROM_8K:
+				case MBC_EEPROM_64K:
+				case MBC_FRAM_8K:
+				case MBC_FRAM_32K:
+					if (mbc->spi.posb < 2)
+					{
+						mbc->spi.posb++;
+						mbc->spi.addr <<= 8;
+						mbc->spi.addr += v;
+						break;
+					}
+					if (mbc->spi.addr < mbc->backup_size)
+						mbc->spi.read_latch = mbc->backup[mbc->spi.addr];
+					else
+						mbc->spi.read_latch = 0;
+#if 0
+					printf("MBC SPI read addr16 [%04" PRIx32 "] = %02" PRIx8 "\n",
+					       mbc->spi.addr,
+					       mbc->spi.read_latch);
+#endif
+					mbc->spi.addr++;
+					break;
+				case MBC_EEPROM_128K:
+				case MBC_FLASH_256K:
+				case MBC_FLASH_512K:
+				case MBC_FLASH_1024K:
+				case MBC_FLASH_2048K:
+					if (mbc->spi.posb < 3)
+					{
+						mbc->spi.posb++;
+						mbc->spi.addr <<= 8;
+						mbc->spi.addr += v;
+						break;
+					}
+					if (mbc->spi.addr < mbc->backup_size)
+						mbc->spi.read_latch = mbc->backup[mbc->spi.addr];
+					else
+						mbc->spi.read_latch = 0;
+#if 0
+					printf("MBC SPI read addr24 [%06" PRIx32 "] = %02" PRIx8 "\n",
+					       mbc->spi.addr,
+					       mbc->spi.read_latch);
+#endif
+					mbc->spi.addr++;
+					break;
+			}
+			break;
+		case MBC_SPI_CMD_RDHI:
+			switch (mbc->backup_type)
+			{
+				case MBC_BACKUP_UNKNOWN:
+					mbc->spi.read_latch = 0;
+					break;
+				case MBC_EEPROM_512:
+					if (!mbc->spi.posb)
+					{
+						mbc->spi.posb = 1;
+						mbc->spi.addr = v;
+						break;
+					}
+					if (mbc->spi.addr + 0x100 < mbc->backup_size)
+						mbc->spi.read_latch = mbc->backup[0x100 + mbc->spi.addr];
+					else
+						mbc->spi.read_latch = 0;
+#if 0
+					printf("MBC SPI read addr8 [%02" PRIx32 "] = %02" PRIx8 "\n",
+					       mbc->spi.addr,
+					       mbc->spi.read_latch);
+#endif
+					mbc->spi.addr++;
+					break;
+				case MBC_EEPROM_8K:
+				case MBC_EEPROM_64K:
+				case MBC_FRAM_8K:
+				case MBC_FRAM_32K:
+				case MBC_EEPROM_128K:
+				case MBC_FLASH_256K:
+				case MBC_FLASH_512K:
+				case MBC_FLASH_1024K:
+				case MBC_FLASH_2048K:
+					mbc->spi.read_latch = 0;
+					printf("MBC SPI invalid RDLO for backup type\n");
+					break;
+			}
+			break;
+		case MBC_SPI_CMD_WRHI:
+			if (!mbc->spi.write)
+			{
+				printf("MCB SPI write without WREN\n");
+				break;
+			}
+			switch (mbc->backup_type)
+			{
+				case MBC_BACKUP_UNKNOWN:
+					mbc->spi.read_latch = 0;
+					break;
+				case MBC_EEPROM_512:
+					if (!mbc->spi.posb)
+					{
+						mbc->spi.posb = 1;
+						mbc->spi.addr = v;
+						break;
+					}
+					if (mbc->spi.addr + 0x100 < mbc->backup_size)
+						mbc->backup[mbc->spi.addr + 0x100] = v;
+					else
+						printf("MBC SPI write to out of bounds addr: %02" PRIx32 " / %02" PRIx32 "\n",
+						       mbc->spi.addr + 0x100, mbc->backup_size);
+#if 0
+					printf("MBC SPI write addr8 [%02" PRIx32 "] = %02" PRIx8 "\n",
+					       mbc->spi.addr, v);
+#endif
+					mbc->spi.addr++;
+					break;
+				case MBC_EEPROM_8K:
+				case MBC_EEPROM_64K:
+				case MBC_FRAM_8K:
+				case MBC_FRAM_32K:
+				case MBC_EEPROM_128K:
+					printf("MBC SPI invalid WRHI for backup type\n");
+					break;
+				case MBC_FLASH_256K:
+				case MBC_FLASH_512K:
+				case MBC_FLASH_1024K:
+				case MBC_FLASH_2048K:
+					if (mbc->spi.posb < 3)
+					{
+						mbc->spi.posb++;
+						mbc->spi.addr <<= 8;
+						mbc->spi.addr += v;
+						break;
+					}
+					if (mbc->spi.addr < mbc->backup_size)
+						mbc->backup[mbc->spi.addr] = v;
+					else
+						printf("MBC SPI write to out of bounds addr: %06" PRIx32 " / %06" PRIx32 "\n",
+						       mbc->spi.addr, mbc->backup_size);
+#if 0
+					printf("MBC SPI write addr24 [%06" PRIx32 "] = %02" PRIx8 "\n",
+					       mbc->spi.addr, v);
+#endif
+					mbc->spi.addr++;
+					break;
+			}
+			break;
+		case MBC_SPI_CMD_WRLO:
+			if (!mbc->spi.write)
+			{
+				printf("MCB SPI write without WREN\n");
+				break;
+			}
+			switch (mbc->backup_type)
+			{
+				case MBC_BACKUP_UNKNOWN:
+					mbc->spi.read_latch = 0;
+					break;
+				case MBC_EEPROM_512:
+					if (!mbc->spi.posb)
+					{
+						mbc->spi.posb = 1;
+						mbc->spi.addr = v;
+						break;
+					}
+					if (mbc->spi.addr < mbc->backup_size)
+						mbc->backup[mbc->spi.addr] = v;
+					else
+						printf("MBC SPI write to out of bounds addr: %02" PRIx32 " / %02" PRIx32 "\n",
+						       mbc->spi.addr, mbc->backup_size);
+#if 0
+					printf("MBC SPI write addr8 [%02" PRIx32 "] = %02" PRIx8 "\n",
+					       mbc->spi.addr, v);
+#endif
+					mbc->spi.addr++;
+					break;
+				case MBC_EEPROM_8K:
+				case MBC_EEPROM_64K:
+				case MBC_FRAM_8K:
+				case MBC_FRAM_32K:
+					if (mbc->spi.posb < 2)
+					{
+						mbc->spi.posb++;
+						mbc->spi.addr <<= 8;
+						mbc->spi.addr += v;
+						break;
+					}
+					if (mbc->spi.addr < mbc->backup_size)
+						mbc->backup[mbc->spi.addr] = v;
+					else
+						printf("MBC SPI write to out of bounds addr: %04" PRIx32 " / %04" PRIx32 "\n",
+						       mbc->spi.addr, mbc->backup_size);
+#if 0
+					printf("MBC SPI write addr16 [%04" PRIx32 "] = %02" PRIx8 "\n",
+					       mbc->spi.addr, v);
+#endif
+					mbc->spi.addr++;
+					break;
+				case MBC_EEPROM_128K:
+					if (mbc->spi.posb < 3)
+					{
+						mbc->spi.posb++;
+						mbc->spi.addr <<= 8;
+						mbc->spi.addr += v;
+						break;
+					}
+					if (mbc->spi.addr < mbc->backup_size)
+						mbc->backup[mbc->spi.addr] = v;
+					else
+						printf("MBC SPI write to out of bounds addr: %06" PRIx32 " / %06" PRIx32 "\n",
+						       mbc->spi.addr, mbc->backup_size);
+#if 0
+					printf("MBC SPI write addr24 [%06" PRIx32 "] = %02" PRIx8 "\n",
+					       mbc->spi.addr, v);
+#endif
+					mbc->spi.addr++;
+					break;
+				case MBC_FLASH_256K:
+				case MBC_FLASH_512K:
+				case MBC_FLASH_1024K:
+				case MBC_FLASH_2048K:
+					printf("MBC SPI invalid WRLO for backup type\n");
+					break;
+			}
+			break;
 		default:
 			printf("unknown MBC SPI cmd: 0x%02" PRIx8 "\n",
 			       mbc->spi.cmd);
-			return;
+			break;
 	}
 }
 
 void mbc_spi_reset(mbc_t *mbc)
 {
+#if 0
+	printf("MBC SPI reset\n");
+#endif
+	switch (mbc->spi.cmd)
+	{
+		case MBC_SPI_CMD_RDLO:
+		case MBC_SPI_CMD_RDHI:
+		case MBC_SPI_CMD_WRLO:
+		case MBC_SPI_CMD_WRHI:
+			mbc->spi.addr = 0;
+			mbc->spi.posb = 0;
+			break;
+	}
 	mbc->spi.cmd = MBC_SPI_CMD_NONE;
 }

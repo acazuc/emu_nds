@@ -371,20 +371,9 @@ struct spi_firmware
 {
 	uint8_t cmd;
 	uint8_t read_latch;
-	union
-	{
-		struct
-		{
-			uint8_t posb;
-			uint32_t addr;
-		} read;
-		struct
-		{
-			uint8_t posb;
-			uint32_t addr;
-		} write;
-	} cmd_data;
-	int write;
+	uint8_t posb;
+	uint8_t write;
+	uint32_t addr;
 };
 
 struct spi_powerman

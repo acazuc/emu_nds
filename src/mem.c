@@ -7,6 +7,7 @@
 #include <inttypes.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <string.h>
 #include <stdio.h>
 #include <time.h>
 
@@ -82,14 +83,15 @@ mem_t *mem_new(nds_t *nds, mbc_t *mbc)
 		mem->vram_objb_bases[i] = 0xFFFFFFFF;
 	for (size_t i = 0; i < 2; ++i)
 		mem->vram_arm7_bases[i] = 0xFFFFFFFF;
-	mem->sram_size = 0x40000;
-	mem->sram = calloc(mem->sram_size + mbc->backup_size, 1);
+	mem->sram_size = 0x40000 + mbc->backup_size;
+	mem->sram = calloc(mem->sram_size, 1);
 	if (!mem->sram)
 	{
 		free(mem);
 		return NULL;
 	}
-	mbc->backup = &mem->sram[mem->sram_size];
+	mbc->backup = &mem->sram[0x40000];
+	memset(mbc->backup, 0xFF, mbc->backup_size);
 	return mem;
 }
 
@@ -463,8 +465,8 @@ static void firmware_write(mem_t *mem, uint8_t v)
 			switch (v)
 			{
 				case SPI_FIRMWARE_CMD_READ:
-					mem->spi_firmware.cmd_data.read.posb = 0;
-					mem->spi_firmware.cmd_data.read.addr = 0;
+					mem->spi_firmware.posb = 0;
+					mem->spi_firmware.addr = 0;
 					break;
 				case SPI_FIRMWARE_CMD_RDSR:
 					break;
@@ -475,8 +477,8 @@ static void firmware_write(mem_t *mem, uint8_t v)
 					mem->spi_firmware.write = 0;
 					break;
 				case SPI_FIRMWARE_CMD_PW:
-					mem->spi_firmware.cmd_data.write.posb = 0;
-					mem->spi_firmware.cmd_data.write.addr = 0;
+					mem->spi_firmware.posb = 0;
+					mem->spi_firmware.addr = 0;
 					break;
 				default:
 					printf("unknown SPI firmware cmd: 0x%02" PRIx8 "\n", v);
@@ -484,25 +486,21 @@ static void firmware_write(mem_t *mem, uint8_t v)
 			}
 			return;
 		case SPI_FIRMWARE_CMD_READ:
-			if (mem->spi_firmware.cmd_data.read.posb < 3)
+			if (mem->spi_firmware.posb < 3)
 			{
-				mem->spi_firmware.cmd_data.read.addr <<= 8;
-				mem->spi_firmware.cmd_data.read.addr |= v;
-				mem->spi_firmware.cmd_data.read.posb++;
+				mem->spi_firmware.addr <<= 8;
+				mem->spi_firmware.addr |= v;
+				mem->spi_firmware.posb++;
 				return;
 			}
-			mem->spi_firmware.read_latch = mem->sram[mem->spi_firmware.cmd_data.read.addr & 0x3FFFF];
+			mem->spi_firmware.read_latch = mem->sram[mem->spi_firmware.addr & 0x3FFFF];
 #if 0
 			printf("[%08" PRIx32 "] firmware read: [%05" PRIx32 "] = %02" PRIx8 "\n",
 			       cpu_get_reg(mem->nds->arm7, CPU_REG_PC),
-			       mem->spi_firmware.cmd_data.read.addr,
+			       mem->spi_firmware.addr,
 			       mem->spi_firmware.read_latch);
 #endif
-#if 0
-			if (mem->spi_firmware.cmd_data.read.addr == 0x1ef66)
-				mem->nds->arm9->debug = CPU_DEBUG_ALL;
-#endif
-			mem->spi_firmware.cmd_data.read.addr++;
+			mem->spi_firmware.addr++;
 			return;
 		case SPI_FIRMWARE_CMD_RDSR:
 			mem->spi_firmware.read_latch = (mem->spi_firmware.write & 1) << 1;
@@ -514,22 +512,22 @@ static void firmware_write(mem_t *mem, uint8_t v)
 				printf("SPI firmware write page without WREN\n");
 				return;
 			}
-			if (mem->spi_firmware.cmd_data.write.posb < 3)
+			if (mem->spi_firmware.posb < 3)
 			{
-				mem->spi_firmware.cmd_data.write.addr <<= 8;
-				mem->spi_firmware.cmd_data.write.addr |= v;
-				mem->spi_firmware.cmd_data.write.posb++;
+				mem->spi_firmware.addr <<= 8;
+				mem->spi_firmware.addr |= v;
+				mem->spi_firmware.posb++;
 				return;
 			}
-			uint32_t addr = mem->spi_firmware.cmd_data.write.addr & 0x3FFFF;
+			uint32_t addr = mem->spi_firmware.addr & 0x3FFFF;
 #if 0
 			printf("[%08" PRIx32 "] firmware write: [%05" PRIx32 "] = %02" PRIx8 "\n",
 			       cpu_get_reg(mem->nds->arm7, CPU_REG_PC),
 			       addr, v);
 #endif
 			if (addr < 0x200 || addr >= 0x3FA00)
-				mem->sram[mem->spi_firmware.cmd_data.write.addr & 0x3FFFF] = v;
-			mem->spi_firmware.cmd_data.write.addr++;
+				mem->sram[mem->spi_firmware.addr & 0x3FFFF] = v;
+			mem->spi_firmware.addr++;
 			break;
 		}
 	}
