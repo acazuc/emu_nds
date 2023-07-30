@@ -24,24 +24,24 @@ static const struct cpu_instr thumb_##name = \
 
 #define THUMB_LSL(v, s) (((s) >= 32) ? 0 : ((v) << (s)))
 #define THUMB_LSR(v, s) (((s) >= 32) ? 0 : ((v) >> (s)))
-#define THUMB_ASR(v, s) (((s) >= 32) ? (v & 0x80000000) : (uint32_t)((int32_t)(v) >> (s)))
+#define THUMB_ASR(v, s) (((s) >= 32) ? (v & 0x80000000UL) : (uint32_t)((int32_t)(v) >> (s)))
 #define THUMB_ROR(v, s) (((v) >> (s)) | ((v) << (32 - (s))))
 
 static void update_flags_logical(cpu_t *cpu, uint32_t v)
 {
-	CPU_SET_FLAG_N(cpu, v & 0x80000000);
+	CPU_SET_FLAG_N(cpu, v & 0x80000000UL);
 	CPU_SET_FLAG_Z(cpu, !v);
 }
 
 static void update_flags_add(cpu_t *cpu, uint32_t v, uint32_t op1, uint32_t op2)
 {
-	CPU_SET_FLAG_V(cpu, (~(op1 ^ op2) & (v ^ op2)) & 0x80000000);
+	CPU_SET_FLAG_V(cpu, (~(op1 ^ op2) & (v ^ op2)) & 0x80000000UL);
 	update_flags_logical(cpu, v);
 }
 
 static void update_flags_sub(cpu_t *cpu, uint32_t v, uint32_t op1, uint32_t op2)
 {
-	CPU_SET_FLAG_V(cpu, ((op1 ^ op2) & (v ^ op1)) & 0x80000000);
+	CPU_SET_FLAG_V(cpu, ((op1 ^ op2) & (v ^ op1)) & 0x80000000UL);
 	update_flags_logical(cpu, v);
 }
 
@@ -70,10 +70,10 @@ THUMB_INSTR(n##_imm, \
 	uint32_t rs; \
 	if (!shift) \
 	{ \
-		rs = rss & 0x80000000; \
+		rs = rss & 0x80000000UL; \
 		if (rs) \
 		{ \
-			rs = 0xFFFFFFFFu; \
+			rs = 0xFFFFFFFFUL; \
 			CPU_SET_FLAG_C(cpu, 1); \
 		} \
 		else \
