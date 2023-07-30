@@ -296,7 +296,7 @@ static bool decode_instruction(cpu_t *cpu)
 void cpu_cycle(cpu_t *cpu)
 {
 #if 0
-	if (cpu_get_reg(cpu, CPU_REG_PC) == 0x02000800)
+	if (cpu_get_reg(cpu, CPU_REG_PC) == 0x02400020)
 		cpu->debug = CPU_DEBUG_ALL_ML;
 #endif
 
@@ -441,6 +441,10 @@ static void update_itcm(cpu_t *cpu)
 	if (size > 23)
 		size = 23;
 	cpu->mem->itcm_mask = (0x200 << size) - 1;
+#if 0
+	printf("itcm: 0x%08" PRIx32 " / 0x%08" PRIx32 "\n",
+	       cpu->mem->itcm_base, cpu->mem->itcm_mask);
+#endif
 }
 
 static void update_dtcm(cpu_t *cpu)
@@ -458,6 +462,10 @@ static void update_dtcm(cpu_t *cpu)
 	if (size > 23)
 		size = 23;
 	cpu->mem->dtcm_mask = (0x200 << size) - 1;
+#if 0
+	printf("dtcm: 0x%08" PRIx32 " / 0x%08" PRIx32 "\n",
+	       cpu->mem->dtcm_base, cpu->mem->dtcm_mask);
+#endif
 }
 
 void cp15_write(cpu_t *cpu, uint8_t cn, uint8_t cm, uint8_t cp, uint32_t v)

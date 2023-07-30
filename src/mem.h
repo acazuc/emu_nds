@@ -480,6 +480,7 @@ typedef struct mem
 	uint32_t vram_bgb_bases[8]; /* 0x4000 units */
 	uint32_t vram_obja_bases[16]; /* 0x4000 units */
 	uint32_t vram_objb_bases[8]; /* 0x4000 units */
+	uint32_t vram_arm7_bases[2]; /* 0x20000 units */
 	uint8_t *sram; /* backup + firmware sram */
 	size_t sram_size;
 	uint8_t dscard_dma_count;

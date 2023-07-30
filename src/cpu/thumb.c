@@ -323,7 +323,8 @@ static void alu_mul(cpu_t *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
 	uint32_t v = rd * rs;
 	cpu_set_reg(cpu, rdr, v);
 	update_flags_logical(cpu, v);
-	CPU_SET_FLAG_C(cpu, 0);
+	if (!cpu->arm9)
+		CPU_SET_FLAG_C(cpu, 0);
 }
 
 static void alu_bic(cpu_t *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)

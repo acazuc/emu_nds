@@ -29,6 +29,52 @@ mbc_t *mbc_new(nds_t *nds, const void *data, size_t size)
 	mbc->chipid[1] = size / (1024 * 1024) - 1;
 	mbc->chipid[2] = 0x00;
 	mbc->chipid[3] = 0x00;
+	switch (((uint32_t*)data)[3])
+	{
+		case 0x50434D41:
+			mbc->backup_type = MBC_FLASH_256K;
+			break;
+		default:
+			mbc->backup_type = MBC_BACKUP_UNKNOWN;
+			printf("unknown backup for gamecode %08" PRIx32 "\n",
+			       ((uint32_t*)data)[3]);
+			break;
+	}
+	switch (mbc->backup_type)
+	{
+		case MBC_BACKUP_UNKNOWN:
+			break;
+		case MBC_EEPROM_512:
+			mbc->backup_size = 512;
+			break;
+		case MBC_EEPROM_8K:
+			mbc->backup_size = 8 * 1024;
+			break;
+		case MBC_EEPROM_64K:
+			mbc->backup_size = 64 * 1024;
+			break;
+		case MBC_EEPROM_128K:
+			mbc->backup_size = 128 * 1024;
+			break;
+		case MBC_FLASH_256K:
+			mbc->backup_size = 256 * 1024;
+			break;
+		case MBC_FLASH_512K:
+			mbc->backup_size = 512 * 1024;
+			break;
+		case MBC_FLASH_1024K:
+			mbc->backup_size = 1024 * 1024;
+			break;
+		case MBC_FLASH_2048K:
+			mbc->backup_size = 2048 * 1024;
+			break;
+		case MBC_FRAM_8K:
+			mbc->backup_size = 8 * 1024;
+			break;
+		case MBC_FRAM_32K:
+			mbc->backup_size = 32 * 1024;
+			break;
+	}
 	return mbc;
 }
 
@@ -409,6 +455,7 @@ uint8_t mbc_read(mbc_t *mbc)
 
 void mbc_write(mbc_t *mbc, uint8_t v)
 {
+	(void)v;
 	switch (mbc->cmd)
 	{
 		case MBC_CMD_NONE:
@@ -424,9 +471,9 @@ void mbc_write(mbc_t *mbc, uint8_t v)
 uint8_t mbc_spi_read(mbc_t *mbc)
 {
 #if 1
-	printf("MBC SPI read\n");
+	printf("MBC SPI read 0x%02" PRIx8 "\n", mbc->spi.read_latch);
 #endif
-	return 0;
+	return mbc->spi.read_latch;
 }
 
 void mbc_spi_write(mbc_t *mbc, uint8_t v)
@@ -434,4 +481,28 @@ void mbc_spi_write(mbc_t *mbc, uint8_t v)
 #if 1
 	printf("MBC SPI write %02" PRIx8 "\n", v);
 #endif
+	switch (mbc->spi.cmd)
+	{
+		case MBC_SPI_CMD_NONE:
+			mbc->spi.cmd = v;
+			return;
+		case MBC_SPI_CMD_RDSR:
+			mbc->spi.read_latch = (mbc->spi.write & 1) << 1;
+			return;
+		case MBC_SPI_CMD_WREN:
+			mbc->spi.write = 1;
+			return;
+		case MBC_SPI_CMD_WRDI:
+			mbc->spi.write = 0;
+			return;
+		default:
+			printf("unknown MBC SPI cmd: 0x%02" PRIx8 "\n",
+			       mbc->spi.cmd);
+			return;
+	}
+}
+
+void mbc_spi_reset(mbc_t *mbc)
+{
+	mbc->spi.cmd = MBC_SPI_CMD_NONE;
 }
