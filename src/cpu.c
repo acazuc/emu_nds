@@ -40,7 +40,7 @@ cpu_t *cpu_new(mem_t *mem, int arm9)
 	cpu->mem = mem;
 	cpu->regs.cpsr = 0xD3;
 	cpu_update_mode(cpu);
-	cpu_set_reg(cpu, CPU_REG_PC, (cpu->cp15.cr & 0x2000) ? 0xFFFF0000 : 0);
+	cpu_set_reg(cpu, CPU_REG_PC, (cpu->cp15.cr & 0x2000) ? 0xFFFF0000UL : 0);
 	return cpu;
 }
 
@@ -192,7 +192,7 @@ static bool handle_interrupt(cpu_t *cpu)
 		if (!(cpu->irq_line & (1 << i)))
 			continue;
 #if 0
-		printf("IRQ %02" PRIx8 "\n", i);
+		printf("[ARM%c] IRQ %02" PRIx8 "\n", cpu->arm9 ? '9' : '7', i);
 #endif
 		cpu->regs.spsr_modes[3] = cpu->regs.cpsr;
 		CPU_SET_MODE(cpu, CPU_MODE_IRQ);
@@ -208,7 +208,7 @@ static bool handle_interrupt(cpu_t *cpu)
 			cpu_set_reg(cpu, CPU_REG_LR, cpu_get_reg(cpu, CPU_REG_PC) + 4);
 		}
 		if (cpu->cp15.cr & 0x2000)
-			cpu_set_reg(cpu, CPU_REG_PC, 0xFFFF0018);
+			cpu_set_reg(cpu, CPU_REG_PC, 0xFFFF0018UL);
 		else
 			cpu_set_reg(cpu, CPU_REG_PC, 0x18);
 		return true;
@@ -296,11 +296,7 @@ static bool decode_instruction(cpu_t *cpu)
 void cpu_cycle(cpu_t *cpu)
 {
 #if 0
-	if (cpu_get_reg(cpu, CPU_REG_PC) >= 0x4000)
-		cpu->debug = CPU_DEBUG_REGS | CPU_DEBUG_INSTR;
-#endif
-#if 0
-	if (cpu_get_reg(cpu, CPU_REG_PC) == 0x2327c28)
+	if (cpu_get_reg(cpu, CPU_REG_PC) == 0x02000800)
 		cpu->debug = CPU_DEBUG_ALL_ML;
 #endif
 
@@ -434,10 +430,17 @@ static void update_itcm(cpu_t *cpu)
 {
 	if (!(cpu->cp15.cr & (1 << 18)))
 	{
-		cpu->mem->itcm_size = 0;
+		cpu->mem->itcm_base = 0xFFFFFFFF;
+		cpu->mem->itcm_mask = 0;
 		return;
 	}
-	cpu->mem->itcm_size = 0x200 << ((cpu->cp15.itcm & 0x3E) >> 1);
+	cpu->mem->itcm_base = 0;
+	uint8_t size = (cpu->cp15.itcm & 0x3E) >> 1;
+	if (size < 3)
+		size = 3;
+	if (size > 23)
+		size = 23;
+	cpu->mem->itcm_mask = (0x200 << size) - 1;
 }
 
 static void update_dtcm(cpu_t *cpu)
@@ -445,11 +448,16 @@ static void update_dtcm(cpu_t *cpu)
 	if (!(cpu->cp15.cr & (1 << 16)))
 	{
 		cpu->mem->dtcm_base = 0xFFFFFFFF;
-		cpu->mem->dtcm_size = 0;
+		cpu->mem->dtcm_mask = 0;
 		return;
 	}
 	cpu->mem->dtcm_base = cpu->cp15.dtcm & 0xFFFFF000;
-	cpu->mem->dtcm_size = 0x200 << ((cpu->cp15.dtcm & 0x3E) >> 1);
+	uint8_t size = (cpu->cp15.dtcm & 0x3E) >> 1;
+	if (size < 3)
+		size = 3;
+	if (size > 23)
+		size = 23;
+	cpu->mem->dtcm_mask = (0x200 << size) - 1;
 }
 
 void cp15_write(cpu_t *cpu, uint8_t cn, uint8_t cm, uint8_t cp, uint32_t v)

@@ -331,15 +331,17 @@ void nds_frame(nds_t *nds, uint8_t *video_buf, int16_t *audio_buf, uint32_t joyp
 	for (uint8_t y = 0; y < 192; ++y)
 	{
 		mem_arm9_set_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT, (mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) & 0xFFFC) | 0x0);
+		mem_arm7_set_reg16(nds->mem, MEM_ARM7_REG_DISPSTAT, (mem_arm7_get_reg16(nds->mem, MEM_ARM7_REG_DISPSTAT) & 0xFFFC) | 0x0);
 		mem_arm9_set_reg16(nds->mem, MEM_ARM9_REG_VCOUNT, y);
 
 		if ((mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) & (1 << 5))
 		 && y == (((mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) >> 8) & 0xFF)
 		        | ((mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) << 1) & 0x100)))
-		{
-			mem_arm7_if(nds->mem, 1 << 2);
 			mem_arm9_if(nds->mem, 1 << 2);
-		}
+		if ((mem_arm7_get_reg16(nds->mem, MEM_ARM7_REG_DISPSTAT) & (1 << 5))
+		 && y == (((mem_arm7_get_reg16(nds->mem, MEM_ARM7_REG_DISPSTAT) >> 8) & 0xFF)
+		        | ((mem_arm7_get_reg16(nds->mem, MEM_ARM7_REG_DISPSTAT) << 1) & 0x100)))
+			mem_arm7_if(nds->mem, 1 << 2);
 
 		nds_cycles(nds, 256 * 12);
 #ifdef MULTITHREAD
@@ -352,11 +354,11 @@ void nds_frame(nds_t *nds, uint8_t *video_buf, int16_t *audio_buf, uint32_t joyp
 
 		/* hblank */
 		mem_arm9_set_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT, (mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) & 0xFFFC) | 0x2);
+		mem_arm7_set_reg16(nds->mem, MEM_ARM7_REG_DISPSTAT, (mem_arm7_get_reg16(nds->mem, MEM_ARM7_REG_DISPSTAT) & 0xFFFC) | 0x2);
 		if (mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) & (1 << 4))
-		{
-			mem_arm7_if(nds->mem, 1 << 1);
 			mem_arm9_if(nds->mem, 1 << 1);
-		}
+		if (mem_arm7_get_reg16(nds->mem, MEM_ARM7_REG_DISPSTAT) & (1 << 4))
+			mem_arm7_if(nds->mem, 1 << 1);
 		mem_hblank(nds->mem);
 
 		nds_cycles(nds, 99 * 12);
@@ -367,35 +369,36 @@ void nds_frame(nds_t *nds, uint8_t *video_buf, int16_t *audio_buf, uint32_t joyp
 
 	gpu_commit_bgpos(nds->gpu);
 	if (mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) & (1 << 3))
-	{
-		mem_arm7_if(nds->mem, 1 << 0);
 		mem_arm9_if(nds->mem, 1 << 0);
-	}
+	if (mem_arm7_get_reg16(nds->mem, MEM_ARM7_REG_DISPSTAT) & (1 << 3))
+		mem_arm7_if(nds->mem, 1 << 0);
 	mem_vblank(nds->mem);
 
 	for (uint16_t y = 192; y < 263; ++y)
 	{
 		mem_arm9_set_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT, (mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) & 0xFFFC) | 0x1);
+		mem_arm7_set_reg16(nds->mem, MEM_ARM7_REG_DISPSTAT, (mem_arm7_get_reg16(nds->mem, MEM_ARM7_REG_DISPSTAT) & 0xFFFC) | 0x1);
 		mem_arm9_set_reg16(nds->mem, MEM_ARM9_REG_VCOUNT, y);
 
 		if ((mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) & (1 << 5))
 		 && y == (((mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) >> 8) & 0xFF)
 		        | ((mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) << 1) & 0x100)))
-		{
-			mem_arm7_if(nds->mem, 1 << 2);
 			mem_arm9_if(nds->mem, 1 << 2);
-		}
+		if ((mem_arm7_get_reg16(nds->mem, MEM_ARM7_REG_DISPSTAT) & (1 << 5))
+		 && y == (((mem_arm7_get_reg16(nds->mem, MEM_ARM7_REG_DISPSTAT) >> 8) & 0xFF)
+		        | ((mem_arm7_get_reg16(nds->mem, MEM_ARM7_REG_DISPSTAT) << 1) & 0x100)))
+			mem_arm7_if(nds->mem, 1 << 2);
 
 		/* vblank */
 		nds_cycles(nds, 256 * 12);
 
 		/* hblank */
 		mem_arm9_set_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT, (mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) & 0xFFFC) | 0x3);
+		mem_arm7_set_reg16(nds->mem, MEM_ARM7_REG_DISPSTAT, (mem_arm7_get_reg16(nds->mem, MEM_ARM7_REG_DISPSTAT) & 0xFFFC) | 0x3);
 		if (mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) & (1 << 4))
-		{
-			mem_arm7_if(nds->mem, 1 << 1);
 			mem_arm9_if(nds->mem, 1 << 1);
-		}
+		if (mem_arm7_get_reg16(nds->mem, MEM_ARM7_REG_DISPSTAT) & (1 << 4))
+			mem_arm7_if(nds->mem, 1 << 1);
 
 		nds_cycles(nds, 99 * 12);
 	}

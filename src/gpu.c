@@ -127,7 +127,6 @@ static void draw_background_text(gpu_t *gpu, struct gpu_eng *eng, uint8_t y, uin
 	if (vy < 0)
 		vy += maph;
 	uint32_t mapy = vy / 8;
-	uint32_t tiley = vy % 8;
 	uint32_t mapyoff;
 	if (mapy >= 32)
 	{
@@ -148,6 +147,7 @@ static void draw_background_text(gpu_t *gpu, struct gpu_eng *eng, uint8_t y, uin
 			vx += mapw;
 		uint32_t mapx = vx / 8;
 		uint32_t tilex = vx % 8;
+		uint32_t tiley = vy % 8;
 		uint32_t mapoff = mapyoff;
 		if (mapx >= 32)
 		{

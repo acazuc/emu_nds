@@ -483,9 +483,10 @@ typedef struct mem
 	uint8_t *sram; /* backup + firmware sram */
 	size_t sram_size;
 	uint8_t dscard_dma_count;
-	uint32_t itcm_size;
+	uint32_t itcm_base;
+	uint32_t itcm_mask;
 	uint32_t dtcm_base;
-	uint32_t dtcm_size;
+	uint32_t dtcm_mask;
 } mem_t;
 
 mem_t *mem_new(nds_t *nds, mbc_t *mbc);

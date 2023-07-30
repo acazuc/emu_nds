@@ -217,7 +217,8 @@ void mbc_cmd(mbc_t *mbc)
 					end_cmd(mbc);
 					return;
 				default:
-					assert(!"unknown command");
+					printf("MBC unknown command: 0x%02" PRIx8 "\n",
+					       (uint8_t)(cmd >> 56));
 					return;
 			}
 			break;
@@ -261,7 +262,8 @@ void mbc_cmd(mbc_t *mbc)
 					end_cmd(mbc);
 					return;
 				default:
-					assert(!"unknown command");
+					printf("MBC unknown KEY1 command: 0x%02" PRIx8 "\n",
+					       (uint8_t)(cmd >> 60));
 					return;
 			}
 			break;
@@ -291,7 +293,8 @@ void mbc_cmd(mbc_t *mbc)
 					start_cmd(mbc);
 					return;
 				default:
-					assert(!"unknown command");
+					printf("MBC unknown KEY2 command: 0x%02" PRIx8 "\n",
+					       (uint8_t)(cmd >> 60));
 					return;
 			}
 		}

@@ -1341,10 +1341,22 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM7_REG_ROMCMD + 5:
 		case MEM_ARM7_REG_ROMCMD + 6:
 		case MEM_ARM7_REG_ROMCMD + 7:
-		case MEM_ARM7_REG_DISPSTAT:
-		case MEM_ARM7_REG_DISPSTAT + 1:
 			mem->arm9_regs[addr] = v;
 			return;
+		case MEM_ARM7_REG_DISPSTAT:
+#if 0
+			printf("[ARM7] DISPSTAT[%08" PRIx32 "] = %02" PRIx8 "\n",
+			       addr, v);
+#endif
+			mem->arm7_regs[addr] = v & 0xB8;
+			return;
+		case MEM_ARM7_REG_DISPSTAT + 1:
+#if 0
+			printf("[ARM7] DISPSTAT[%08" PRIx32 "] = %02" PRIx8 "\n",
+			       addr, v);
+			mem->arm7_regs[addr] = v;
+			return;
+#endif
 		case MEM_ARM7_REG_AUXSPICNT:
 #if 0
 			printf("[ARM7] AUXSPICNT[%08" PRIx32 "] = %02" PRIx8 "\n",
@@ -1557,7 +1569,7 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM7_REG_ROMSEED1_H + 1:
 			return;
 		default:
-			printf("[%08" PRIx32 "] unknown ARM7 set register %08" PRIx32 " = %02" PRIx8 "\n",
+			printf("[ARM7] [%08" PRIx32 "] unknown set register %08" PRIx32 " = %02" PRIx8 "\n",
 			       cpu_get_reg(mem->nds->arm7, CPU_REG_PC), addr, v);
 			break;
 	}
@@ -1742,6 +1754,8 @@ static uint8_t get_arm7_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM7_REG_SOUNDXCNT(15) + 1:
 		case MEM_ARM7_REG_SOUNDXCNT(15) + 2:
 		case MEM_ARM7_REG_SOUNDXCNT(15) + 3:
+		case MEM_ARM7_REG_DISPSTAT:
+		case MEM_ARM7_REG_DISPSTAT + 1:
 			return mem->arm7_regs[addr];
 		case MEM_ARM7_REG_SPICNT:
 		case MEM_ARM7_REG_SPICNT + 1:
@@ -1765,8 +1779,6 @@ static uint8_t get_arm7_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM7_REG_EXMEMSTAT + 1:
 		case MEM_ARM7_REG_KEYCNT:
 		case MEM_ARM7_REG_KEYCNT + 1:
-		case MEM_ARM7_REG_DISPSTAT:
-		case MEM_ARM7_REG_DISPSTAT + 1:
 		case MEM_ARM7_REG_VCOUNT:
 		case MEM_ARM7_REG_VCOUNT + 1:
 			return mem->arm9_regs[addr];
@@ -1928,7 +1940,7 @@ static uint8_t get_arm7_reg8(mem_t *mem, uint32_t addr)
 				return mem->arm9_regs[addr] & ~(1 << 7);
 			return mem->arm9_regs[addr];
 		default:
-			printf("[%08" PRIx32 "] unknown ARM7 get register %08" PRIx32 "\n",
+			printf("[ARM7] [%08" PRIx32 "] unknown get register %08" PRIx32 "\n",
 			       cpu_get_reg(mem->nds->arm7, CPU_REG_PC), addr);
 			break;
 	}
@@ -1997,7 +2009,7 @@ uint##size##_t mem_arm7_get##size(mem_t *mem, uint32_t addr, enum mem_type type)
 				return 0; \
 			return 0xFF; \
 	} \
-	printf("[%08" PRIx32 "] unknown ARM7 get" #size " addr: %08" PRIx32 "\n", \
+	printf("[ARM7] [%08" PRIx32 "] unknown get" #size " addr: %08" PRIx32 "\n", \
 	       cpu_get_reg(mem->nds->arm7, CPU_REG_PC), addr); \
 	return 0; \
 }
@@ -2041,7 +2053,7 @@ void mem_arm7_set##size(mem_t *mem, uint32_t addr, uint##size##_t v, enum mem_ty
 		case 0xA: \
 			return; \
 	} \
-	printf("[%08" PRIx32 "] unknown ARM7 set" #size " addr: %08" PRIx32 "\n", \
+	printf("[ARM7] [%08" PRIx32 "] unknown set" #size " addr: %08" PRIx32 "\n", \
 	       cpu_get_reg(mem->nds->arm7, CPU_REG_PC), addr); \
 }
 
@@ -2053,7 +2065,7 @@ static void run_div(mem_t *mem)
 {
 	mem->arm9_regs[MEM_ARM9_REG_DIVCNT + 1] &= ~(1 << 7);
 	if (!mem_arm9_get_reg32(mem, MEM_ARM9_REG_DIV_DENOM + 0)
-	 && !mem_arm9_get_reg32(mem, MEM_ARM9_REG_DIV_DENOM + 1))
+	 && !mem_arm9_get_reg32(mem, MEM_ARM9_REG_DIV_DENOM + 4))
 	{
 		mem->arm9_regs[MEM_ARM9_REG_DIVCNT + 1] |= (1 << 6);
 		return;
@@ -2467,8 +2479,6 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM9_REG_TM3CNT_H + 1:
 		case MEM_ARM9_REG_EXMEMCNT:
 		case MEM_ARM9_REG_EXMEMCNT + 1:
-		case MEM_ARM9_REG_DISPSTAT:
-		case MEM_ARM9_REG_DISPSTAT + 1:
 		case MEM_ARM9_REG_DMA0SAD:
 		case MEM_ARM9_REG_DMA0SAD + 1:
 		case MEM_ARM9_REG_DMA0SAD + 2:
@@ -2711,6 +2721,20 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM9_REG_BLDY + 0x1000 + 3:
 			mem->arm9_regs[addr] = v;
 			return;
+		case MEM_ARM9_REG_DISPSTAT:
+#if 0
+			printf("[ARM9] DISPSTAT[%08" PRIx32 "] = %02" PRIx8 "\n",
+			       addr, v);
+#endif
+			mem->arm9_regs[addr] = v & 0xB8;
+			return;
+		case MEM_ARM9_REG_DISPSTAT + 1:
+#if 0
+			printf("[ARM9] DISPSTAT[%08" PRIx32 "] = %02" PRIx8 "\n",
+			       addr, v);
+#endif
+			mem->arm9_regs[addr] = v;
+			return;
 		case MEM_ARM9_REG_AUXSPICNT:
 #if 0
 			printf("[ARM9] AUXSPICNT[%08" PRIx32 "] = %02" PRIx8 "\n",
@@ -2914,6 +2938,8 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 			v &= ~(1 << 7);
 			/* FALLTHROUGH */
 		case MEM_ARM9_REG_SQRTCNT:
+		case MEM_ARM9_REG_SQRTCNT + 2:
+		case MEM_ARM9_REG_SQRTCNT + 3:
 		case MEM_ARM9_REG_SQRT_PARAM:
 		case MEM_ARM9_REG_SQRT_PARAM + 1:
 		case MEM_ARM9_REG_SQRT_PARAM + 2:
@@ -2925,7 +2951,30 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 			mem->arm9_regs[addr] = v;
 			run_sqrt(mem);
 			return;
-		case 0x58: /* silent these. they are memset(0) on boot with all engine registers */
+		case MEM_ARM9_REG_KEYINPUT:
+		case MEM_ARM9_REG_KEYINPUT + 1:
+		case MEM_ARM9_REG_DIV_RESULT:
+		case MEM_ARM9_REG_DIV_RESULT + 1:
+		case MEM_ARM9_REG_DIV_RESULT + 2:
+		case MEM_ARM9_REG_DIV_RESULT + 3:
+		case MEM_ARM9_REG_DIV_RESULT + 4:
+		case MEM_ARM9_REG_DIV_RESULT + 5:
+		case MEM_ARM9_REG_DIV_RESULT + 6:
+		case MEM_ARM9_REG_DIV_RESULT + 7:
+		case MEM_ARM9_REG_DIVREM_RESULT:
+		case MEM_ARM9_REG_DIVREM_RESULT + 1:
+		case MEM_ARM9_REG_DIVREM_RESULT + 2:
+		case MEM_ARM9_REG_DIVREM_RESULT + 3:
+		case MEM_ARM9_REG_DIVREM_RESULT + 4:
+		case MEM_ARM9_REG_DIVREM_RESULT + 5:
+		case MEM_ARM9_REG_DIVREM_RESULT + 6:
+		case MEM_ARM9_REG_DIVREM_RESULT + 7:
+		case MEM_ARM9_REG_SQRT_RESULT:
+		case MEM_ARM9_REG_SQRT_RESULT + 1:
+		case MEM_ARM9_REG_SQRT_RESULT + 2:
+		case MEM_ARM9_REG_SQRT_RESULT + 3:
+			return;
+		case 0x58: /* silent these. they are memset(0) */
 		case 0x59:
 		case 0x5A:
 		case 0x5B:
@@ -2933,6 +2982,130 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case 0x5D:
 		case 0x5E:
 		case 0x5F:
+		case 0x70:
+		case 0x71:
+		case 0x72:
+		case 0x73:
+		case 0x74:
+		case 0x75:
+		case 0x76:
+		case 0x77:
+		case 0x78:
+		case 0x79:
+		case 0x7A:
+		case 0x7B:
+		case 0x7C:
+		case 0x7D:
+		case 0x7E:
+		case 0x7F:
+		case 0x80:
+		case 0x81:
+		case 0x82:
+		case 0x83:
+		case 0x84:
+		case 0x85:
+		case 0x86:
+		case 0x87:
+		case 0x88:
+		case 0x89:
+		case 0x8A:
+		case 0x8B:
+		case 0x8C:
+		case 0x8D:
+		case 0x8E:
+		case 0x8F:
+		case 0x90:
+		case 0x91:
+		case 0x92:
+		case 0x93:
+		case 0x94:
+		case 0x95:
+		case 0x96:
+		case 0x97:
+		case 0x98:
+		case 0x99:
+		case 0x9A:
+		case 0x9B:
+		case 0x9C:
+		case 0x9D:
+		case 0x9E:
+		case 0x9F:
+		case 0xA0:
+		case 0xA1:
+		case 0xA2:
+		case 0xA3:
+		case 0xA4:
+		case 0xA5:
+		case 0xA6:
+		case 0xA7:
+		case 0xA8:
+		case 0xA9:
+		case 0xAA:
+		case 0xAB:
+		case 0xAC:
+		case 0xAD:
+		case 0xAE:
+		case 0xAF:
+		case 0xF0:
+		case 0xF1:
+		case 0xF2:
+		case 0xF3:
+		case 0xF4:
+		case 0xF5:
+		case 0xF6:
+		case 0xF7:
+		case 0xF8:
+		case 0xF9:
+		case 0xFA:
+		case 0xFB:
+		case 0xFC:
+		case 0xFD:
+		case 0xFE:
+		case 0xFF:
+		case 0x110:
+		case 0x111:
+		case 0x112:
+		case 0x113:
+		case 0x114:
+		case 0x115:
+		case 0x116:
+		case 0x117:
+		case 0x118:
+		case 0x119:
+		case 0x11A:
+		case 0x11B:
+		case 0x11C:
+		case 0x11D:
+		case 0x11E:
+		case 0x11F:
+		case 0x120:
+		case 0x121:
+		case 0x122:
+		case 0x123:
+		case 0x124:
+		case 0x125:
+		case 0x126:
+		case 0x127:
+		case 0x128:
+		case 0x129:
+		case 0x12A:
+		case 0x12B:
+		case 0x12C:
+		case 0x12D:
+		case 0x12E:
+		case 0x12F:
+		case 0x284:
+		case 0x285:
+		case 0x286:
+		case 0x287:
+		case 0x288:
+		case 0x289:
+		case 0x28A:
+		case 0x28B:
+		case 0x28C:
+		case 0x28D:
+		case 0x28E:
+		case 0x28F:
 		case 0x1004:
 		case 0x1005:
 		case 0x1006:
@@ -2959,7 +3132,7 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case 0x106B:
 			return;
 		default:
-			printf("[%08" PRIx32 "] unknown ARM9 set register %08" PRIx32 " = %02" PRIx8 "\n",
+			printf("[ARM9] [%08" PRIx32 "] unknown set register %08" PRIx32 " = %02" PRIx8 "\n",
 			       cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr, v);
 			break;
 	}
@@ -3304,7 +3477,7 @@ static uint8_t get_arm9_reg8(mem_t *mem, uint32_t addr)
 				return mem->arm9_regs[addr] & ~(1 << 7);
 			return mem->arm9_regs[addr];
 		default:
-			printf("[%08" PRIx32 "] unknown ARM9 get register %08" PRIx32 "\n",
+			printf("[ARM9] [%08" PRIx32 "] unknown get register %08" PRIx32 "\n",
 			       cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr);
 			break;
 	}
@@ -3439,21 +3612,15 @@ uint##size##_t mem_arm9_get##size(mem_t *mem, uint32_t addr, enum mem_type type)
 		addr &= ~3; \
 	if (addr != MEM_DIRECT) \
 	{ \
-		if (addr < mem->itcm_size) \
+		if ((addr & ~mem->itcm_mask) == mem->itcm_base) \
 		{ \
-			uint32_t a = addr; \
-			a &= mem->itcm_size - 1; \
-			a &= 0x7FFF; \
 			arm9_instr_delay(mem, arm9_tcm_cycles_##size, type); \
-			return *(uint##size##_t*)&mem->itcm[a]; \
+			return *(uint##size##_t*)&mem->itcm[addr & mem->itcm_mask & 0x7FFF]; \
 		} \
-		if (addr >= mem->dtcm_base && addr < mem->dtcm_base + mem->dtcm_size) \
+		if ((addr & ~mem->dtcm_mask) == mem->dtcm_base) \
 		{ \
-			uint32_t a = addr - mem->dtcm_base; \
-			a &= mem->dtcm_size - 1; \
-			a &= 0x3FFF; \
 			arm9_instr_delay(mem, arm9_tcm_cycles_##size, type); \
-			return *(uint##size##_t*)&mem->dtcm[a]; \
+			return *(uint##size##_t*)&mem->dtcm[addr & mem->dtcm_mask & 0x3FFF]; \
 		} \
 	} \
 	if (addr >= 0xFFFF0000) \
@@ -3503,7 +3670,7 @@ uint##size##_t mem_arm9_get##size(mem_t *mem, uint32_t addr, enum mem_type type)
 				return 0; \
 			return 0xFF; \
 	} \
-	printf("[%08" PRIx32 "] unknown ARM9 get" #size " addr: %08" PRIx32 "\n", \
+	printf("[ARM9] [%08" PRIx32 "] unknown get" #size " addr: %08" PRIx32 "\n", \
 	       cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr); \
 	return 0; \
 } \
@@ -3550,23 +3717,15 @@ void mem_arm9_set##size(mem_t *mem, uint32_t addr, uint##size##_t v, enum mem_ty
 		addr &= ~3; \
 	if (addr != MEM_DIRECT) \
 	{ \
-		if (addr < mem->itcm_size) \
+		if ((addr & ~mem->itcm_mask) == mem->itcm_base) \
 		{ \
-			/* printf("[%08" PRIx32 "] ITCM[%08" PRIx32 "] = %x\n", cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr, v); */ \
-			uint32_t a = addr; \
-			a &= mem->itcm_size - 1; \
-			a &= 0x7FFF; \
-			*(uint##size##_t*)&mem->itcm[a] = v; \
+			*(uint##size##_t*)&mem->itcm[addr & mem->itcm_mask & 0x7FFF] = v; \
 			arm9_instr_delay(mem, arm9_tcm_cycles_##size, type); \
 			return; \
 		} \
-		if (addr >= mem->dtcm_base && addr < mem->dtcm_base + mem->dtcm_size) \
+		if ((addr & ~mem->dtcm_mask) == mem->dtcm_base) \
 		{ \
-			/* printf("[%08" PRIx32 "] DTCM[%08" PRIx32 "] = %x\n", cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr, v); */ \
-			uint32_t a = addr - mem->dtcm_base; \
-			a &= mem->dtcm_size - 1; \
-			a &= 0x3FFF; \
-			*(uint##size##_t*)&mem->dtcm[a] = v; \
+			*(uint##size##_t*)&mem->dtcm[addr & mem->dtcm_mask & 0x3FFF] = v; \
 			arm9_instr_delay(mem, arm9_tcm_cycles_##size, type); \
 			return; \
 		} \
@@ -3613,7 +3772,7 @@ void mem_arm9_set##size(mem_t *mem, uint32_t addr, uint##size##_t v, enum mem_ty
 		case 0xA: \
 			return; \
 	} \
-	printf("[%08" PRIx32 "] unknown ARM9 set" #size " addr: %08" PRIx32 "\n", \
+	printf("[ARM9] [%08" PRIx32 "] unknown set" #size " addr: %08" PRIx32 "\n", \
 	       cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr); \
 }
 

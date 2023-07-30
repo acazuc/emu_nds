@@ -14,14 +14,14 @@ typedef struct mem mem_t;
 #define CPU_DEBUG_ALL     (CPU_DEBUG_BASE | CPU_DEBUG_INSTR | CPU_DEBUG_REGS)
 #define CPU_DEBUG_ALL_ML  (CPU_DEBUG_ALL | CPU_DEBUG_REGS_ML)
 
-#define CPU_FLAG_N (1 << 31)
-#define CPU_FLAG_Z (1 << 30)
-#define CPU_FLAG_C (1 << 29)
-#define CPU_FLAG_V (1 << 28)
-#define CPU_FLAG_Q (1 << 27)
-#define CPU_FLAG_I (1 << 7)
-#define CPU_FLAG_F (1 << 6)
-#define CPU_FLAG_T (1 << 5)
+#define CPU_FLAG_N (1UL << 31)
+#define CPU_FLAG_Z (1UL << 30)
+#define CPU_FLAG_C (1UL << 29)
+#define CPU_FLAG_V (1UL << 28)
+#define CPU_FLAG_Q (1UL << 27)
+#define CPU_FLAG_I (1UL << 7)
+#define CPU_FLAG_F (1UL << 6)
+#define CPU_FLAG_T (1UL << 5)
 
 #define CPU_GET_FLAG(cpu, f) (((cpu)->regs.cpsr & (f)) ? 1 : 0)
 #define CPU_GET_FLAG_N(cpu) CPU_GET_FLAG(cpu, CPU_FLAG_N)
@@ -51,7 +51,7 @@ do \
 #define CPU_SET_FLAG_T(cpu, v) CPU_SET_FLAG(cpu, CPU_FLAG_T, v)
 
 #define CPU_GET_MODE(cpu) ((cpu)->regs.cpsr & 0x1F)
-#define CPU_SET_MODE(cpu, mode) (cpu)->regs.cpsr = ((cpu)->regs.cpsr & 0xFFFFFFE0) | (mode)
+#define CPU_SET_MODE(cpu, mode) (cpu)->regs.cpsr = ((cpu)->regs.cpsr & 0xFFFFFFE0UL) | (mode)
 
 #define CPU_MODE_USR 0x10
 #define CPU_MODE_FIQ 0x11
