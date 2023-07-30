@@ -24,24 +24,24 @@ static const struct cpu_instr arm_##name = \
 
 #define ARM_LSL(v, s) (((s) >= 32) ? 0 : ((v) << (s)))
 #define ARM_LSR(v, s) (((s) >= 32) ? 0 : ((v) >> (s)))
-#define ARM_ASR(v, s) (((s) >= 32) ? (v & 0x80000000) : (uint32_t)((int32_t)(v) >> (s)))
+#define ARM_ASR(v, s) (((s) >= 32) ? (v & 0x80000000UL) : (uint32_t)((int32_t)(v) >> (s)))
 #define ARM_ROR(v, s) (((v) >> (s)) | ((v) << (32 - (s))))
 
 static void exec_alu_flags_logical(cpu_t *cpu, uint32_t v)
 {
-	CPU_SET_FLAG_N(cpu, v & 0x80000000);
+	CPU_SET_FLAG_N(cpu, v & 0x80000000UL);
 	CPU_SET_FLAG_Z(cpu, !v);
 }
 
 static void exec_alu_flags_add(cpu_t *cpu, uint32_t v, uint32_t op1, uint32_t op2)
 {
-	CPU_SET_FLAG_V(cpu, (~(op1 ^ op2) & (v ^ op2)) & 0x80000000);
+	CPU_SET_FLAG_V(cpu, (~(op1 ^ op2) & (v ^ op2)) & 0x80000000UL);
 	exec_alu_flags_logical(cpu, v);
 }
 
 static void exec_alu_flags_sub(cpu_t *cpu, uint32_t v, uint32_t op1, uint32_t op2)
 {
-	CPU_SET_FLAG_V(cpu, ((op1 ^ op2) & (v ^ op1)) & 0x80000000);
+	CPU_SET_FLAG_V(cpu, ((op1 ^ op2) & (v ^ op1)) & 0x80000000UL);
 	exec_alu_flags_logical(cpu, v);
 }
 
@@ -330,16 +330,16 @@ ARM_INSTR(op##_##rot##r, \
 
 #define ARM_ALU_LLI(ctest) uint32_t op2 = ARM_LSL(op2s, shift); if (ctest && shift) { CPU_SET_FLAG_C(cpu, op2s & (1 << (32 - shift))); }
 #define ARM_ALU_LLR(ctest) uint32_t op2 = ARM_LSL(op2s, shift); if (ctest && shift) { CPU_SET_FLAG_C(cpu, op2s & (1 << (32 - shift))); }
-#define ARM_ALU_LRI(ctest) uint32_t op2 = ARM_LSR(op2s, shift ? shift : 32); if (ctest) { CPU_SET_FLAG_C(cpu, shift ? (op2s & (1 << (shift - 1))) : (op2s & 0x80000000)); }
+#define ARM_ALU_LRI(ctest) uint32_t op2 = ARM_LSR(op2s, shift ? shift : 32); if (ctest) { CPU_SET_FLAG_C(cpu, shift ? (op2s & (1 << (shift - 1))) : (op2s & 0x80000000UL)); }
 #define ARM_ALU_LRR(ctest) uint32_t op2 = ARM_LSR(op2s, shift); if (ctest && shift) { CPU_SET_FLAG_C(cpu, op2s & (1 << (shift - 1))); }
 #define ARM_ALU_ARI(ctest) \
 	uint32_t op2; \
 	if (!shift) \
 	{ \
-		op2 = op2s & 0x80000000; \
+		op2 = op2s & 0x80000000UL; \
 		if (op2) \
 		{ \
-			op2 = 0xFFFFFFFFu; \
+			op2 = 0xFFFFFFFFUL; \
 			if (ctest) \
 				CPU_SET_FLAG_C(cpu, 1); \
 		} \
@@ -437,23 +437,23 @@ ARM_INSTR(n, \
 	uint32_t rsr = (cpu->instr_opcode >>  8) & 0xF; \
 	uint32_t rnr = (cpu->instr_opcode >> 12) & 0xF; \
 	uint32_t rdr = (cpu->instr_opcode >> 16) & 0xF; \
+	uint32_t rm = cpu_get_reg(cpu, rmr); \
+	uint32_t rs = cpu_get_reg(cpu, rsr); \
 	if (halfword) \
 	{ \
-		/* XXX */ \
-		assert(!"mul half"); \
-	} \
-	else \
-	{ \
+		int16_t hrm; \
+		int16_t hrs; \
+		if (rm_lower_upper) \
+			hrm = (int16_t)(uint16_t)(rm >> 16); \
+		else \
+			hrm = (int16_t)(uint16_t)(rm & 0xFFFF); \
+		if (rs_lower_upper) \
+			hrs = (int16_t)(uint16_t)(rs >> 16); \
+		else \
+			hrs = (int16_t)(uint16_t)(rs & 0xFFFF); \
 		if (longword) \
 		{ \
-			uint32_t rm = cpu_get_reg(cpu, rmr); \
-			uint32_t rs = cpu_get_reg(cpu, rsr); \
-			uint64_t res; \
-			if (signed_unsigned) \
-				res = (uint64_t)rm * (uint64_t)rs; \
-			else \
-				res = (int64_t)(int32_t)rm * (int64_t)(int32_t)rs; \
-			cpu->instr_delay++; \
+			uint64_t res = (int64_t)hrm * (int64_t)hrs; \
 			if (accum) \
 			{ \
 				uint64_t rn = cpu_get_reg(cpu, rnr); \
@@ -466,18 +466,14 @@ ARM_INSTR(n, \
 			if (setcond) \
 			{ \
 				CPU_SET_FLAG_Z(cpu, !res); \
-				CPU_SET_FLAG_N(cpu, res & 0x8000000000000000ull); \
+				CPU_SET_FLAG_N(cpu, res & 0x8000000000000000ULL); \
 				CPU_SET_FLAG_C(cpu, 0); \
 				CPU_SET_FLAG_V(cpu, 0); \
 			} \
 		} \
-		else \
+		else if (wmod) \
 		{ \
-			uint32_t rm = cpu_get_reg(cpu, rmr); \
-			uint32_t rs = cpu_get_reg(cpu, rsr); \
-			uint32_t res; \
-			res = rm * rs; \
-			cpu->instr_delay++; \
+			uint32_t res = (int32_t)(((int64_t)rm * (int64_t)hrs) / 0x10000); \
 			if (accum) \
 			{ \
 				uint32_t rn = cpu_get_reg(cpu, rnr); \
@@ -488,10 +484,73 @@ ARM_INSTR(n, \
 			if (setcond) \
 			{ \
 				CPU_SET_FLAG_Z(cpu, !res); \
-				CPU_SET_FLAG_N(cpu, res & 0x80000000); \
+				CPU_SET_FLAG_N(cpu, res & 0x80000000UL); \
 				CPU_SET_FLAG_C(cpu, 0); \
 				CPU_SET_FLAG_V(cpu, 0); \
 			} \
+		} \
+		else \
+		{ \
+			uint32_t res = (int32_t)hrm * (int32_t)hrs; \
+			if (accum) \
+			{ \
+				uint32_t rn = cpu_get_reg(cpu, rnr); \
+				res += rn; \
+				cpu->instr_delay++; \
+			} \
+			cpu_set_reg(cpu, rdr, res); \
+			if (setcond) \
+			{ \
+				CPU_SET_FLAG_Z(cpu, !res); \
+				CPU_SET_FLAG_N(cpu, res & 0x80000000UL); \
+				CPU_SET_FLAG_C(cpu, 0); \
+				CPU_SET_FLAG_V(cpu, 0); \
+			} \
+		} \
+	} \
+	else if (longword) \
+	{ \
+		uint64_t res; \
+		if (signed_unsigned) \
+			res = (uint64_t)rm * (uint64_t)rs; \
+		else \
+			res = (int64_t)(int32_t)rm * (int64_t)(int32_t)rs; \
+		cpu->instr_delay++; \
+		if (accum) \
+		{ \
+			uint64_t rn = cpu_get_reg(cpu, rnr); \
+			uint64_t rd = cpu_get_reg(cpu, rdr); \
+			res += (rd << 32) | rn; \
+			cpu->instr_delay++; \
+		} \
+		cpu_set_reg(cpu, rdr, res >> 32); \
+		cpu_set_reg(cpu, rnr, res >>  0); \
+		if (setcond) \
+		{ \
+			CPU_SET_FLAG_Z(cpu, !res); \
+			CPU_SET_FLAG_N(cpu, res & 0x8000000000000000ULL); \
+			CPU_SET_FLAG_C(cpu, 0); \
+			CPU_SET_FLAG_V(cpu, 0); \
+		} \
+	} \
+	else \
+	{ \
+		uint32_t res; \
+		res = rm * rs; \
+		cpu->instr_delay++; \
+		if (accum) \
+		{ \
+			uint32_t rn = cpu_get_reg(cpu, rnr); \
+			res += rn; \
+			cpu->instr_delay++; \
+		} \
+		cpu_set_reg(cpu, rdr, res); \
+		if (setcond) \
+		{ \
+			CPU_SET_FLAG_Z(cpu, !res); \
+			CPU_SET_FLAG_N(cpu, res & 0x80000000UL); \
+			CPU_SET_FLAG_C(cpu, 0); \
+			CPU_SET_FLAG_V(cpu, 0); \
 		} \
 	} \
 	cpu_inc_pc(cpu, 4); \
@@ -1127,7 +1186,7 @@ ARM_INSTR(msr_##n, \
 		v = cpu_get_reg(cpu, cpu->instr_opcode & 0xF); \
 	uint32_t mask = 0; \
 	if (cpu->instr_opcode & (1 << 19)) \
-		mask |= 0xFF000000; \
+		mask |= 0xFF000000ULL; \
 	if (CPU_GET_MODE(cpu) != CPU_MODE_USR) \
 	{ \
 		if (cpu->instr_opcode & (1 << 18)) \
@@ -1383,6 +1442,7 @@ ARM_INSTR(swi,
 ARM_INSTR(undef,
 {
 	(void)cpu;
+	fprintf(stderr, "undef 0x%08" PRIx32 "\n", cpu->instr_opcode);
 	assert(!"unimp");
 },
 {
