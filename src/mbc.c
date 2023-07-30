@@ -32,6 +32,7 @@ mbc_t *mbc_new(nds_t *nds, const void *data, size_t size)
 	switch (((uint32_t*)data)[3])
 	{
 		case 0x50434D41:
+		case 0x50485041:
 			mbc->backup_type = MBC_FLASH_256K;
 			break;
 		case 0x50395941:
