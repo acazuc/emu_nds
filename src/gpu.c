@@ -116,8 +116,8 @@ static void draw_background_text(struct gpu *gpu, struct gpu_eng *eng, uint8_t y
 	uint32_t mapbase = ((bgcnt >> 8) & 0x1F) * 0x800;
 	if (!eng->engb)
 	{
-		tilebase += ((dispcnt >> 24) & 0x3) * 0x10000;
-		mapbase += ((dispcnt >> 27) & 0x3) * 0x10000;
+		tilebase += ((dispcnt >> 24) & 0x7) * 0x10000;
+		mapbase += ((dispcnt >> 27) & 0x7) * 0x10000;
 	}
 #if 0
 	printf("BGCNT: %04" PRIx16 ", tilebase: %08" PRIx32 ", mapbase: %08" PRIx32 "\n",
@@ -221,20 +221,19 @@ static void draw_background_affine(struct gpu *gpu, struct gpu_eng *eng, uint8_t
 	uint16_t bgcnt = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BG0CNT + bg * 2);
 	uint8_t size = (bgcnt >> 14) & 0x3;
 	uint32_t dispcnt = eng_get_reg32(gpu, eng, MEM_ARM9_REG_DISPCNT);
-	uint32_t tilebase = ((bgcnt >> 2) & 0xF) * 0x4000 + ((dispcnt >> 24) & 0x3) * 0x10000;
-	uint32_t mapbase = ((bgcnt >> 8) & 0x1F) * 0x800 + ((dispcnt >> 27) & 0x3) * 0x10000;
+	uint32_t tilebase = ((bgcnt >> 2) & 0xF) * 0x4000;
+	uint32_t mapbase = ((bgcnt >> 8) & 0x1F) * 0x800;
+	if (!eng->engb)
+	{
+		tilebase += ((dispcnt >> 24) & 0x7) * 0x10000;
+		mapbase += ((dispcnt >> 27) & 0x7) * 0x10000;
+	}
 	uint32_t mapsize = mapsizes[size];
 	uint8_t overflow;
-	uint32_t ext_pal_base = 0x2000 * bg;
 	if (bg >= 2)
-	{
 		overflow = (bgcnt >> 13) & 0x1;
-	}
 	else
-	{
 		overflow = 0;
-		ext_pal_base += 0x4000 * ((bgcnt >> 13) & 0x1);
-	}
 	int16_t pa = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BG2PA + 0x10 * (bg - 2));
 	int16_t pc = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BG2PC + 0x10 * (bg - 2));
 	int32_t bgx = bg == 2 ? eng->bg2x : eng->bg3x;
