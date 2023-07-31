@@ -18,6 +18,7 @@ struct mem;
 struct gpu_eng
 {
 	uint8_t *data;
+	uint32_t pitch;
 	uint8_t  (*get_vram_bg8 )(struct mem *mem, uint32_t addr);
 	uint16_t (*get_vram_bg16)(struct mem *mem, uint32_t addr);
 	uint32_t (*get_vram_bg32)(struct mem *mem, uint32_t addr);

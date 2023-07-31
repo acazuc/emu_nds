@@ -25,6 +25,12 @@ libemu_nds_libretro_la_LDFLAGS = -Wl,--version-script=$(srcdir)/src/libretro/lib
 
 AM_CFLAGS = -Wall -Wextra -Wshadow -flto=auto
 
+if ENABLE_MULTITHREAD
+
+AM_CFLAGS += -DENABLE_MULTITHREAD
+
+endif
+
 pkgincludedir = $(includedir)/emu_nds
 pkginclude_HEADERS = src/nds.h
 

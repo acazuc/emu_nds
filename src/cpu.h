@@ -109,7 +109,7 @@ struct cp15
 	uint32_t itcm;
 };
 
-typedef struct cpu
+struct cpu
 {
 	uint8_t  (*get8 )(struct mem *mem, uint32_t addr, enum mem_type type);
 	uint16_t (*get16)(struct mem *mem, uint32_t addr, enum mem_type type);
@@ -130,7 +130,7 @@ typedef struct cpu
 	uint32_t irq_line;
 	uint16_t next_thumb;
 	int has_next_thumb;
-} cpu_t;
+};
 
 struct cpu *cpu_new(struct mem *mem, int arm9);
 void cpu_del(struct cpu *cpu);

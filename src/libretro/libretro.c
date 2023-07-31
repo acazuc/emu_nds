@@ -8,9 +8,21 @@
 #include "libretro.h"
 #include "../nds.h"
 
+#define TOP_BOTTOM 1
+
+#if TOP_BOTTOM == 1
+
 #define VIDEO_WIDTH 256
 #define VIDEO_HEIGHT (192 * 2)
 #define VIDEO_PIXELS VIDEO_WIDTH * VIDEO_HEIGHT
+
+#else
+
+#define VIDEO_WIDTH (256 * 2)
+#define VIDEO_HEIGHT 192
+#define VIDEO_PIXELS VIDEO_WIDTH * VIDEO_HEIGHT
+
+#endif
 
 #define VIDEO_FPS (59.826101858)
 #define AUDIO_FPS (48000)
@@ -158,13 +170,40 @@ void retro_run(void)
 	joypad |= NDS_BUTTON_SELECT * (!!input_state_cb(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_SELECT));
 	int32_t x = input_state_cb(0, RETRO_DEVICE_POINTER, 0, RETRO_DEVICE_ID_POINTER_X);
 	int32_t y = input_state_cb(0, RETRO_DEVICE_POINTER, 0, RETRO_DEVICE_ID_POINTER_Y);
+#if TOP_BOTTOM == 1
 	if (y < 0)
 		y = 0;
+#else
+	if (x < 0)
+		x = 0;
+#endif
 	int pressed = input_state_cb(0, RETRO_DEVICE_POINTER, 0, RETRO_DEVICE_ID_POINTER_PRESSED);
 
-	nds_frame(g_nds, video_buf, audio_buf, joypad,
+	uint8_t *video_top_buf;
+	uint32_t video_top_pitch;
+	uint8_t *video_bot_buf;
+	uint32_t video_bot_pitch;
+#if TOP_BOTTOM == 1
+	video_top_pitch = 256 * 4;
+	video_bot_pitch = 256 * 4;
+	video_top_buf = &video_buf[0];
+	video_bot_buf = &video_buf[256 * 192 * 4];
+#else
+	video_top_pitch = 256 * 4 * 2;
+	video_bot_pitch = 256 * 4 * 2;
+	video_top_buf = &video_buf[0];
+	video_bot_buf = &video_buf[256 * 4];
+#endif
+
+	nds_frame(g_nds, video_top_buf, video_top_pitch, video_bot_buf,
+	          video_bot_pitch, audio_buf, joypad,
+#if TOP_BOTTOM == 1
 	          (x - INT16_MIN) * VIDEO_WIDTH / UINT16_MAX,
 	          y * (VIDEO_HEIGHT / 2) / INT16_MAX,
+#else
+	          x * (VIDEO_WIDTH / 2) / INT16_MAX,
+	          (y - INT16_MIN) * VIDEO_HEIGHT / UINT16_MAX,
+#endif
 	          pressed);
 
 	video_cb(video_buf, VIDEO_WIDTH, VIDEO_HEIGHT, VIDEO_WIDTH * 4);

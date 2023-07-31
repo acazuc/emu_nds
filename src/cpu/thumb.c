@@ -9,9 +9,9 @@
 #include <stdio.h>
 
 #define THUMB_INSTR(name, exec_fn, print_fn) \
-static void exec_##name(cpu_t *cpu) \
+static void exec_##name(struct cpu *cpu) \
 exec_fn \
-static void print_##name(cpu_t *cpu, char *data, size_t size) \
+static void print_##name(struct cpu *cpu, char *data, size_t size) \
 { \
 	(void)cpu; \
 	print_fn \
@@ -27,19 +27,19 @@ static const struct cpu_instr thumb_##name = \
 #define THUMB_ASR(v, s) (((s) >= 32) ? (v & 0x80000000UL) : (uint32_t)((int32_t)(v) >> (s)))
 #define THUMB_ROR(v, s) (((v) >> (s)) | ((v) << (32 - (s))))
 
-static void update_flags_logical(cpu_t *cpu, uint32_t v)
+static void update_flags_logical(struct cpu *cpu, uint32_t v)
 {
 	CPU_SET_FLAG_N(cpu, v & 0x80000000UL);
 	CPU_SET_FLAG_Z(cpu, !v);
 }
 
-static void update_flags_add(cpu_t *cpu, uint32_t v, uint32_t op1, uint32_t op2)
+static void update_flags_add(struct cpu *cpu, uint32_t v, uint32_t op1, uint32_t op2)
 {
 	CPU_SET_FLAG_V(cpu, (~(op1 ^ op2) & (v ^ op2)) & 0x80000000UL);
 	update_flags_logical(cpu, v);
 }
 
-static void update_flags_sub(cpu_t *cpu, uint32_t v, uint32_t op1, uint32_t op2)
+static void update_flags_sub(struct cpu *cpu, uint32_t v, uint32_t op1, uint32_t op2)
 {
 	CPU_SET_FLAG_V(cpu, ((op1 ^ op2) & (v ^ op1)) & 0x80000000UL);
 	update_flags_logical(cpu, v);
@@ -133,13 +133,13 @@ THUMB_ADDSUBR(sub, reg, 1, 0);
 THUMB_ADDSUBR(add, imm, 0, 1);
 THUMB_ADDSUBR(sub, imm, 1, 1);
 
-static void mcas_mov(cpu_t *cpu, uint32_t r, uint32_t nn)
+static void mcas_mov(struct cpu *cpu, uint32_t r, uint32_t nn)
 {
 	cpu_set_reg(cpu, r, nn);
 	update_flags_logical(cpu, nn);
 }
 
-static void mcas_cmp(cpu_t *cpu, uint32_t r, uint32_t nn)
+static void mcas_cmp(struct cpu *cpu, uint32_t r, uint32_t nn)
 {
 	uint32_t rv = cpu_get_reg(cpu, r);
 	uint32_t res = rv - nn;
@@ -147,7 +147,7 @@ static void mcas_cmp(cpu_t *cpu, uint32_t r, uint32_t nn)
 	CPU_SET_FLAG_C(cpu, nn <= rv);
 }
 
-static void mcas_add(cpu_t *cpu, uint32_t r, uint32_t nn)
+static void mcas_add(struct cpu *cpu, uint32_t r, uint32_t nn)
 {
 	uint32_t rv = cpu_get_reg(cpu, r);
 	uint32_t res = rv + nn;
@@ -156,7 +156,7 @@ static void mcas_add(cpu_t *cpu, uint32_t r, uint32_t nn)
 	CPU_SET_FLAG_C(cpu, res < nn);
 }
 
-static void mcas_sub(cpu_t *cpu, uint32_t r, uint32_t nn)
+static void mcas_sub(struct cpu *cpu, uint32_t r, uint32_t nn)
 {
 	uint32_t rv = cpu_get_reg(cpu, r);
 	uint32_t res = rv - nn;
@@ -210,21 +210,21 @@ THUMB_MCAS_I8R(sub, 5);
 THUMB_MCAS_I8R(sub, 6);
 THUMB_MCAS_I8R(sub, 7);
 
-static void alu_and(cpu_t *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
+static void alu_and(struct cpu *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
 {
 	uint32_t v = rd & rs;
 	cpu_set_reg(cpu, rdr, v);
 	update_flags_logical(cpu, v);
 }
 
-static void alu_eor(cpu_t *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
+static void alu_eor(struct cpu *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
 {
 	uint32_t v = rd ^ rs;
 	cpu_set_reg(cpu, rdr, v);
 	update_flags_logical(cpu, v);
 }
 
-static void alu_lsr(cpu_t *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
+static void alu_lsr(struct cpu *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
 {
 	uint32_t v = THUMB_LSR(rd, rs);
 	cpu_set_reg(cpu, rdr, v);
@@ -233,7 +233,7 @@ static void alu_lsr(cpu_t *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
 		CPU_SET_FLAG_C(cpu, rd & (1 << (rs - 1)));
 }
 
-static void alu_lsl(cpu_t *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
+static void alu_lsl(struct cpu *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
 {
 	uint32_t v = THUMB_LSL(rd, rs);
 	cpu_set_reg(cpu, rdr, v);
@@ -242,7 +242,7 @@ static void alu_lsl(cpu_t *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
 		CPU_SET_FLAG_C(cpu, rd & (1 << (32 - rs)));
 }
 
-static void alu_asr(cpu_t *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
+static void alu_asr(struct cpu *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
 {
 	uint32_t v = THUMB_ASR(rd, rs);
 	cpu_set_reg(cpu, rdr, v);
@@ -251,7 +251,7 @@ static void alu_asr(cpu_t *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
 		CPU_SET_FLAG_C(cpu, rd & (1 << (32 - rs)));
 }
 
-static void alu_adc(cpu_t *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
+static void alu_adc(struct cpu *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
 {
 	uint32_t c = CPU_GET_FLAG_C(cpu);
 	uint32_t v = rd + rs + c;
@@ -260,7 +260,7 @@ static void alu_adc(cpu_t *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
 	CPU_SET_FLAG_C(cpu, c ? v <= rd : v < rd);
 }
 
-static void alu_sbc(cpu_t *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
+static void alu_sbc(struct cpu *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
 {
 	uint32_t c = CPU_GET_FLAG_C(cpu);
 	uint32_t v2 = rs + 1 - c;
@@ -270,7 +270,7 @@ static void alu_sbc(cpu_t *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
 	CPU_SET_FLAG_C(cpu, c ? rs <= rd : v < rd);
 }
 
-static void alu_ror(cpu_t *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
+static void alu_ror(struct cpu *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
 {
 	uint32_t v = THUMB_ROR(rd, rs);
 	cpu_set_reg(cpu, rdr, v);
@@ -279,14 +279,14 @@ static void alu_ror(cpu_t *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
 		CPU_SET_FLAG_C(cpu, rd & (1 << (rs - 1)));
 }
 
-static void alu_tst(cpu_t *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
+static void alu_tst(struct cpu *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
 {
 	(void)rdr;
 	uint32_t v = rd & rs;
 	update_flags_logical(cpu, v);
 }
 
-static void alu_neg(cpu_t *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
+static void alu_neg(struct cpu *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
 {
 	(void)rd;
 	uint32_t v = -rs;
@@ -295,7 +295,7 @@ static void alu_neg(cpu_t *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
 	CPU_SET_FLAG_C(cpu, rs <= 0);
 }
 
-static void alu_cmp(cpu_t *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
+static void alu_cmp(struct cpu *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
 {
 	(void)rdr;
 	uint32_t v = rd - rs;
@@ -303,7 +303,7 @@ static void alu_cmp(cpu_t *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
 	CPU_SET_FLAG_C(cpu, rs <= rd);
 }
 
-static void alu_cmn(cpu_t *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
+static void alu_cmn(struct cpu *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
 {
 	(void)rdr;
 	uint32_t v = rd + rs;
@@ -311,14 +311,14 @@ static void alu_cmn(cpu_t *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
 	CPU_SET_FLAG_C(cpu, v < rd);
 }
 
-static void alu_orr(cpu_t *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
+static void alu_orr(struct cpu *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
 {
 	uint32_t v = rd | rs;
 	cpu_set_reg(cpu, rdr, v);
 	update_flags_logical(cpu, v);
 }
 
-static void alu_mul(cpu_t *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
+static void alu_mul(struct cpu *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
 {
 	uint32_t v = rd * rs;
 	cpu_set_reg(cpu, rdr, v);
@@ -327,14 +327,14 @@ static void alu_mul(cpu_t *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
 		CPU_SET_FLAG_C(cpu, 0);
 }
 
-static void alu_bic(cpu_t *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
+static void alu_bic(struct cpu *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
 {
 	uint32_t v = rd & ~rs;
 	cpu_set_reg(cpu, rdr, v);
 	update_flags_logical(cpu, v);
 }
 
-static void alu_mvn(cpu_t *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
+static void alu_mvn(struct cpu *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
 {
 	(void)rd;
 	uint32_t v = ~rs;
@@ -379,7 +379,7 @@ THUMB_ALU(mul);
 THUMB_ALU(bic);
 THUMB_ALU(mvn);
 
-static void hi_addh(cpu_t *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
+static void hi_addh(struct cpu *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
 {
 	if (rdr == CPU_REG_PC)
 	{
@@ -393,7 +393,7 @@ static void hi_addh(cpu_t *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
 	}
 }
 
-static void hi_cmph(cpu_t *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
+static void hi_cmph(struct cpu *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
 {
 	(void)rdr;
 	uint32_t res = rd - rs;
@@ -402,7 +402,7 @@ static void hi_cmph(cpu_t *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
 	cpu_inc_pc(cpu, 2);
 }
 
-static void hi_movh(cpu_t *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
+static void hi_movh(struct cpu *cpu, uint32_t rd, uint32_t rdr, uint32_t rs)
 {
 	(void)rd;
 	if (rdr == CPU_REG_PC)
@@ -493,41 +493,41 @@ THUMB_LDRPC_R(5);
 THUMB_LDRPC_R(6);
 THUMB_LDRPC_R(7);
 
-static void stld_str(cpu_t *cpu, uint32_t rd, uint32_t rb, uint32_t ro)
+static void stld_str(struct cpu *cpu, uint32_t rd, uint32_t rb, uint32_t ro)
 {
 	cpu->set32(cpu->mem, rb + ro, cpu_get_reg(cpu, rd), MEM_DATA_NSEQ);
 }
 
-static void stld_strh(cpu_t *cpu, uint32_t rd, uint32_t rb, uint32_t ro)
+static void stld_strh(struct cpu *cpu, uint32_t rd, uint32_t rb, uint32_t ro)
 {
 	cpu->set16(cpu->mem, rb + ro, cpu_get_reg(cpu, rd), MEM_DATA_NSEQ);
 }
 
-static void stld_strb(cpu_t *cpu, uint32_t rd, uint32_t rb, uint32_t ro)
+static void stld_strb(struct cpu *cpu, uint32_t rd, uint32_t rb, uint32_t ro)
 {
 	cpu->set8(cpu->mem, rb + ro, cpu_get_reg(cpu, rd), MEM_DATA_NSEQ);
 }
 
-static void stld_ldr(cpu_t *cpu, uint32_t rd, uint32_t rb, uint32_t ro)
+static void stld_ldr(struct cpu *cpu, uint32_t rd, uint32_t rb, uint32_t ro)
 {
 	uint32_t addr = rb + ro;
 	uint32_t v = cpu->get32(cpu->mem, addr, MEM_DATA_NSEQ);
 	cpu_set_reg(cpu, rd, THUMB_ROR(v, (addr & 3) * 8));
 }
 
-static void stld_ldrh(cpu_t *cpu, uint32_t rd, uint32_t rb, uint32_t ro)
+static void stld_ldrh(struct cpu *cpu, uint32_t rd, uint32_t rb, uint32_t ro)
 {
 	uint32_t addr = rb + ro;
 	uint32_t v = cpu->get16(cpu->mem, addr, MEM_DATA_NSEQ);
 	cpu_set_reg(cpu, rd, THUMB_ROR(v, (addr & 1) * 8));
 }
 
-static void stld_ldrb(cpu_t *cpu, uint32_t rd, uint32_t rb, uint32_t ro)
+static void stld_ldrb(struct cpu *cpu, uint32_t rd, uint32_t rb, uint32_t ro)
 {
 	cpu_set_reg(cpu, rd, cpu->get8(cpu->mem, rb + ro, MEM_DATA_NSEQ));
 }
 
-static void stld_ldrsh(cpu_t *cpu, uint32_t rd, uint32_t rb, uint32_t ro)
+static void stld_ldrsh(struct cpu *cpu, uint32_t rd, uint32_t rb, uint32_t ro)
 {
 	uint32_t addr = rb + ro;
 	uint32_t v;
@@ -538,7 +538,7 @@ static void stld_ldrsh(cpu_t *cpu, uint32_t rd, uint32_t rb, uint32_t ro)
 	cpu_set_reg(cpu, rd, v);
 }
 
-static void stld_ldrsb(cpu_t *cpu, uint32_t rd, uint32_t rb, uint32_t ro)
+static void stld_ldrsb(struct cpu *cpu, uint32_t rd, uint32_t rb, uint32_t ro)
 {
 	cpu_set_reg(cpu, rd, (int8_t)cpu->get8(cpu->mem, rb + ro, MEM_DATA_NSEQ));
 }

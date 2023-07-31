@@ -9,9 +9,9 @@
 #include <stdio.h>
 
 #define ARM_INSTR(name, exec_fn, print_fn) \
-static void exec_##name(cpu_t *cpu) \
+static void exec_##name(struct cpu *cpu) \
 exec_fn \
-static void print_##name(cpu_t *cpu, char *data, size_t size) \
+static void print_##name(struct cpu *cpu, char *data, size_t size) \
 { \
 	(void)cpu; \
 	print_fn \
@@ -27,30 +27,30 @@ static const struct cpu_instr arm_##name = \
 #define ARM_ASR(v, s) (((s) >= 32) ? (v & 0x80000000UL) : (uint32_t)((int32_t)(v) >> (s)))
 #define ARM_ROR(v, s) (((v) >> (s)) | ((v) << (32 - (s))))
 
-static void exec_alu_flags_logical(cpu_t *cpu, uint32_t v)
+static void exec_alu_flags_logical(struct cpu *cpu, uint32_t v)
 {
 	CPU_SET_FLAG_N(cpu, v & 0x80000000UL);
 	CPU_SET_FLAG_Z(cpu, !v);
 }
 
-static void exec_alu_flags_add(cpu_t *cpu, uint32_t v, uint32_t op1, uint32_t op2)
+static void exec_alu_flags_add(struct cpu *cpu, uint32_t v, uint32_t op1, uint32_t op2)
 {
 	CPU_SET_FLAG_V(cpu, (~(op1 ^ op2) & (v ^ op2)) & 0x80000000UL);
 	exec_alu_flags_logical(cpu, v);
 }
 
-static void exec_alu_flags_sub(cpu_t *cpu, uint32_t v, uint32_t op1, uint32_t op2)
+static void exec_alu_flags_sub(struct cpu *cpu, uint32_t v, uint32_t op1, uint32_t op2)
 {
 	CPU_SET_FLAG_V(cpu, ((op1 ^ op2) & (v ^ op1)) & 0x80000000UL);
 	exec_alu_flags_logical(cpu, v);
 }
 
-static void exec_alu_and(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
+static void exec_alu_and(struct cpu *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 {
 	cpu_set_reg(cpu, rd, op1 & op2);
 }
 
-static void exec_alu_ands(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
+static void exec_alu_ands(struct cpu *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 {
 	uint32_t v = op1 & op2;
 	cpu_set_reg(cpu, rd, v);
@@ -58,12 +58,12 @@ static void exec_alu_ands(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 		exec_alu_flags_logical(cpu, v);
 }
 
-static void exec_alu_eor(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
+static void exec_alu_eor(struct cpu *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 {
 	cpu_set_reg(cpu, rd, op1 ^ op2);
 }
 
-static void exec_alu_eors(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
+static void exec_alu_eors(struct cpu *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 {
 	uint32_t v = op1 ^ op2;
 	cpu_set_reg(cpu, rd, v);
@@ -71,12 +71,12 @@ static void exec_alu_eors(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 		exec_alu_flags_logical(cpu, v);
 }
 
-static void exec_alu_sub(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
+static void exec_alu_sub(struct cpu *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 {
 	cpu_set_reg(cpu, rd, op1 - op2);
 }
 
-static void exec_alu_subs(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
+static void exec_alu_subs(struct cpu *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 {
 	uint32_t v = op1 - op2;
 	cpu_set_reg(cpu, rd, v);
@@ -87,12 +87,12 @@ static void exec_alu_subs(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 	}
 }
 
-static void exec_alu_rsb(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
+static void exec_alu_rsb(struct cpu *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 {
 	cpu_set_reg(cpu, rd, op2 - op1);
 }
 
-static void exec_alu_rsbs(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
+static void exec_alu_rsbs(struct cpu *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 {
 	uint32_t v = op2 - op1;
 	cpu_set_reg(cpu, rd, v);
@@ -103,12 +103,12 @@ static void exec_alu_rsbs(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 	}
 }
 
-static void exec_alu_add(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
+static void exec_alu_add(struct cpu *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 {
 	cpu_set_reg(cpu, rd, op1 + op2);
 }
 
-static void exec_alu_adds(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
+static void exec_alu_adds(struct cpu *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 {
 	uint32_t v = op1 + op2;
 	cpu_set_reg(cpu, rd, v);
@@ -119,12 +119,12 @@ static void exec_alu_adds(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 	}
 }
 
-static void exec_alu_adc(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
+static void exec_alu_adc(struct cpu *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 {
 	cpu_set_reg(cpu, rd, op1 + op2 + CPU_GET_FLAG_C(cpu));
 }
 
-static void exec_alu_adcs(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
+static void exec_alu_adcs(struct cpu *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 {
 	uint32_t c = CPU_GET_FLAG_C(cpu);
 	uint32_t v = op1 + op2 + c;
@@ -136,12 +136,12 @@ static void exec_alu_adcs(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 	}
 }
 
-static void exec_alu_sbc(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
+static void exec_alu_sbc(struct cpu *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 {
 	cpu_set_reg(cpu, rd, op1 - op2 + CPU_GET_FLAG_C(cpu) - 1);
 }
 
-static void exec_alu_sbcs(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
+static void exec_alu_sbcs(struct cpu *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 {
 	uint32_t c = CPU_GET_FLAG_C(cpu);
 	uint32_t v2 = op2 + 1 - c;
@@ -154,12 +154,12 @@ static void exec_alu_sbcs(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 	}
 }
 
-static void exec_alu_rsc(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
+static void exec_alu_rsc(struct cpu *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 {
 	cpu_set_reg(cpu, rd, op2 - op1 + CPU_GET_FLAG_C(cpu) - 1);
 }
 
-static void exec_alu_rscs(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
+static void exec_alu_rscs(struct cpu *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 {
 	uint32_t c = CPU_GET_FLAG_C(cpu);
 	uint32_t v1 = op1 + 1 - c;
@@ -172,21 +172,21 @@ static void exec_alu_rscs(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 	}
 }
 
-static void exec_alu_tsts(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
+static void exec_alu_tsts(struct cpu *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 {
 	uint32_t v = op1 & op2;
 	if (rd != CPU_REG_PC)
 		exec_alu_flags_logical(cpu, v);
 }
 
-static void exec_alu_teqs(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
+static void exec_alu_teqs(struct cpu *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 {
 	uint32_t v = op1 ^ op2;
 	if (rd != CPU_REG_PC)
 		exec_alu_flags_logical(cpu, v);
 }
 
-static void exec_alu_cmps(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
+static void exec_alu_cmps(struct cpu *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 {
 	uint32_t v = op1 - op2;
 	if (rd != CPU_REG_PC)
@@ -196,7 +196,7 @@ static void exec_alu_cmps(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 	}
 }
 
-static void exec_alu_cmns(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
+static void exec_alu_cmns(struct cpu *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 {
 	uint32_t v = op1 + op2;
 	if (rd != CPU_REG_PC)
@@ -206,13 +206,13 @@ static void exec_alu_cmns(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 	}
 }
 
-static void exec_alu_orr(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
+static void exec_alu_orr(struct cpu *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 {
 	uint32_t v = op1 | op2;
 	cpu_set_reg(cpu, rd, v);
 }
 
-static void exec_alu_orrs(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
+static void exec_alu_orrs(struct cpu *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 {
 	uint32_t v = op1 | op2;
 	cpu_set_reg(cpu, rd, v);
@@ -220,13 +220,13 @@ static void exec_alu_orrs(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 		exec_alu_flags_logical(cpu, v);
 }
 
-static void exec_alu_mov(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
+static void exec_alu_mov(struct cpu *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 {
 	(void)op1;
 	cpu_set_reg(cpu, rd, op2);
 }
 
-static void exec_alu_movs(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
+static void exec_alu_movs(struct cpu *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 {
 	(void)op1;
 	uint32_t v = op2;
@@ -235,12 +235,12 @@ static void exec_alu_movs(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 		exec_alu_flags_logical(cpu, v);
 }
 
-static void exec_alu_bic(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
+static void exec_alu_bic(struct cpu *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 {
 	cpu_set_reg(cpu, rd, op1 & ~op2);
 }
 
-static void exec_alu_bics(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
+static void exec_alu_bics(struct cpu *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 {
 	uint32_t v = op1 & ~op2;
 	cpu_set_reg(cpu, rd, v);
@@ -248,13 +248,13 @@ static void exec_alu_bics(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 		exec_alu_flags_logical(cpu, v);
 }
 
-static void exec_alu_mvn(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
+static void exec_alu_mvn(struct cpu *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 {
 	(void)op1;
 	cpu_set_reg(cpu, rd, ~op2);
 }
 
-static void exec_alu_mvns(cpu_t *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
+static void exec_alu_mvns(struct cpu *cpu, uint32_t rd, uint32_t op1, uint32_t op2)
 {
 	(void)op1;
 	uint32_t v = ~op2;

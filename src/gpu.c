@@ -280,9 +280,24 @@ static void draw_background_affine(struct gpu *gpu, struct gpu_eng *eng, uint8_t
 	}
 }
 
-static void draw_background_extended(struct gpu *gpu, struct gpu_eng *eng, uint8_t y, uint8_t *data)
+static void draw_background_extended(struct gpu *gpu, struct gpu_eng *eng, uint8_t y, uint8_t bg, uint8_t *data)
 {
-	printf("extended background not supported\n");
+	uint16_t bgcnt = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BG0CNT + bg * 2);
+	if (bgcnt & (1 << 7))
+	{
+		if (bgcnt & (1 << 2))
+		{
+			printf("unhandled extended direct color bitmap\n");
+		}
+		else
+		{
+			printf("unhandlded extended 256 colors bitmap\n");
+		}
+	}
+	else
+	{
+		printf("unhandlded extended 16bit bgmap\n");
+	}
 }
 
 static void draw_objects(struct gpu *gpu, struct gpu_eng *eng, uint8_t y, uint8_t *data)
@@ -424,10 +439,10 @@ static void draw_objects(struct gpu *gpu, struct gpu_eng *eng, uint8_t y, uint8_
 			if (color_mode)
 				tilepos += tilex;
 			uint32_t tileoff = tileby * 0x8 + tilebx;
-			if (!color_mode)
+			if (!color_mode && !(dispcnt & (1 << 31)))
 				tileoff /= 2;
 			uint16_t tilev = eng->get_vram_obj8(gpu->mem, tilepos * 0x20 + tileoff);
-			if (!color_mode)
+			if (!color_mode && !(dispcnt & (1 << 31)))
 			{
 				if (tilebx & 1)
 					tilev >>= 4;
@@ -436,9 +451,27 @@ static void draw_objects(struct gpu *gpu, struct gpu_eng *eng, uint8_t y, uint8_
 			}
 			if (!tilev)
 				continue;
+			uint16_t col;
 			if (!color_mode)
-				tilev |= palette * 0x10;
-			uint16_t col = mem_get_obj_palette(gpu->mem, eng->pal_base + tilev * 2);
+			{
+				if (dispcnt & (1 << 31))
+				{
+					tilev |= palette * 0x100;
+					if (eng->engb)
+						col = mem_vram_objepb_get16(gpu->mem, tilev * 2);
+					else
+						col = mem_vram_objepa_get16(gpu->mem, tilev * 2);
+				}
+				else
+				{
+					tilev |= palette * 0x10;
+					col = mem_get_obj_palette(gpu->mem, eng->pal_base + tilev * 2);
+				}
+			}
+			else
+			{
+				col = mem_get_obj_palette(gpu->mem, eng->pal_base + tilev * 2);
+			}
 			if (mode == 2)
 			{
 				if (col)
@@ -609,7 +642,7 @@ static void compose(struct gpu *gpu, struct gpu_eng *eng, struct line_buff *line
 {
 	uint16_t bd_col = mem_get_bg_palette(gpu->mem, eng->pal_base + 0);
 	uint8_t bd_color[4] = RGB5TO8(bd_col, 0xFF);
-	uint8_t *dst = &eng->data[y * 256 * 4];
+	uint8_t *dst = &eng->data[y * eng->pitch];
 	for (size_t x = 0; x < 256; ++x, dst += 4)
 	{
 		*(uint32_t*)dst = *(uint32_t*)bd_color;
@@ -681,7 +714,7 @@ static void compose(struct gpu *gpu, struct gpu_eng *eng, struct line_buff *line
 	uint8_t bldy = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BLDY) & 0x1F;
 	uint8_t eva = (bldalpha >> 0) & 0x1F;
 	uint8_t evb = (bldalpha >> 8) & 0x1F;
-	dst = &eng->data[y * 256 * 4];
+	dst = &eng->data[y * eng->pitch];
 	for (size_t x = 0; x < 256; ++x, dst += 4)
 	{
 		uint8_t winflags;
@@ -835,7 +868,7 @@ static void compose(struct gpu *gpu, struct gpu_eng *eng, struct line_buff *line
 			uint16_t factor = master_bright & 0x1F;
 			if (factor > 16)
 				factor = 16;
-			uint8_t *ptr = &eng->data[y * 256 * 4];
+			uint8_t *ptr = &eng->data[y * eng->pitch];
 			for (size_t x = 0; x < 256; ++x)
 			{
 				ptr[0] += ~ptr[0] * factor / 16;
@@ -850,7 +883,7 @@ static void compose(struct gpu *gpu, struct gpu_eng *eng, struct line_buff *line
 			uint16_t factor = master_bright & 0x1F;
 			if (factor > 16)
 				factor = 16;
-			uint8_t *ptr = &eng->data[y * 256 * 4];
+			uint8_t *ptr = &eng->data[y * eng->pitch];
 			for (size_t x = 0; x < 256; ++x)
 			{
 				ptr[0] -= ptr[0] * factor / 16;
@@ -865,7 +898,7 @@ static void compose(struct gpu *gpu, struct gpu_eng *eng, struct line_buff *line
 	{
 		case 0:
 		{
-			uint8_t *ptr = &eng->data[y * 256 * 4];
+			uint8_t *ptr = &eng->data[y * eng->pitch];
 			for (size_t x = 0; x < 256; ++x)
 			{
 				ptr[0] /= 4;
@@ -877,7 +910,7 @@ static void compose(struct gpu *gpu, struct gpu_eng *eng, struct line_buff *line
 		}
 		case 1:
 		{
-			uint8_t *ptr = &eng->data[y * 256 * 4];
+			uint8_t *ptr = &eng->data[y * eng->pitch];
 			for (size_t x = 0; x < 256; ++x)
 			{
 				ptr[0] /= 2;
@@ -889,7 +922,7 @@ static void compose(struct gpu *gpu, struct gpu_eng *eng, struct line_buff *line
 		}
 		case 2:
 		{
-			uint8_t *ptr = &eng->data[y * 256 * 4];
+			uint8_t *ptr = &eng->data[y * eng->pitch];
 			for (size_t x = 0; x < 256; ++x)
 			{
 				ptr[0] = ptr[0] / 2 + ptr[0] / 4;
@@ -914,7 +947,7 @@ static void draw_eng(struct gpu *gpu, struct gpu_eng *eng, uint8_t y)
 	switch ((dispcnt >> 16) & 0x3)
 	{
 		case 0:
-			memset(&eng->data[256 * 4 * y], 0xFF, 256 * 4);
+			memset(&eng->data[y * eng->pitch], 0xFF, 256 * 4);
 			return;
 		case 1:
 			break;
@@ -925,8 +958,6 @@ static void draw_eng(struct gpu *gpu, struct gpu_eng *eng, uint8_t y)
 			assert(!"unimp");
 			break;
 	}
-	if (dispcnt & (1 << 31))
-		printf("unimplemented OBJ ext palette\n");
 	memset(&line, 0, sizeof(line));
 	switch (dispcnt & 0x7)
 	{
@@ -968,7 +999,7 @@ static void draw_eng(struct gpu *gpu, struct gpu_eng *eng, uint8_t y)
 			if (dispcnt & (1 << 0xA))
 				draw_background_text(gpu, eng, y, 2, line.bg2);
 			if (dispcnt & (1 << 0xB))
-				draw_background_extended(gpu, eng, y, line.bg3);
+				draw_background_extended(gpu, eng, y, 3, line.bg3);
 			break;
 		case 4:
 			if (dispcnt & (1 << 0x8))
@@ -978,7 +1009,7 @@ static void draw_eng(struct gpu *gpu, struct gpu_eng *eng, uint8_t y)
 			if (dispcnt & (1 << 0xA))
 				draw_background_affine(gpu, eng, y, 2, line.bg2);
 			if (dispcnt & (1 << 0xB))
-				draw_background_extended(gpu, eng, y, line.bg3);
+				draw_background_extended(gpu, eng, y, 3, line.bg3);
 			break;
 		case 5:
 			if (dispcnt & (1 << 0x8))
@@ -986,9 +1017,17 @@ static void draw_eng(struct gpu *gpu, struct gpu_eng *eng, uint8_t y)
 			if (dispcnt & (1 << 0x9))
 				draw_background_text(gpu, eng, y, 1, line.bg1);
 			if (dispcnt & (1 << 0xA))
-				draw_background_extended(gpu, eng, y, line.bg2);
+				draw_background_extended(gpu, eng, y, 2, line.bg2);
 			if (dispcnt & (1 << 0xB))
-				draw_background_extended(gpu, eng, y, line.bg3);
+				draw_background_extended(gpu, eng, y, 3, line.bg3);
+			break;
+		case 6:
+			if (eng->engb)
+			{
+				printf("invalid mode 6 for engb\n");
+				break;
+			}
+			/* XXX 3D + large */
 			break;
 		default:
 			printf("invalid mode: %x\n", dispcnt & 0x7);
@@ -1016,11 +1055,11 @@ void gpu_draw(struct gpu *gpu, uint8_t y)
 	if (powcnt1 & (1 << 1))
 		draw_eng(gpu, &gpu->enga, y);
 	else
-		memset(&gpu->enga.data[y * 256 * 4], 0, 256 * 4);
+		memset(&gpu->enga.data[y * gpu->enga.pitch], 0, 256 * 4);
 	if (powcnt1 & (1 << 9))
 		draw_eng(gpu, &gpu->engb, y);
 	else
-		memset(&gpu->engb.data[y * 256 * 4], 0, 256 * 4);
+		memset(&gpu->engb.data[y * gpu->engb.pitch], 0, 256 * 4);
 }
 
 static void eng_commit_bgpos(struct gpu *gpu, struct gpu_eng *eng)

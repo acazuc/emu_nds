@@ -2863,6 +2863,14 @@ static void set_arm9_reg8(struct mem *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM9_REG_BLDY + 0x1000 + 1:
 		case MEM_ARM9_REG_BLDY + 0x1000 + 2:
 		case MEM_ARM9_REG_BLDY + 0x1000 + 3:
+		case MEM_ARM9_REG_DISP3DCNT:
+		case MEM_ARM9_REG_DISP3DCNT + 1:
+		case MEM_ARM9_REG_DISP3DCNT + 2:
+		case MEM_ARM9_REG_DISP3DCNT + 3:
+		case MEM_ARM9_REG_DISPCAPCNT:
+		case MEM_ARM9_REG_DISPCAPCNT + 1:
+		case MEM_ARM9_REG_DISPCAPCNT + 2:
+		case MEM_ARM9_REG_DISPCAPCNT + 3:
 			mem->arm9_regs[addr] = v;
 			return;
 		case MEM_ARM9_REG_DISPSTAT:
@@ -3529,6 +3537,14 @@ static uint8_t get_arm9_reg8(struct mem *mem, uint32_t addr)
 		case MEM_ARM9_REG_GXSTAT + 1:
 		case MEM_ARM9_REG_GXSTAT + 2:
 		case MEM_ARM9_REG_GXSTAT + 3:
+		case MEM_ARM9_REG_DISP3DCNT:
+		case MEM_ARM9_REG_DISP3DCNT + 1:
+		case MEM_ARM9_REG_DISP3DCNT + 2:
+		case MEM_ARM9_REG_DISP3DCNT + 3:
+		case MEM_ARM9_REG_DISPCAPCNT:
+		case MEM_ARM9_REG_DISPCAPCNT + 1:
+		case MEM_ARM9_REG_DISPCAPCNT + 2:
+		case MEM_ARM9_REG_DISPCAPCNT + 3:
 			return mem->arm9_regs[addr];
 		case MEM_ARM9_REG_AUXSPICNT:
 		case MEM_ARM9_REG_AUXSPICNT + 1:

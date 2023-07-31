@@ -171,32 +171,22 @@
  *
  * forgive me scheduler gods though...
  */
-//#define MULTITHREAD
-
-#ifdef MULTITHREAD
-
-#include <pthread.h>
-
-static pthread_t gpu_thread;
-static pthread_cond_t gpu_cond;
-static pthread_mutex_t gpu_mutex;
-static int gpu_y;
-static int nds_y;
+#ifdef ENABLE_MULTITHREAD
 
 static void *gpu_loop(void *arg)
 {
 	nds_t *nds = arg;
 	while (1)
 	{
-		pthread_mutex_lock(&gpu_mutex);
-		pthread_cond_wait(&gpu_cond, &gpu_mutex);
-		__atomic_store_n(&gpu_y, 0, __ATOMIC_SEQ_CST);
-		pthread_mutex_unlock(&gpu_mutex);
+		pthread_mutex_lock(&nds->gpu_mutex);
+		pthread_cond_wait(&nds->gpu_cond, &nds->gpu_mutex);
+		__atomic_store_n(&nds->gpu_y, 0, __ATOMIC_SEQ_CST);
+		pthread_mutex_unlock(&nds->gpu_mutex);
 		for (uint8_t y = 0; y < 192; ++y)
 		{
 			gpu_draw(nds->gpu, y);
-			__atomic_store_n(&gpu_y, y + 1, __ATOMIC_SEQ_CST);
-			while (__atomic_load_n(&nds_y, __ATOMIC_SEQ_CST) < gpu_y)
+			__atomic_store_n(&nds->gpu_y, y + 1, __ATOMIC_SEQ_CST);
+			while (__atomic_load_n(&nds->nds_y, __ATOMIC_SEQ_CST) < nds->gpu_y)
 				;
 		}
 	}
@@ -205,9 +195,9 @@ static void *gpu_loop(void *arg)
 
 #endif
 
-nds_t *nds_new(const void *rom_data, size_t rom_size)
+struct nds *nds_new(const void *rom_data, size_t rom_size)
 {
-	nds_t *nds = calloc(sizeof(*nds), 1);
+	struct nds *nds = calloc(sizeof(*nds), 1);
 	if (!nds)
 		return NULL;
 
@@ -235,15 +225,15 @@ nds_t *nds_new(const void *rom_data, size_t rom_size)
 	if (!nds->gpu)
 		return NULL;
 
-#ifdef MULTITHREAD
-	pthread_cond_init(&gpu_cond, NULL);
-	pthread_mutex_init(&gpu_mutex, NULL);
-	gpu_thread = pthread_create(&gpu_thread, NULL, gpu_loop, nds);
+#ifdef ENABLE_MULTITHREAD
+	pthread_cond_init(&nds->gpu_cond, NULL);
+	pthread_mutex_init(&nds->gpu_mutex, NULL);
+	nds->gpu_thread = pthread_create(&nds->gpu_thread, NULL, gpu_loop, nds);
 #endif
 	return nds;
 }
 
-void nds_del(nds_t *nds)
+void nds_del(struct nds *nds)
 {
 	if (!nds)
 		return;
@@ -256,7 +246,7 @@ void nds_del(nds_t *nds)
 	free(nds);
 }
 
-static void nds_cycles(nds_t *nds, uint32_t cycles)
+static void nds_cycles(struct nds *nds, uint32_t cycles)
 {
 	for (; cycles; cycles -= 4)
 	{
@@ -297,8 +287,9 @@ static void nds_cycles(nds_t *nds, uint32_t cycles)
 	}
 }
 
-void nds_frame(nds_t *nds, uint8_t *video_buf, int16_t *audio_buf, uint32_t joypad,
-               uint8_t touch_x, uint8_t touch_y, uint8_t touch)
+void nds_frame(struct nds *nds, uint8_t *video_top_buf, uint32_t video_top_pitch,
+               uint8_t *video_bot_buf, uint32_t video_bot_pitch, int16_t *audio_buf,
+               uint32_t joypad, uint8_t touch_x, uint8_t touch_y, uint8_t touch)
 {
 #if 0
 	printf("touch: %d @ %dx%d\n", touch, touch_x, touch_y);
@@ -306,13 +297,17 @@ void nds_frame(nds_t *nds, uint8_t *video_buf, int16_t *audio_buf, uint32_t joyp
 	uint32_t powcnt1 = mem_arm9_get_reg32(nds->mem, MEM_ARM9_REG_POWCNT1);
 	if (powcnt1 & (1 << 15))
 	{
-		nds->gpu->enga.data = &video_buf[0];
-		nds->gpu->engb.data = &video_buf[256 * 192 * 4];
+		nds->gpu->enga.pitch = video_top_pitch;
+		nds->gpu->engb.pitch = video_bot_pitch;
+		nds->gpu->enga.data = video_top_buf;
+		nds->gpu->engb.data = video_bot_buf;
 	}
 	else
 	{
-		nds->gpu->enga.data = &video_buf[256 * 192 * 4];
-		nds->gpu->engb.data = &video_buf[0];
+		nds->gpu->enga.pitch = video_bot_pitch;
+		nds->gpu->engb.pitch = video_top_pitch;
+		nds->gpu->enga.data = video_bot_buf;
+		nds->gpu->engb.data = video_top_buf;
 	}
 	nds->apu->data = audio_buf;
 	nds->apu->sample = 0;
@@ -322,11 +317,11 @@ void nds_frame(nds_t *nds, uint8_t *video_buf, int16_t *audio_buf, uint32_t joyp
 	nds->touch = touch;
 	nds->touch_x = touch_x;
 	nds->touch_y = touch_y;
-#ifdef MULTITHREAD
-	pthread_mutex_lock(&gpu_mutex);
-	__atomic_store_n(&nds_y, 0, __ATOMIC_SEQ_CST);
-	pthread_cond_signal(&gpu_cond);
-	pthread_mutex_unlock(&gpu_mutex);
+#ifdef ENABLE_MULTITHREAD
+	pthread_mutex_lock(&nds->gpu_mutex);
+	__atomic_store_n(&nds->nds_y, 0, __ATOMIC_SEQ_CST);
+	pthread_cond_signal(&nds->gpu_cond);
+	pthread_mutex_unlock(&nds->gpu_mutex);
 #endif
 	for (uint8_t y = 0; y < 192; ++y)
 	{
@@ -344,8 +339,8 @@ void nds_frame(nds_t *nds, uint8_t *video_buf, int16_t *audio_buf, uint32_t joyp
 			mem_arm7_if(nds->mem, 1 << 2);
 
 		nds_cycles(nds, 256 * 12);
-#ifdef MULTITHREAD
-		while (__atomic_load_n(&gpu_y, __ATOMIC_SEQ_CST) < y + 1)
+#ifdef ENABLE_MULTITHREAD
+		while (__atomic_load_n(&nds->gpu_y, __ATOMIC_SEQ_CST) < y + 1)
 			;
 #else
 		/* draw */
@@ -362,8 +357,8 @@ void nds_frame(nds_t *nds, uint8_t *video_buf, int16_t *audio_buf, uint32_t joyp
 		mem_hblank(nds->mem);
 
 		nds_cycles(nds, 99 * 12);
-#ifdef MULTITHREAD
-		__atomic_store_n(&nds_y, y + 1, __ATOMIC_SEQ_CST);
+#ifdef ENABLE_MULTITHREAD
+		__atomic_store_n(&nds->nds_y, y + 1, __ATOMIC_SEQ_CST);
 #endif
 	}
 
@@ -404,35 +399,35 @@ void nds_frame(nds_t *nds, uint8_t *video_buf, int16_t *audio_buf, uint32_t joyp
 	}
 }
 
-void nds_set_arm7_bios(nds_t *nds, const uint8_t *data)
+void nds_set_arm7_bios(struct nds *nds, const uint8_t *data)
 {
 	memcpy(nds->mem->arm7_bios, data, 0x4000);
 }
 
-void nds_set_arm9_bios(nds_t *nds, const uint8_t *data)
+void nds_set_arm9_bios(struct nds *nds, const uint8_t *data)
 {
 	memcpy(nds->mem->arm9_bios, data, 0x1000);
 }
 
-void nds_set_firmware(nds_t *nds, const uint8_t *data)
+void nds_set_firmware(struct nds *nds, const uint8_t *data)
 {
 	memcpy(nds->mem->firmware, data, 0x40000);
 	memcpy(nds->mem->sram, data, 0x40000);
 }
 
-void nds_get_mbc_ram(nds_t *nds, uint8_t **data, size_t *size)
+void nds_get_mbc_ram(struct nds *nds, uint8_t **data, size_t *size)
 {
 	*data = nds->mem->sram;
 	*size = nds->mem->sram_size;
 }
 
-void nds_get_mbc_rtc(nds_t *nds, uint8_t **data, size_t *size)
+void nds_get_mbc_rtc(struct nds *nds, uint8_t **data, size_t *size)
 {
 	*size = sizeof(nds->mem->rtc.offset);
 	*data = (uint8_t*)&nds->mem->rtc.offset;
 }
 
-void nds_test_keypad_int(nds_t *nds)
+void nds_test_keypad_int(struct nds *nds)
 {
 	uint16_t keycnt = mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_KEYCNT);
 	if (!(keycnt & (1 << 14)))

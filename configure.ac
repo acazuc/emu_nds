@@ -14,4 +14,13 @@ LT_INIT
 
 AC_CONFIG_FILES([Makefile])
 
+AC_ARG_ENABLE([multithread],
+	AS_HELP_STRING([--enable-multithread], [enable multithreading]),
+	[AS_CASE(${enableval}, [yes], [], [no], [],
+		[AC_MSG_ERROR(bad value ${enableval} for --enable-multithread)])],
+	[enable_multithread=no]
+)
+
+AM_CONDITIONAL([ENABLE_MULTITHREAD], [test "x$enable_multithread" = "xyes"])
+
 AC_OUTPUT

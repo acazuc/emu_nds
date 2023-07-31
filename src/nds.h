@@ -4,6 +4,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifdef ENABLE_MULTITHREAD
+#include <pthread.h>
+#endif
+
 struct mbc;
 struct mem;
 struct apu;
@@ -39,13 +43,21 @@ typedef struct nds
 	uint8_t touch_x;
 	uint8_t touch_y;
 	uint8_t touch;
+#ifdef ENABLE_MULTITHREAD
+	pthread_t gpu_thread;
+	pthread_cond_t gpu_cond;
+	pthread_mutex_t gpu_mutex;
+	int gpu_y;
+	int nds_y;
+#endif
 } nds_t;
 
 nds_t *nds_new(const void *rom_data, size_t rom_size);
 void nds_del(nds_t *nds);
 
-void nds_frame(nds_t *nds, uint8_t *video_buf, int16_t *audio_buf, uint32_t joypad,
-               uint8_t touch_x, uint8_t touch_y, uint8_t touch);
+void nds_frame(struct nds *nds, uint8_t *video_top_buf, uint32_t video_top_pitch,
+               uint8_t *video_bot_buf, uint32_t video_bot_pitch, int16_t *audio_buf,
+               uint32_t joypad, uint8_t touch_x, uint8_t touch_y, uint8_t touch);
 
 void nds_set_arm7_bios(nds_t *nds, const uint8_t *data);
 void nds_set_arm9_bios(nds_t *nds, const uint8_t *data);
