@@ -760,15 +760,19 @@ THUMB_INSTR(n####next, \
 		if (st_ld) \
 		{ \
 			uint32_t v = cpu->get32(cpu->mem, sp, MEM_DATA_SEQ); \
-			if ((v & 1) || !cpu->arm9) \
+			if (cpu->arm9) \
 			{ \
-				cpu_set_reg(cpu, CPU_REG_PC, cpu->get32(cpu->mem, sp, MEM_DATA_SEQ) & ~1); \
+				CPU_SET_FLAG_T(cpu, v & 1); \
+				if (v & 1) \
+					v &= ~1; \
+				else \
+					v &= ~3; \
 			} \
 			else \
 			{ \
-				cpu_set_reg(cpu, CPU_REG_PC, cpu->get32(cpu->mem, sp, MEM_DATA_SEQ) & ~3); \
-				CPU_SET_FLAG_T(cpu, 0); \
+				v &= ~1; \
 			} \
+			cpu_set_reg(cpu, CPU_REG_PC, v); \
 			pc_inc = false; \
 		} \
 		else \

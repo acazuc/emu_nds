@@ -674,11 +674,17 @@ ARM_INSTR(opname##_##oparg####rotname, \
 		if (rdr == CPU_REG_PC) \
 		{ \
 			if (cpu->arm9) \
+			{ \
 				CPU_SET_FLAG_T(cpu, v & 1); \
-			if (v & 1) \
-				v &= ~1; \
+				if (v & 1) \
+					v &= ~1; \
+				else \
+					v &= ~3; \
+			} \
 			else \
+			{ \
 				v &= ~3; \
+			} \
 		} \
 		cpu_set_reg(cpu, rdr, v); \
 	} \
@@ -985,11 +991,17 @@ ARM_INSTR(opname####oparg, \
 				{ \
 					pc_inc = false; \
 					if (cpu->arm9) \
+					{ \
 						CPU_SET_FLAG_T(cpu, v & 1); \
-					if (v & 1) \
-						v &= ~1; \
+						if (v & 1) \
+							v &= ~1; \
+						else \
+							v &= ~3; \
+					} \
 					else \
+					{ \
 						v &= ~3; \
+					} \
 				} \
 				if (usermode) \
 				{ \
@@ -1052,11 +1064,17 @@ ARM_INSTR(opname####oparg, \
 		{ \
 			uint32_t v = cpu->get32(cpu->mem, rn, MEM_DATA_SEQ); \
 			if (cpu->arm9) \
+			{ \
 				CPU_SET_FLAG_T(cpu, v & 1); \
-			if (v & 1) \
-				v &= ~1; \
+				if (v & 1) \
+					v &= ~1; \
+				else \
+					v &= ~3; \
+			} \
 			else \
+			{ \
 				v &= ~3; \
+			} \
 			cpu_set_reg(cpu, CPU_REG_PC, v); \
 			pc_inc = false; \
 		} \
