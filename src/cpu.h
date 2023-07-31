@@ -5,7 +5,7 @@
 #include <stdbool.h>
 
 struct cpu_instr;
-typedef struct mem mem_t;
+struct mem;
 
 #define CPU_DEBUG_BASE    (1 << 0) /* print instr name */
 #define CPU_DEBUG_INSTR   (1 << 1) /* print disassembled instruction */
@@ -111,15 +111,15 @@ struct cp15
 
 typedef struct cpu
 {
-	uint8_t  (*get8 )(mem_t *mem, uint32_t addr, enum mem_type type);
-	uint16_t (*get16)(mem_t *mem, uint32_t addr, enum mem_type type);
-	uint32_t (*get32)(mem_t *mem, uint32_t addr, enum mem_type type);
-	void (*set8 )(mem_t *mem, uint32_t addr, uint8_t val, enum mem_type type);
-	void (*set16)(mem_t *mem, uint32_t addr, uint16_t val, enum mem_type type);
-	void (*set32)(mem_t *mem, uint32_t addr, uint32_t val, enum mem_type type);
+	uint8_t  (*get8 )(struct mem *mem, uint32_t addr, enum mem_type type);
+	uint16_t (*get16)(struct mem *mem, uint32_t addr, enum mem_type type);
+	uint32_t (*get32)(struct mem *mem, uint32_t addr, enum mem_type type);
+	void (*set8 )(struct mem *mem, uint32_t addr, uint8_t val, enum mem_type type);
+	void (*set16)(struct mem *mem, uint32_t addr, uint16_t val, enum mem_type type);
+	void (*set32)(struct mem *mem, uint32_t addr, uint32_t val, enum mem_type type);
 	struct cpu_regs regs;
 	struct cp15 cp15;
-	mem_t *mem;
+	struct mem *mem;
 	const struct cpu_instr *instr;
 	uint32_t instr_opcode;
 	int32_t instr_delay;
@@ -132,29 +132,29 @@ typedef struct cpu
 	int has_next_thumb;
 } cpu_t;
 
-cpu_t *cpu_new(mem_t *mem, int arm9);
-void cpu_del(cpu_t *cpu);
+struct cpu *cpu_new(struct mem *mem, int arm9);
+void cpu_del(struct cpu *cpu);
 
-void cpu_cycle(cpu_t *cpu);
-void cpu_update_mode(cpu_t *cpu);
-void cpu_update_irq_state(cpu_t *cpu);
+void cpu_cycle(struct cpu *cpu);
+void cpu_update_mode(struct cpu *cpu);
+void cpu_update_irq_state(struct cpu *cpu);
 
-uint32_t cp15_read(cpu_t *cpu, uint8_t cn, uint8_t cm, uint8_t cp);
-void cp15_write(cpu_t *cpu, uint8_t cn, uint8_t cm, uint8_t cp, uint32_t v);
+uint32_t cp15_read(struct cpu *cpu, uint8_t cn, uint8_t cm, uint8_t cp);
+void cp15_write(struct cpu *cpu, uint8_t cn, uint8_t cm, uint8_t cp, uint32_t v);
 
-static inline uint32_t cpu_get_reg(cpu_t *cpu, uint32_t reg)
+static inline uint32_t cpu_get_reg(struct cpu *cpu, uint32_t reg)
 {
 	return *cpu->regs.rptr[reg];
 }
 
-static inline void cpu_set_reg(cpu_t *cpu, uint32_t reg, uint32_t v)
+static inline void cpu_set_reg(struct cpu *cpu, uint32_t reg, uint32_t v)
 {
 	*cpu->regs.rptr[reg] = v;
 	if (reg == CPU_REG_PC)
 		cpu->has_next_thumb = 0;
 }
 
-static inline void cpu_inc_pc(cpu_t *cpu, uint32_t v)
+static inline void cpu_inc_pc(struct cpu *cpu, uint32_t v)
 {
 	*cpu->regs.rptr[CPU_REG_PC] += v;
 }

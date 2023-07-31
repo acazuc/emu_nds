@@ -4,8 +4,6 @@
 #include <stdint.h>
 #include <stddef.h>
 
-typedef struct nds nds_t;
-
 #define MBC_SPI_CMD_NONE 0x00
 #define MBC_SPI_CMD_WRSR 0x01
 #define MBC_SPI_CMD_WRLO 0x02
@@ -16,6 +14,8 @@ typedef struct nds nds_t;
 #define MBC_SPI_CMD_WRHI 0x0A
 #define MBC_SPI_CMD_RDHI 0x0B
 #define MBC_SPI_CMD_RDID 0x9F
+
+struct nds;
 
 enum mbc_backup_type
 {
@@ -52,9 +52,9 @@ struct mbc_spi
 	uint32_t addr;
 };
 
-typedef struct mbc
+struct mbc
 {
-	nds_t *nds;
+	struct nds *nds;
 	uint8_t *data;
 	size_t data_size;
 	enum mbc_cmd cmd;
@@ -70,17 +70,17 @@ typedef struct mbc
 	enum mbc_backup_type backup_type;
 	uint32_t backup_size;
 	uint8_t *backup;
-} mbc_t;
+};
 
-mbc_t *mbc_new(nds_t *nds, const void *data, size_t size);
-void mbc_del(mbc_t *mbc);
+struct mbc *mbc_new(struct nds *nds, const void *data, size_t size);
+void mbc_del(struct mbc *mbc);
 
-void mbc_cmd(mbc_t *mbc);
-uint8_t mbc_read(mbc_t *mbc);
-void mbc_write(mbc_t *mbc, uint8_t v);
+void mbc_cmd(struct mbc *mbc);
+uint8_t mbc_read(struct mbc *mbc);
+void mbc_write(struct mbc *mbc, uint8_t v);
 
-uint8_t mbc_spi_read(mbc_t *mbc);
-void mbc_spi_write(mbc_t *mbc, uint8_t v);
-void mbc_spi_reset(mbc_t *mbc);
+uint8_t mbc_spi_read(struct mbc *mbc);
+void mbc_spi_write(struct mbc *mbc, uint8_t v);
+void mbc_spi_reset(struct mbc *mbc);
 
 #endif

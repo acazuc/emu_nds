@@ -9,9 +9,9 @@
 #include <assert.h>
 #include <stdio.h>
 
-mbc_t *mbc_new(nds_t *nds, const void *data, size_t size)
+struct mbc *mbc_new(struct nds *nds, const void *data, size_t size)
 {
-	mbc_t *mbc = calloc(sizeof(*mbc), 1);
+	struct mbc *mbc = calloc(sizeof(*mbc), 1);
 	if (!mbc)
 		return NULL;
 
@@ -82,7 +82,7 @@ mbc_t *mbc_new(nds_t *nds, const void *data, size_t size)
 	return mbc;
 }
 
-void mbc_del(mbc_t *mbc)
+void mbc_del(struct mbc *mbc)
 {
 	if (!mbc)
 		return;
@@ -90,7 +90,7 @@ void mbc_del(mbc_t *mbc)
 	free(mbc);
 }
 
-static void encrypt(mbc_t *mbc, void *data)
+static void encrypt(struct mbc *mbc, void *data)
 {
 	uint32_t x = ((uint32_t*)data)[1];
 	uint32_t y = ((uint32_t*)data)[0];
@@ -108,7 +108,7 @@ static void encrypt(mbc_t *mbc, void *data)
 	((uint32_t*)data)[1] = y ^ mbc->keybuf[0x11];
 }
 
-static void decrypt(mbc_t *mbc, uint32_t *data)
+static void decrypt(struct mbc *mbc, uint32_t *data)
 {
 	uint32_t x = data[1];
 	uint32_t y = data[0];
@@ -134,7 +134,7 @@ static uint32_t bswap32(uint32_t v)
 	     | ((v << 24) & 0xFF000000);
 }
 
-static void apply_keycode(mbc_t *mbc, uint32_t *keycode, uint8_t mod)
+static void apply_keycode(struct mbc *mbc, uint32_t *keycode, uint8_t mod)
 {
 	encrypt(mbc, &keycode[1]);
 	encrypt(mbc, &keycode[0]);
@@ -149,7 +149,7 @@ static void apply_keycode(mbc_t *mbc, uint32_t *keycode, uint8_t mod)
 	}
 }
 
-static void init_keycode(mbc_t *mbc, uint32_t idcode, uint8_t level, uint8_t mod)
+static void init_keycode(struct mbc *mbc, uint32_t idcode, uint8_t level, uint8_t mod)
 {
 	memcpy(mbc->keybuf, &mbc->nds->mem->arm7_bios[0x30], 0x1048);
 	uint32_t keycode[3];
@@ -166,7 +166,7 @@ static void init_keycode(mbc_t *mbc, uint32_t idcode, uint8_t level, uint8_t mod
 		apply_keycode(mbc, keycode, mod);
 }
 
-static void start_cmd(mbc_t *mbc)
+static void start_cmd(struct mbc *mbc)
 {
 #if 0
 	printf("start cmd with ROMCTRL=%08" PRIx32 ", AUXSPICNT=%04" PRIx32 "\n",
@@ -177,7 +177,7 @@ static void start_cmd(mbc_t *mbc)
 	mem_dscard(mbc->nds->mem);
 }
 
-static void end_cmd(mbc_t *mbc)
+static void end_cmd(struct mbc *mbc)
 {
 #if 0
 	printf("end cmd %s interrupt\n", (mem_arm9_get_reg16(mbc->nds->mem, MEM_ARM9_REG_AUXSPICNT) & (1 << 14)) ? "with" : "without");
@@ -199,7 +199,7 @@ static uint64_t bitswap39(uint64_t v)
 	return ret;
 }
 
-static uint8_t key2_byte(mbc_t *mbc, uint8_t v)
+static uint8_t key2_byte(struct mbc *mbc, uint8_t v)
 {
 	return v; /* it looks like it's not required... is it a hw-only cipher ? */
 	mbc->key2_x = ((((mbc->key2_x >> 5) ^ (mbc->key2_x >> 17) ^ (mbc->key2_x >> 18) ^ (mbc->key2_x >> 31)) & 0xFF) | (mbc->key2_x << 8)) & 0x7FFFFFFFFF;
@@ -207,7 +207,7 @@ static uint8_t key2_byte(mbc_t *mbc, uint8_t v)
 	return v ^ mbc->key2_x ^ mbc->key2_y;
 }
 
-void mbc_cmd(mbc_t *mbc)
+void mbc_cmd(struct mbc *mbc)
 {
 	uint64_t cmd;
 	cmd  = (uint64_t)mbc->nds->mem->arm9_regs[MEM_ARM9_REG_ROMCMD + 0] << 56;
@@ -351,7 +351,7 @@ void mbc_cmd(mbc_t *mbc)
 	}
 }
 
-uint8_t mbc_read(mbc_t *mbc)
+uint8_t mbc_read(struct mbc *mbc)
 {
 	switch (mbc->cmd)
 	{
@@ -457,7 +457,7 @@ uint8_t mbc_read(mbc_t *mbc)
 	}
 }
 
-void mbc_write(mbc_t *mbc, uint8_t v)
+void mbc_write(struct mbc *mbc, uint8_t v)
 {
 	(void)v;
 	switch (mbc->cmd)
@@ -472,7 +472,7 @@ void mbc_write(mbc_t *mbc, uint8_t v)
 	}
 }
 
-uint8_t mbc_spi_read(mbc_t *mbc)
+uint8_t mbc_spi_read(struct mbc *mbc)
 {
 #if 0
 	printf("MBC SPI read 0x%02" PRIx8 "\n", mbc->spi.read_latch);
@@ -480,7 +480,7 @@ uint8_t mbc_spi_read(mbc_t *mbc)
 	return mbc->spi.read_latch;
 }
 
-void mbc_spi_write(mbc_t *mbc, uint8_t v)
+void mbc_spi_write(struct mbc *mbc, uint8_t v)
 {
 #if 0
 	printf("MBC SPI write %02" PRIx8 "\n", v);
@@ -768,7 +768,7 @@ void mbc_spi_write(mbc_t *mbc, uint8_t v)
 	}
 }
 
-void mbc_spi_reset(mbc_t *mbc)
+void mbc_spi_reset(struct mbc *mbc)
 {
 #if 0
 	printf("MBC SPI reset\n");

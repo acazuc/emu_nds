@@ -316,9 +316,6 @@
 #define MEM_ARM7_REG_W_RXBUF_GAPDISP 0x808064
 /* XXX more */
 
-typedef struct mbc mbc_t;
-typedef struct nds nds_t;
-
 enum mem_type
 {
 	MEM_DIRECT,
@@ -370,9 +367,9 @@ struct fifo
 struct spi_firmware
 {
 	uint8_t cmd;
-	uint8_t read_latch;
 	uint8_t posb;
 	uint8_t write;
+	uint8_t read_latch;
 	uint32_t addr;
 };
 
@@ -433,10 +430,13 @@ struct rtc
 #define MEM_VRAM_I_BASE 0xA0000
 #define MEM_VRAM_I_MASK 0x03FFF
 
-typedef struct mem
+struct nds;
+struct mbc;
+
+struct mem
 {
-	nds_t *nds;
-	mbc_t *mbc;
+	struct nds *nds;
+	struct mbc *mbc;
 	struct timer arm7_timers[4];
 	struct timer arm9_timers[4];
 	struct dma arm7_dma[4];
@@ -470,6 +470,12 @@ typedef struct mem
 	uint32_t vram_obja_bases[16]; /* 0x4000 units */
 	uint32_t vram_objb_bases[8]; /* 0x4000 units */
 	uint32_t vram_arm7_bases[2]; /* 0x20000 units */
+	uint32_t vram_bgepa_bases[2]; /* 0x4000 units */
+	uint32_t vram_bgepb_base; /* 0x8000 */
+	uint32_t vram_objepa_base; /* 0x2000 */
+	uint32_t vram_objepb_base; /* 0x2000 */
+	uint32_t vram_trpi_bases[4]; /* 0x20000 units */
+	uint32_t vram_texp_bases[8]; /* 0x4000 units, (only 6 effective) */
 	uint8_t *sram; /* backup + firmware sram */
 	size_t sram_size;
 	uint8_t dscard_dma_count;
@@ -477,128 +483,146 @@ typedef struct mem
 	uint32_t itcm_mask;
 	uint32_t dtcm_base;
 	uint32_t dtcm_mask;
-} mem_t;
+};
 
-mem_t *mem_new(nds_t *nds, mbc_t *mbc);
-void mem_del(mem_t *mem);
+struct mem *mem_new(struct nds *nds, struct mbc *mbc);
+void mem_del(struct mem *mem);
 
-void mem_timers(mem_t *mem, uint32_t cycles);
-void mem_dma(mem_t *mem, uint32_t cycles);
-void mem_vblank(mem_t *mem);
-void mem_hblank(mem_t *mem);
-void mem_dscard(mem_t *mem);
+void mem_timers(struct mem *mem, uint32_t cycles);
+void mem_dma(struct mem *mem, uint32_t cycles);
+void mem_vblank(struct mem *mem);
+void mem_hblank(struct mem *mem);
+void mem_dscard(struct mem *mem);
 
-void mem_arm9_if(mem_t *mem, uint32_t f);
-void mem_arm7_if(mem_t *mem, uint32_t f);
+void mem_arm9_if(struct mem *mem, uint32_t f);
+void mem_arm7_if(struct mem *mem, uint32_t f);
 
-uint8_t  mem_arm7_get8 (mem_t *mem, uint32_t addr, enum mem_type type);
-uint16_t mem_arm7_get16(mem_t *mem, uint32_t addr, enum mem_type type);
-uint32_t mem_arm7_get32(mem_t *mem, uint32_t addr, enum mem_type type);
-void mem_arm7_set8 (mem_t *mem, uint32_t addr, uint8_t val, enum mem_type type);
-void mem_arm7_set16(mem_t *mem, uint32_t addr, uint16_t val, enum mem_type type);
-void mem_arm7_set32(mem_t *mem, uint32_t addr, uint32_t val, enum mem_type type);
+uint8_t  mem_arm7_get8 (struct mem *mem, uint32_t addr, enum mem_type type);
+uint16_t mem_arm7_get16(struct mem *mem, uint32_t addr, enum mem_type type);
+uint32_t mem_arm7_get32(struct mem *mem, uint32_t addr, enum mem_type type);
+void mem_arm7_set8 (struct mem *mem, uint32_t addr, uint8_t val, enum mem_type type);
+void mem_arm7_set16(struct mem *mem, uint32_t addr, uint16_t val, enum mem_type type);
+void mem_arm7_set32(struct mem *mem, uint32_t addr, uint32_t val, enum mem_type type);
 
-uint8_t  mem_arm9_get8 (mem_t *mem, uint32_t addr, enum mem_type type);
-uint16_t mem_arm9_get16(mem_t *mem, uint32_t addr, enum mem_type type);
-uint32_t mem_arm9_get32(mem_t *mem, uint32_t addr, enum mem_type type);
-void mem_arm9_set8 (mem_t *mem, uint32_t addr, uint8_t val, enum mem_type type);
-void mem_arm9_set16(mem_t *mem, uint32_t addr, uint16_t val, enum mem_type type);
-void mem_arm9_set32(mem_t *mem, uint32_t addr, uint32_t val, enum mem_type type);
+uint8_t  mem_arm9_get8 (struct mem *mem, uint32_t addr, enum mem_type type);
+uint16_t mem_arm9_get16(struct mem *mem, uint32_t addr, enum mem_type type);
+uint32_t mem_arm9_get32(struct mem *mem, uint32_t addr, enum mem_type type);
+void mem_arm9_set8 (struct mem *mem, uint32_t addr, uint8_t val, enum mem_type type);
+void mem_arm9_set16(struct mem *mem, uint32_t addr, uint16_t val, enum mem_type type);
+void mem_arm9_set32(struct mem *mem, uint32_t addr, uint32_t val, enum mem_type type);
 
-uint8_t  mem_vram_bga_get8 (mem_t *mem, uint32_t addr);
-uint16_t mem_vram_bga_get16(mem_t *mem, uint32_t addr);
-uint32_t mem_vram_bga_get32(mem_t *mem, uint32_t addr);
-uint8_t  mem_vram_bgb_get8 (mem_t *mem, uint32_t addr);
-uint16_t mem_vram_bgb_get16(mem_t *mem, uint32_t addr);
-uint32_t mem_vram_bgb_get32(mem_t *mem, uint32_t addr);
-uint8_t  mem_vram_obja_get8 (mem_t *mem, uint32_t addr);
-uint16_t mem_vram_obja_get16(mem_t *mem, uint32_t addr);
-uint32_t mem_vram_obja_get32(mem_t *mem, uint32_t addr);
-uint8_t  mem_vram_objb_get8 (mem_t *mem, uint32_t addr);
-uint16_t mem_vram_objb_get16(mem_t *mem, uint32_t addr);
-uint32_t mem_vram_objb_get32(mem_t *mem, uint32_t addr);
+uint8_t  mem_vram_bga_get8 (struct mem *mem, uint32_t addr);
+uint16_t mem_vram_bga_get16(struct mem *mem, uint32_t addr);
+uint32_t mem_vram_bga_get32(struct mem *mem, uint32_t addr);
+uint8_t  mem_vram_bgb_get8 (struct mem *mem, uint32_t addr);
+uint16_t mem_vram_bgb_get16(struct mem *mem, uint32_t addr);
+uint32_t mem_vram_bgb_get32(struct mem *mem, uint32_t addr);
+uint8_t  mem_vram_obja_get8 (struct mem *mem, uint32_t addr);
+uint16_t mem_vram_obja_get16(struct mem *mem, uint32_t addr);
+uint32_t mem_vram_obja_get32(struct mem *mem, uint32_t addr);
+uint8_t  mem_vram_objb_get8 (struct mem *mem, uint32_t addr);
+uint16_t mem_vram_objb_get16(struct mem *mem, uint32_t addr);
+uint32_t mem_vram_objb_get32(struct mem *mem, uint32_t addr);
+uint8_t  mem_vram_bgepa_get8 (struct mem *mem, uint32_t addr);
+uint16_t mem_vram_bgepa_get16(struct mem *mem, uint32_t addr);
+uint32_t mem_vram_bgepa_get32(struct mem *mem, uint32_t addr);
+uint8_t  mem_vram_bgepb_get8 (struct mem *mem, uint32_t addr);
+uint16_t mem_vram_bgepb_get16(struct mem *mem, uint32_t addr);
+uint32_t mem_vram_bgepb_get32(struct mem *mem, uint32_t addr);
+uint8_t  mem_vram_objepa_get8 (struct mem *mem, uint32_t addr);
+uint16_t mem_vram_objepa_get16(struct mem *mem, uint32_t addr);
+uint32_t mem_vram_objepa_get32(struct mem *mem, uint32_t addr);
+uint8_t  mem_vram_objepb_get8 (struct mem *mem, uint32_t addr);
+uint16_t mem_vram_objepb_get16(struct mem *mem, uint32_t addr);
+uint32_t mem_vram_objepb_get32(struct mem *mem, uint32_t addr);
+uint8_t  mem_vram_trpi_get8 (struct mem *mem, uint32_t addr);
+uint16_t mem_vram_trpi_get16(struct mem *mem, uint32_t addr);
+uint32_t mem_vram_trpi_get32(struct mem *mem, uint32_t addr);
+uint8_t  mem_vram_texp_get8 (struct mem *mem, uint32_t addr);
+uint16_t mem_vram_texp_get16(struct mem *mem, uint32_t addr);
+uint32_t mem_vram_texp_get32(struct mem *mem, uint32_t addr);
 
-static inline uint8_t mem_arm9_get_reg8(mem_t *mem, uint32_t reg)
+static inline uint8_t mem_arm9_get_reg8(struct mem *mem, uint32_t reg)
 {
 	return mem->arm9_regs[reg];
 }
 
-static inline void mem_arm9_set_reg8(mem_t *mem, uint32_t reg, uint8_t val)
+static inline void mem_arm9_set_reg8(struct mem *mem, uint32_t reg, uint8_t val)
 {
 	mem->arm9_regs[reg] = val;
 }
 
-static inline uint16_t mem_arm9_get_reg16(mem_t *mem, uint32_t reg)
+static inline uint16_t mem_arm9_get_reg16(struct mem *mem, uint32_t reg)
 {
 	return *(uint16_t*)&mem->arm9_regs[reg];
 }
 
-static inline void mem_arm9_set_reg16(mem_t *mem, uint32_t reg, uint16_t val)
+static inline void mem_arm9_set_reg16(struct mem *mem, uint32_t reg, uint16_t val)
 {
 	*(uint16_t*)&mem->arm9_regs[reg] = val;
 }
 
-static inline uint32_t mem_arm9_get_reg32(mem_t *mem, uint32_t reg)
+static inline uint32_t mem_arm9_get_reg32(struct mem *mem, uint32_t reg)
 {
 	return *(uint32_t*)&mem->arm9_regs[reg];
 }
 
-static inline void mem_arm9_set_reg32(mem_t *mem, uint32_t reg, uint32_t val)
+static inline void mem_arm9_set_reg32(struct mem *mem, uint32_t reg, uint32_t val)
 {
 	*(uint32_t*)&mem->arm9_regs[reg] = val;
 }
 
-static inline uint64_t mem_arm9_get_reg64(mem_t *mem, uint32_t reg)
+static inline uint64_t mem_arm9_get_reg64(struct mem *mem, uint32_t reg)
 {
 	return *(uint64_t*)&mem->arm9_regs[reg];
 }
 
-static inline void mem_arm9_set_reg64(mem_t *mem, uint32_t reg, uint64_t val)
+static inline void mem_arm9_set_reg64(struct mem *mem, uint32_t reg, uint64_t val)
 {
 	*(uint64_t*)&mem->arm9_regs[reg] = val;
 }
 
-static inline uint8_t mem_arm7_get_reg8(mem_t *mem, uint32_t reg)
+static inline uint8_t mem_arm7_get_reg8(struct mem *mem, uint32_t reg)
 {
 	return mem->arm7_regs[reg];
 }
 
-static inline void mem_arm7_set_reg8(mem_t *mem, uint32_t reg, uint8_t val)
+static inline void mem_arm7_set_reg8(struct mem *mem, uint32_t reg, uint8_t val)
 {
 	mem->arm7_regs[reg] = val;
 }
 
-static inline uint16_t mem_arm7_get_reg16(mem_t *mem, uint32_t reg)
+static inline uint16_t mem_arm7_get_reg16(struct mem *mem, uint32_t reg)
 {
 	return *(uint16_t*)&mem->arm7_regs[reg];
 }
 
-static inline void mem_arm7_set_reg16(mem_t *mem, uint32_t reg, uint16_t val)
+static inline void mem_arm7_set_reg16(struct mem *mem, uint32_t reg, uint16_t val)
 {
 	*(uint16_t*)&mem->arm7_regs[reg] = val;
 }
 
-static inline uint32_t mem_arm7_get_reg32(mem_t *mem, uint32_t reg)
+static inline uint32_t mem_arm7_get_reg32(struct mem *mem, uint32_t reg)
 {
 	return *(uint32_t*)&mem->arm7_regs[reg];
 }
 
-static inline void mem_arm7_set_reg32(mem_t *mem, uint32_t reg, uint32_t val)
+static inline void mem_arm7_set_reg32(struct mem *mem, uint32_t reg, uint32_t val)
 {
 	*(uint32_t*)&mem->arm7_regs[reg] = val;
 }
 
-static inline uint16_t mem_get_oam16(mem_t *mem, uint32_t addr)
+static inline uint16_t mem_get_oam16(struct mem *mem, uint32_t addr)
 {
 	return *(uint16_t*)&mem->oam[addr];
 }
 
-static inline uint16_t mem_get_bg_palette(mem_t *mem, uint32_t addr)
+static inline uint16_t mem_get_bg_palette(struct mem *mem, uint32_t addr)
 {
 	return *(uint16_t*)&mem->palette[addr];
 }
 
-static inline uint16_t mem_get_obj_palette(mem_t *mem, uint32_t addr)
+static inline uint16_t mem_get_obj_palette(struct mem *mem, uint32_t addr)
 {
 	return *(uint16_t*)&mem->palette[0x200 + addr];
 }

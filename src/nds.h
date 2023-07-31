@@ -4,11 +4,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
-typedef struct mbc mbc_t;
-typedef struct mem mem_t;
-typedef struct apu apu_t;
-typedef struct cpu cpu_t;
-typedef struct gpu gpu_t;
+struct mbc;
+struct mem;
+struct apu;
+struct cpu;
+struct gpu;
 
 enum nds_button
 {
@@ -28,12 +28,12 @@ enum nds_button
 
 typedef struct nds
 {
-	mbc_t *mbc;
-	mem_t *mem;
-	apu_t *apu;
-	cpu_t *arm7;
-	cpu_t *arm9;
-	gpu_t *gpu;
+	struct mbc *mbc;
+	struct mem *mem;
+	struct apu *apu;
+	struct cpu *arm7;
+	struct cpu *arm9;
+	struct gpu *gpu;
 	uint32_t joypad;
 	uint64_t cycle;
 	uint8_t touch_x;

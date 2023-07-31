@@ -56,9 +56,11 @@ static const uint8_t arm9_tcm_cycles_32[]  = {0, 1,  1, 1,  1};
 static const uint8_t arm9_tcm_cycles_16[]  = {0, 1,  1, 1,  1};
 static const uint8_t arm9_tcm_cycles_8[]   = {0, 1,  1, 1,  1};
 
-mem_t *mem_new(nds_t *nds, mbc_t *mbc)
+static void update_vram_maps(struct mem *mem);
+
+struct mem *mem_new(struct nds *nds, struct mbc *mbc)
 {
-	mem_t *mem = calloc(sizeof(*mem), 1);
+	struct mem *mem = calloc(sizeof(*mem), 1);
 	if (!mem)
 		return NULL;
 
@@ -71,18 +73,10 @@ mem_t *mem_new(nds_t *nds, mbc_t *mbc)
 	mem_arm9_set_reg32(mem, MEM_ARM7_REG_ROMCTRL, 1 << 23);
 	mem_arm7_set_reg32(mem, MEM_ARM7_REG_SOUNDBIAS, 0x200);
 	mem_arm7_set_reg32(mem, MEM_ARM7_REG_POWCNT2, 1);
+	mem_arm9_set_reg32(mem, MEM_ARM9_REG_GXSTAT, 1 << 26);
 	mem->spi_powerman.regs[0x0] = 0x0C; /* enable backlight */
 	mem->spi_powerman.regs[0x4] = 0x42; /* high brightness */
-	for (size_t i = 0; i < 32; ++i)
-		mem->vram_bga_bases[i] = 0xFFFFFFFF;
-	for (size_t i = 0; i < 8; ++i)
-		mem->vram_bgb_bases[i] = 0xFFFFFFFF;
-	for (size_t i = 0; i < 16; ++i)
-		mem->vram_obja_bases[i] = 0xFFFFFFFF;
-	for (size_t i = 0; i < 8; ++i)
-		mem->vram_objb_bases[i] = 0xFFFFFFFF;
-	for (size_t i = 0; i < 2; ++i)
-		mem->vram_arm7_bases[i] = 0xFFFFFFFF;
+	update_vram_maps(mem);
 	mem->sram_size = 0x40000 + mbc->backup_size;
 	mem->sram = calloc(mem->sram_size, 1);
 	if (!mem->sram)
@@ -95,7 +89,7 @@ mem_t *mem_new(nds_t *nds, mbc_t *mbc)
 	return mem;
 }
 
-void mem_del(mem_t *mem)
+void mem_del(struct mem *mem)
 {
 	if (!mem)
 		return;
@@ -104,7 +98,7 @@ void mem_del(mem_t *mem)
 }
 
 #define ARM_TIMERS(armv) \
-static void arm##armv##_timers(mem_t *mem, uint32_t cycles) \
+static void arm##armv##_timers(struct mem *mem, uint32_t cycles) \
 { \
 	uint16_t prev_overflow = 0; \
 	for (unsigned i = 0; i < 4; ++i) \
@@ -134,7 +128,7 @@ static void arm##armv##_timers(mem_t *mem, uint32_t cycles) \
 		while (mem->arm##armv##_timers[i].v >= (0x10000 << 10)); \
 	} \
 } \
-static void arm##armv##_timer_control(mem_t *mem, uint8_t timer, uint8_t v) \
+static void arm##armv##_timer_control(struct mem *mem, uint8_t timer, uint8_t v) \
 { \
 	uint8_t prev = mem_arm##armv##_get_reg8(mem, MEM_ARM##armv##_REG_TM0CNT_H + timer * 4); \
 	mem_arm##armv##_set_reg8(mem, MEM_ARM##armv##_REG_TM0CNT_H + timer * 4, v); \
@@ -145,14 +139,14 @@ static void arm##armv##_timer_control(mem_t *mem, uint8_t timer, uint8_t v) \
 ARM_TIMERS(7);
 ARM_TIMERS(9);
 
-void mem_timers(mem_t *mem, uint32_t cycles)
+void mem_timers(struct mem *mem, uint32_t cycles)
 {
 	arm7_timers(mem, cycles);
 	arm9_timers(mem, cycles);
 }
 
 #define ARM_DMA(armv) \
-static void arm##armv##_dma(mem_t *mem, uint8_t id, uint32_t cycles) \
+static void arm##armv##_dma(struct mem *mem, uint8_t id, uint32_t cycles) \
 { \
 	struct dma *dma = &mem->arm##armv##_dma[id]; \
 	if (dma->status != (MEM_DMA_ACTIVE | MEM_DMA_ENABLE) ) \
@@ -238,7 +232,7 @@ static void arm##armv##_dma(mem_t *mem, uint8_t id, uint32_t cycles) \
 		} \
 	} \
 } \
-static void arm##armv##_load_dma_length(mem_t *mem, size_t id) \
+static void arm##armv##_load_dma_length(struct mem *mem, size_t id) \
 { \
 	struct dma *dma = &mem->arm##armv##_dma[id]; \
 	dma->len = mem_arm##armv##_get_reg16(mem, MEM_ARM##armv##_REG_DMA0CNT_L + 0xC * id); \
@@ -266,7 +260,7 @@ static void arm##armv##_load_dma_length(mem_t *mem, size_t id) \
 		} \
 	} \
 } \
-static void arm##armv##_dma_control(mem_t *mem, uint8_t id) \
+static void arm##armv##_dma_control(struct mem *mem, uint8_t id) \
 { \
 	struct dma *dma = &mem->arm##armv##_dma[id]; \
 	dma->src = mem_arm##armv##_get_reg32(mem, MEM_ARM##armv##_REG_DMA0SAD + 0xC * id); \
@@ -292,7 +286,7 @@ static void arm##armv##_dma_control(mem_t *mem, uint8_t id) \
 		       id, armv == 7 ? ((cnt_h >> 12) & 3) : ((cnt_h >> 11) & 7), \
 		       dma->len, dma->src, dma->dst, cnt_h); \
 } \
-static void arm##armv##_dma_start(mem_t *mem, uint8_t cond) \
+static void arm##armv##_dma_start(struct mem *mem, uint8_t cond) \
 { \
 	for (uint8_t i = 0; i < 4; ++i) \
 	{ \
@@ -333,7 +327,7 @@ static void arm##armv##_dma_start(mem_t *mem, uint8_t cond) \
 ARM_DMA(7);
 ARM_DMA(9);
 
-void mem_dma(mem_t *mem, uint32_t cycles)
+void mem_dma(struct mem *mem, uint32_t cycles)
 {
 	arm7_dma(mem, 0, cycles);
 	arm7_dma(mem, 1, cycles);
@@ -345,36 +339,36 @@ void mem_dma(mem_t *mem, uint32_t cycles)
 	arm9_dma(mem, 3, cycles);
 }
 
-void mem_vblank(mem_t *mem)
+void mem_vblank(struct mem *mem)
 {
 	arm7_dma_start(mem, 1);
 	arm9_dma_start(mem, 1);
 }
 
-void mem_hblank(mem_t *mem)
+void mem_hblank(struct mem *mem)
 {
 	arm9_dma_start(mem, 2);
 }
 
-void mem_dscard(mem_t *mem)
+void mem_dscard(struct mem *mem)
 {
 	arm7_dma_start(mem, 2);
 	arm9_dma_start(mem, 5);
 }
 
-void mem_arm9_if(mem_t *mem, uint32_t f)
+void mem_arm9_if(struct mem *mem, uint32_t f)
 {
 	mem_arm9_set_reg32(mem, MEM_ARM9_REG_IF, mem_arm9_get_reg32(mem, MEM_ARM9_REG_IF) | f);
 	cpu_update_irq_state(mem->nds->arm9);
 }
 
-void mem_arm7_if(mem_t *mem, uint32_t f)
+void mem_arm7_if(struct mem *mem, uint32_t f)
 {
 	mem_arm7_set_reg32(mem, MEM_ARM7_REG_IF, mem_arm7_get_reg32(mem, MEM_ARM7_REG_IF) | f);
 	cpu_update_irq_state(mem->nds->arm7);
 }
 
-static uint8_t powerman_read(mem_t *mem)
+static uint8_t powerman_read(struct mem *mem)
 {
 #if 0
 	printf("[%08" PRIx32 "] SPI powerman read 0x%02" PRIx8 "\n",
@@ -384,7 +378,7 @@ static uint8_t powerman_read(mem_t *mem)
 	return mem->spi_powerman.read_latch;
 }
 
-static uint8_t firmware_read(mem_t *mem)
+static uint8_t firmware_read(struct mem *mem)
 {
 #if 0
 	printf("[%08" PRIx32 "] SPI firmware read 0x%02" PRIx8 "\n",
@@ -394,7 +388,7 @@ static uint8_t firmware_read(mem_t *mem)
 	return mem->spi_firmware.read_latch;
 }
 
-static uint8_t touchscreen_read(mem_t *mem)
+static uint8_t touchscreen_read(struct mem *mem)
 {
 	uint8_t v;
 	if (!mem->spi_touchscreen.read_pos)
@@ -413,7 +407,7 @@ static uint8_t touchscreen_read(mem_t *mem)
 	return v;
 }
 
-static void powerman_write(mem_t *mem, uint8_t v)
+static void powerman_write(struct mem *mem, uint8_t v)
 {
 #if 0
 	printf("[%08" PRIx32 "] SPI powerman write 0x%02" PRIx8 "\n",
@@ -452,7 +446,7 @@ static void powerman_write(mem_t *mem, uint8_t v)
 	}
 }
 
-static void firmware_write(mem_t *mem, uint8_t v)
+static void firmware_write(struct mem *mem, uint8_t v)
 {
 #if 0
 	printf("[%08" PRIx32 "] SPI firmware write 0x%02" PRIx8 "\n",
@@ -533,7 +527,7 @@ static void firmware_write(mem_t *mem, uint8_t v)
 	}
 }
 
-static void touchscreen_write(mem_t *mem, uint8_t v)
+static void touchscreen_write(struct mem *mem, uint8_t v)
 {
 #if 0
 	printf("[%08" PRIx32 "] SPI touchscreen write 0x%02" PRIx8 "\n",
@@ -576,7 +570,7 @@ static void touchscreen_write(mem_t *mem, uint8_t v)
 	}
 }
 
-static void powerman_reset(mem_t *mem)
+static void powerman_reset(struct mem *mem)
 {
 #if 0
 	printf("[%08" PRIx32 "] SPI powerman reset\n",
@@ -585,7 +579,7 @@ static void powerman_reset(mem_t *mem)
 	mem->spi_powerman.has_cmd = 0;
 }
 
-static void firmware_reset(mem_t *mem)
+static void firmware_reset(struct mem *mem)
 {
 #if 0
 	printf("[%08" PRIx32 "] SPI firmware reset\n",
@@ -594,7 +588,7 @@ static void firmware_reset(mem_t *mem)
 	mem->spi_firmware.cmd = 0;
 }
 
-static void touchscreen_reset(mem_t *mem)
+static void touchscreen_reset(struct mem *mem)
 {
 #if 0
 	printf("[%08" PRIx32 "] SPI touchscreen reset\n",
@@ -603,7 +597,7 @@ static void touchscreen_reset(mem_t *mem)
 	mem->spi_touchscreen.has_channel = 0;
 }
 
-static uint8_t spi_read(mem_t *mem)
+static uint8_t spi_read(struct mem *mem)
 {
 #if 0
 	printf("[%08" PRIx32 "] SPI read\n",
@@ -624,7 +618,7 @@ static uint8_t spi_read(mem_t *mem)
 	return 0;
 }
 
-static void spi_write(mem_t *mem, uint8_t v)
+static void spi_write(struct mem *mem, uint8_t v)
 {
 #if 0
 	printf("[%08" PRIx32 "] SPI write %02" PRIx8 "\n",
@@ -664,12 +658,12 @@ static void spi_write(mem_t *mem, uint8_t v)
 		mem_arm7_if(mem, 1 << 23);
 }
 
-static uint8_t auxspi_read(mem_t *mem)
+static uint8_t auxspi_read(struct mem *mem)
 {
 	return mbc_spi_read(mem->mbc);
 }
 
-static void auxspi_write(mem_t *mem, uint8_t v)
+static void auxspi_write(struct mem *mem, uint8_t v)
 {
 	mbc_spi_write(mem->mbc, v);
 	if (!(mem_arm9_get_reg16(mem, MEM_ARM9_REG_AUXSPICNT) & (1 << 6)))
@@ -680,7 +674,7 @@ static void auxspi_write(mem_t *mem, uint8_t v)
 #define BCD(n) (((n) % 10) + (((n) / 10) * 16))
 #define DAA(n) (((n) % 16) + (((n) / 16) * 10))
 
-static void rtc_write(mem_t *mem, uint8_t v)
+static void rtc_write(struct mem *mem, uint8_t v)
 {
 #if 0
 	printf("rtc write %02" PRIx8 "\n", v);
@@ -944,7 +938,7 @@ static void rtc_write(mem_t *mem, uint8_t v)
 	}
 }
 
-static uint8_t rtc_read(mem_t *mem)
+static uint8_t rtc_read(struct mem *mem)
 {
 #if 0
 	printf("[%08" PRIx32 "] rtc read %02" PRIx8 "\n",
@@ -953,7 +947,7 @@ static uint8_t rtc_read(mem_t *mem)
 	return mem->rtc.outbyte;
 }
 
-static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
+static void set_arm7_reg8(struct mem *mem, uint32_t addr, uint8_t v)
 {
 #if 0
 	printf("[ARM7] register [%08" PRIx32 "] = %02" PRIx8 "\n", addr, v);
@@ -1653,13 +1647,13 @@ static void set_arm7_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 	}
 }
 
-static void set_arm7_reg16(mem_t *mem, uint32_t addr, uint16_t v)
+static void set_arm7_reg16(struct mem *mem, uint32_t addr, uint16_t v)
 {
 	set_arm7_reg8(mem, addr + 0, v >> 0);
 	set_arm7_reg8(mem, addr + 1, v >> 8);
 }
 
-static void set_arm7_reg32(mem_t *mem, uint32_t addr, uint32_t v)
+static void set_arm7_reg32(struct mem *mem, uint32_t addr, uint32_t v)
 {
 	set_arm7_reg8(mem, addr + 0, v >> 0);
 	set_arm7_reg8(mem, addr + 1, v >> 8);
@@ -1667,7 +1661,7 @@ static void set_arm7_reg32(mem_t *mem, uint32_t addr, uint32_t v)
 	set_arm7_reg8(mem, addr + 3, v >> 24);
 }
 
-static uint8_t get_arm7_reg8(mem_t *mem, uint32_t addr)
+static uint8_t get_arm7_reg8(struct mem *mem, uint32_t addr)
 {
 	switch (addr)
 	{
@@ -2033,13 +2027,13 @@ static uint8_t get_arm7_reg8(mem_t *mem, uint32_t addr)
 	return 0;
 }
 
-static uint16_t get_arm7_reg16(mem_t *mem, uint32_t addr)
+static uint16_t get_arm7_reg16(struct mem *mem, uint32_t addr)
 {
 	return (get_arm7_reg8(mem, addr + 0) << 0)
 	     | (get_arm7_reg8(mem, addr + 1) << 8);
 }
 
-static uint32_t get_arm7_reg32(mem_t *mem, uint32_t addr)
+static uint32_t get_arm7_reg32(struct mem *mem, uint32_t addr)
 {
 	return (get_arm7_reg8(mem, addr + 0) << 0)
 	     | (get_arm7_reg8(mem, addr + 1) << 8)
@@ -2047,12 +2041,12 @@ static uint32_t get_arm7_reg32(mem_t *mem, uint32_t addr)
 	     | (get_arm7_reg8(mem, addr + 3) << 24);
 }
 
-static void arm7_instr_delay(mem_t *mem, const uint8_t *table, enum mem_type type)
+static void arm7_instr_delay(struct mem *mem, const uint8_t *table, enum mem_type type)
 {
 	mem->nds->arm7->instr_delay += table[type];
 }
 
-static void *get_arm7_vram_ptr(mem_t *mem, uint32_t addr)
+static void *get_arm7_vram_ptr(struct mem *mem, uint32_t addr)
 {
 	uint32_t base = mem->vram_arm7_bases[(addr / 0x20000) & 0x1];
 	if (base == 0xFFFFFFFF)
@@ -2061,7 +2055,7 @@ static void *get_arm7_vram_ptr(mem_t *mem, uint32_t addr)
 }
 
 #define MEM_ARM7_GET(size) \
-uint##size##_t mem_arm7_get##size(mem_t *mem, uint32_t addr, enum mem_type type) \
+uint##size##_t mem_arm7_get##size(struct mem *mem, uint32_t addr, enum mem_type type) \
 { \
 	if (size == 16) \
 		addr &= ~1; \
@@ -2111,7 +2105,7 @@ uint##size##_t mem_arm7_get##size(mem_t *mem, uint32_t addr, enum mem_type type)
 				return 0; \
 			return 0xFF; \
 	} \
-	printf("[ARM7] [%08" PRIx32 "] unknown get" #size " addr: %08" PRIx32 "\n", \
+	printf("[ARM7] [%08" PRIx32 "] unknown get" #size " [%08" PRIx32 "]\n", \
 	       cpu_get_reg(mem->nds->arm7, CPU_REG_PC), addr); \
 	return 0; \
 }
@@ -2121,7 +2115,7 @@ MEM_ARM7_GET(16);
 MEM_ARM7_GET(32);
 
 #define MEM_ARM7_SET(size) \
-void mem_arm7_set##size(mem_t *mem, uint32_t addr, uint##size##_t v, enum mem_type type) \
+void mem_arm7_set##size(struct mem *mem, uint32_t addr, uint##size##_t v, enum mem_type type) \
 { \
 	if (size == 16) \
 		addr &= ~1; \
@@ -2163,15 +2157,15 @@ void mem_arm7_set##size(mem_t *mem, uint32_t addr, uint##size##_t v, enum mem_ty
 		case 0xA: \
 			return; \
 	} \
-	printf("[ARM7] [%08" PRIx32 "] unknown set" #size " addr: %08" PRIx32 "\n", \
-	       cpu_get_reg(mem->nds->arm7, CPU_REG_PC), addr); \
+	printf("[ARM7] [%08" PRIx32 "] unknown set" #size " [%08" PRIx32 "] = %x\n", \
+	       cpu_get_reg(mem->nds->arm7, CPU_REG_PC), addr, v); \
 }
 
 MEM_ARM7_SET(8);
 MEM_ARM7_SET(16);
 MEM_ARM7_SET(32);
 
-static void run_div(mem_t *mem)
+static void run_div(struct mem *mem)
 {
 	mem->arm9_regs[MEM_ARM9_REG_DIVCNT + 1] &= ~(1 << 7);
 	if (!mem_arm9_get_reg32(mem, MEM_ARM9_REG_DIV_DENOM + 0)
@@ -2274,7 +2268,7 @@ static void run_div(mem_t *mem)
 	}
 }
 
-static void run_sqrt(mem_t *mem)
+static void run_sqrt(struct mem *mem)
 {
 	uint64_t param;
 	if (mem_arm9_get_reg32(mem, MEM_ARM9_REG_SQRTCNT) & (1 << 0))
@@ -2298,7 +2292,7 @@ static void run_sqrt(mem_t *mem)
 	mem_arm9_set_reg32(mem, MEM_ARM9_REG_SQRT_RESULT, l);
 }
 
-static void update_vram_maps(mem_t *mem)
+static void update_vram_maps(struct mem *mem)
 {
 	for (size_t i = 0; i < 32; ++i)
 		mem->vram_bga_bases[i] = 0xFFFFFFFF;
@@ -2310,6 +2304,15 @@ static void update_vram_maps(mem_t *mem)
 		mem->vram_objb_bases[i] = 0xFFFFFFFF;
 	for (size_t i = 0; i < 2; ++i)
 		mem->vram_arm7_bases[i] = 0xFFFFFFFF;
+	for (size_t i = 0; i < 2; ++i)
+		mem->vram_bgepa_bases[i] = 0xFFFFFFFF;
+	mem->vram_bgepb_base = 0xFFFFFFFF;
+	mem->vram_objepa_base = 0xFFFFFFFF;
+	mem->vram_objepb_base = 0xFFFFFFFF;
+	for (size_t i = 0; i < 4; ++i)
+		mem->vram_trpi_bases[i] = 0xFFFFFFFF;
+	for (size_t i = 0; i < 8; ++i)
+		mem->vram_texp_bases[i] = 0xFFFFFFFF;
 	uint8_t cnt_a = mem_arm9_get_reg8(mem, MEM_ARM9_REG_VRAMCNT_A);
 #if 0
 	printf("VRAMCNT_A = %02" PRIx8 "\n", cnt_a);
@@ -2331,7 +2334,7 @@ static void update_vram_maps(mem_t *mem)
 					mem->vram_obja_bases[ofs_a * 8 + i] = MEM_VRAM_A_BASE + i * 0x4000;
 				break;
 			case 3:
-				/* XXX texture / rear plane image */
+				mem->vram_trpi_bases[ofs_a] = MEM_VRAM_A_BASE;
 				break;
 		}
 	}
@@ -2356,7 +2359,7 @@ static void update_vram_maps(mem_t *mem)
 					mem->vram_obja_bases[ofs_b * 8 + i] = MEM_VRAM_B_BASE + i * 0x4000;
 				break;
 			case 3:
-				/* XXX texture / rear plane image */
+				mem->vram_trpi_bases[ofs_b] = MEM_VRAM_B_BASE;
 				break;
 		}
 	}
@@ -2379,7 +2382,7 @@ static void update_vram_maps(mem_t *mem)
 				mem->vram_arm7_bases[ofs_c & 1] = MEM_VRAM_C_BASE + (ofs_c & 1) * 0x20000;
 				break;
 			case 3:
-				/* XXX texture / rear plane image */
+				mem->vram_trpi_bases[ofs_c] = MEM_VRAM_C_BASE;
 				break;
 			case 4:
 				for (size_t i = 0; i < 8; ++i)
@@ -2410,7 +2413,7 @@ static void update_vram_maps(mem_t *mem)
 				mem->vram_arm7_bases[ofs_d & 1] = MEM_VRAM_D_BASE + (ofs_d & 1) * 0x20000;
 				break;
 			case 3:
-				/* XXX texture / rear plane image */
+				mem->vram_trpi_bases[ofs_d] = MEM_VRAM_D_BASE;
 				break;
 			case 4:
 				for (size_t i = 0; i < 8; ++i)
@@ -2441,10 +2444,12 @@ static void update_vram_maps(mem_t *mem)
 					mem->vram_obja_bases[i] = MEM_VRAM_E_BASE + i * 0x4000;
 				break;
 			case 3:
-				/* XXX texture palette */
+				for (size_t i = 0; i < 4; ++i)
+					mem->vram_texp_bases[i] = MEM_VRAM_E_BASE + i * 0x4000;
 				break;
 			case 4:
-				/* XXX bga ext palette */
+				for (size_t i = 0; i < 2; ++i)
+					mem->vram_bgepa_bases[i] = MEM_VRAM_E_BASE + i * 0x4000;
 				break;
 			case 5:
 			case 6:
@@ -2470,13 +2475,13 @@ static void update_vram_maps(mem_t *mem)
 				mem->vram_obja_bases[(ofs_f & 1) | ((ofs_f & 2) << 1)] = MEM_VRAM_F_BASE;
 				break;
 			case 3:
-				/* XXX texture palette */
+				mem->vram_texp_bases[(ofs_f & 1) | ((ofs_f & 2) << 1)] = MEM_VRAM_F_BASE;
 				break;
 			case 4:
-				/* XXX bga ext palette */
+				mem->vram_bgepa_bases[ofs_f & 1] = MEM_VRAM_F_BASE;
 				break;
 			case 5:
-				/* XXX obja ext palette */
+				mem->vram_objepa_base = MEM_VRAM_F_BASE;
 				break;
 			case 6:
 			case 7:
@@ -2501,13 +2506,13 @@ static void update_vram_maps(mem_t *mem)
 				mem->vram_obja_bases[(ofs_g & 1) | ((ofs_g & 2) << 1)] = MEM_VRAM_G_BASE;
 				break;
 			case 3:
-				/* XXX texture palette */
+				mem->vram_texp_bases[(ofs_g & 1) | ((ofs_g & 2) << 1)] = MEM_VRAM_G_BASE;
 				break;
 			case 4:
-				/* XXX bga ext palette */
+				mem->vram_bgepa_bases[ofs_g & 1] = MEM_VRAM_G_BASE;
 				break;
 			case 5:
-				/* XXX obja ext palette */
+				mem->vram_objepa_base = MEM_VRAM_G_BASE;
 				break;
 			case 6:
 			case 7:
@@ -2529,7 +2534,7 @@ static void update_vram_maps(mem_t *mem)
 				mem->vram_bgb_bases[1] = MEM_VRAM_H_BASE + 0x4000;
 				break;
 			case 2:
-				/* XXX bgb ext palette */
+				mem->vram_bgepb_base = MEM_VRAM_H_BASE;
 				break;
 			case 3:
 				break;
@@ -2552,13 +2557,13 @@ static void update_vram_maps(mem_t *mem)
 				mem->vram_objb_bases[0] = MEM_VRAM_I_BASE;
 				break;
 			case 3:
-				/* XXX objb ext palette */
+				mem->vram_objepb_base = MEM_VRAM_I_BASE;
 				break;
 		}
 	}
 }
 
-static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
+static void set_arm9_reg8(struct mem *mem, uint32_t addr, uint8_t v)
 {
 	switch (addr)
 	{
@@ -3112,6 +3117,16 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM9_REG_SQRT_RESULT + 1:
 		case MEM_ARM9_REG_SQRT_RESULT + 2:
 		case MEM_ARM9_REG_SQRT_RESULT + 3:
+		case MEM_ARM9_REG_GXSTAT:
+		case MEM_ARM9_REG_GXSTAT + 2:
+			return;
+		case MEM_ARM9_REG_GXSTAT + 1:
+			if (v & (1 << 7))
+				mem->arm9_regs[addr] &= ~(1 << 7);
+			return;
+		case MEM_ARM9_REG_GXSTAT + 3:
+			mem->arm9_regs[addr] &= 0x3F;
+			mem->arm9_regs[addr] |= v & 0xC0;
 			return;
 		case 0x58: /* silent these. they are memset(0) */
 		case 0x59:
@@ -3277,13 +3292,13 @@ static void set_arm9_reg8(mem_t *mem, uint32_t addr, uint8_t v)
 	}
 }
 
-static void set_arm9_reg16(mem_t *mem, uint32_t addr, uint16_t v)
+static void set_arm9_reg16(struct mem *mem, uint32_t addr, uint16_t v)
 {
 	set_arm9_reg8(mem, addr + 0, v >> 0);
 	set_arm9_reg8(mem, addr + 1, v >> 8);
 }
 
-static void set_arm9_reg32(mem_t *mem, uint32_t addr, uint32_t v)
+static void set_arm9_reg32(struct mem *mem, uint32_t addr, uint32_t v)
 {
 	set_arm9_reg8(mem, addr + 0, v >> 0);
 	set_arm9_reg8(mem, addr + 1, v >> 8);
@@ -3291,7 +3306,7 @@ static void set_arm9_reg32(mem_t *mem, uint32_t addr, uint32_t v)
 	set_arm9_reg8(mem, addr + 3, v >> 24);
 }
 
-static uint8_t get_arm9_reg8(mem_t *mem, uint32_t addr)
+static uint8_t get_arm9_reg8(struct mem *mem, uint32_t addr)
 {
 	switch (addr)
 	{
@@ -3510,6 +3525,10 @@ static uint8_t get_arm9_reg8(mem_t *mem, uint32_t addr)
 		case MEM_ARM9_REG_TM2CNT_H + 1:
 		case MEM_ARM9_REG_TM3CNT_H:
 		case MEM_ARM9_REG_TM3CNT_H + 1:
+		case MEM_ARM9_REG_GXSTAT:
+		case MEM_ARM9_REG_GXSTAT + 1:
+		case MEM_ARM9_REG_GXSTAT + 2:
+		case MEM_ARM9_REG_GXSTAT + 3:
 			return mem->arm9_regs[addr];
 		case MEM_ARM9_REG_AUXSPICNT:
 		case MEM_ARM9_REG_AUXSPICNT + 1:
@@ -3631,13 +3650,13 @@ static uint8_t get_arm9_reg8(mem_t *mem, uint32_t addr)
 	return 0;
 }
 
-static uint16_t get_arm9_reg16(mem_t *mem, uint32_t addr)
+static uint16_t get_arm9_reg16(struct mem *mem, uint32_t addr)
 {
 	return (get_arm9_reg8(mem, addr + 0) << 0)
 	     | (get_arm9_reg8(mem, addr + 1) << 8);
 }
 
-static uint32_t get_arm9_reg32(mem_t *mem, uint32_t addr)
+static uint32_t get_arm9_reg32(struct mem *mem, uint32_t addr)
 {
 	return (get_arm9_reg8(mem, addr + 0) << 0)
 	     | (get_arm9_reg8(mem, addr + 1) << 8)
@@ -3645,12 +3664,12 @@ static uint32_t get_arm9_reg32(mem_t *mem, uint32_t addr)
 	     | (get_arm9_reg8(mem, addr + 3) << 24);
 }
 
-static void arm9_instr_delay(mem_t *mem, const uint8_t *table, enum mem_type type)
+static void arm9_instr_delay(struct mem *mem, const uint8_t *table, enum mem_type type)
 {
 	mem->nds->arm9->instr_delay += table[type];
 }
 
-static void *get_vram_bga_ptr(mem_t *mem, uint32_t addr)
+static void *get_vram_bga_ptr(struct mem *mem, uint32_t addr)
 {
 	uint32_t base = mem->vram_bga_bases[(addr / 0x4000) & 0x1F];
 	if (base == 0xFFFFFFFF)
@@ -3658,7 +3677,7 @@ static void *get_vram_bga_ptr(mem_t *mem, uint32_t addr)
 	return &mem->vram[base + (addr & 0x3FFF)];
 }
 
-static void *get_vram_bgb_ptr(mem_t *mem, uint32_t addr)
+static void *get_vram_bgb_ptr(struct mem *mem, uint32_t addr)
 {
 	uint32_t base = mem->vram_bgb_bases[(addr / 0x4000) & 0x7];
 	if (base == 0xFFFFFFFF)
@@ -3666,7 +3685,7 @@ static void *get_vram_bgb_ptr(mem_t *mem, uint32_t addr)
 	return &mem->vram[base + (addr & 0x3FFF)];
 }
 
-static void *get_vram_obja_ptr(mem_t *mem, uint32_t addr)
+static void *get_vram_obja_ptr(struct mem *mem, uint32_t addr)
 {
 	uint32_t base = mem->vram_obja_bases[(addr / 0x4000) & 0xF];
 	if (base == 0xFFFFFFFF)
@@ -3674,7 +3693,7 @@ static void *get_vram_obja_ptr(mem_t *mem, uint32_t addr)
 	return &mem->vram[base + (addr & 0x3FFF)];
 }
 
-static void *get_vram_objb_ptr(mem_t *mem, uint32_t addr)
+static void *get_vram_objb_ptr(struct mem *mem, uint32_t addr)
 {
 	uint32_t base = mem->vram_objb_bases[(addr / 0x4000) & 0x7];
 	if (base == 0xFFFFFFFF)
@@ -3682,7 +3701,55 @@ static void *get_vram_objb_ptr(mem_t *mem, uint32_t addr)
 	return &mem->vram[base + (addr & 0x3FFF)];
 }
 
-static void *get_arm9_vram_ptr(mem_t *mem, uint32_t addr)
+static void *get_vram_bgepa_ptr(struct mem *mem, uint32_t addr)
+{
+	uint32_t base = mem->vram_bgepa_bases[(addr / 0x4000) & 0x1];
+	if (base == 0xFFFFFFFF)
+		return NULL;
+	return &mem->vram[base + (addr & 0x3FFF)];
+}
+
+static void *get_vram_bgepb_ptr(struct mem *mem, uint32_t addr)
+{
+	uint32_t base = mem->vram_bgepb_base;
+	if (base == 0xFFFFFFFF)
+		return NULL;
+	return &mem->vram[base + (addr & 0x7FFF)];
+}
+
+static void *get_vram_objepa_ptr(struct mem *mem, uint32_t addr)
+{
+	uint32_t base = mem->vram_objepa_base;
+	if (base == 0xFFFFFFFF)
+		return NULL;
+	return &mem->vram[base + (addr & 0x1FFF)];
+}
+
+static void *get_vram_objepb_ptr(struct mem *mem, uint32_t addr)
+{
+	uint32_t base = mem->vram_objepb_base;
+	if (base == 0xFFFFFFFF)
+		return NULL;
+	return &mem->vram[base + (addr & 0x1FFF)];
+}
+
+static void *get_vram_trpi_ptr(struct mem *mem, uint32_t addr)
+{
+	uint32_t base = mem->vram_trpi_bases[(addr / 0x20000) & 0x3];
+	if (base == 0xFFFFFFFF)
+		return NULL;
+	return &mem->vram[base + (addr & 0x1FFFF)];
+}
+
+static void *get_vram_texp_ptr(struct mem *mem, uint32_t addr)
+{
+	uint32_t base = mem->vram_texp_bases[(addr / 0x4000) & 0x7];
+	if (base == 0xFFFFFFFF)
+		return NULL;
+	return &mem->vram[base + (addr & 0x3FFF)];
+}
+
+static void *get_arm9_vram_ptr(struct mem *mem, uint32_t addr)
 {
 	switch ((addr >> 20) & 0xF)
 	{
@@ -3735,7 +3802,10 @@ static void *get_arm9_vram_ptr(mem_t *mem, uint32_t addr)
 						case 0x2:
 						case 0x3:
 							if ((mem_arm9_get_reg8(mem, MEM_ARM9_REG_VRAMCNT_H) & 0x83) != 0x80)
+							{
+								printf("failed to get vram h %" PRIx32 "\n", addr);
 								return NULL;
+							}
 							return &mem->vram[MEM_VRAM_H_BASE + (addr & MEM_VRAM_H_MASK)];
 					}
 					break;
@@ -3750,7 +3820,7 @@ static void *get_arm9_vram_ptr(mem_t *mem, uint32_t addr)
 }
 
 #define MEM_ARM9_GET(size) \
-uint##size##_t mem_arm9_get##size(mem_t *mem, uint32_t addr, enum mem_type type) \
+uint##size##_t mem_arm9_get##size(struct mem *mem, uint32_t addr, enum mem_type type) \
 { \
 	/* printf("[%08" PRIx32 "] ARM9 get" #size " addr: %08" PRIx32 "\n", cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr); */ \
 	if (size == 16) \
@@ -3817,34 +3887,76 @@ uint##size##_t mem_arm9_get##size(mem_t *mem, uint32_t addr, enum mem_type type)
 				return 0; \
 			return 0xFF; \
 	} \
-	printf("[ARM9] [%08" PRIx32 "] unknown get" #size " addr: %08" PRIx32 "\n", \
+	printf("[ARM9] [%08" PRIx32 "] unknown get" #size " [%08" PRIx32 "]\n", \
 	       cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr); \
 	return 0; \
 } \
-uint##size##_t mem_vram_bga_get##size(mem_t *mem, uint32_t addr) \
+uint##size##_t mem_vram_bga_get##size(struct mem *mem, uint32_t addr) \
 { \
 	void *ptr = get_vram_bga_ptr(mem, addr); \
 	if (!ptr) \
 		return 0; \
 	return *(uint##size##_t*)ptr; \
 } \
-uint##size##_t mem_vram_bgb_get##size(mem_t *mem, uint32_t addr) \
+uint##size##_t mem_vram_bgb_get##size(struct mem *mem, uint32_t addr) \
 { \
 	void *ptr = get_vram_bgb_ptr(mem, addr); \
 	if (!ptr) \
 		return 0; \
 	return *(uint##size##_t*)ptr; \
 } \
-uint##size##_t mem_vram_obja_get##size(mem_t *mem, uint32_t addr) \
+uint##size##_t mem_vram_obja_get##size(struct mem *mem, uint32_t addr) \
 { \
 	void *ptr = get_vram_obja_ptr(mem, addr); \
 	if (!ptr) \
 		return 0; \
 	return *(uint##size##_t*)ptr; \
 } \
-uint##size##_t mem_vram_objb_get##size(mem_t *mem, uint32_t addr) \
+uint##size##_t mem_vram_objb_get##size(struct mem *mem, uint32_t addr) \
 { \
 	void *ptr = get_vram_objb_ptr(mem, addr); \
+	if (!ptr) \
+		return 0; \
+	return *(uint##size##_t*)ptr; \
+} \
+uint##size##_t mem_vram_bgepa_get##size(struct mem *mem, uint32_t addr) \
+{ \
+	void *ptr = get_vram_bgepa_ptr(mem, addr); \
+	if (!ptr) \
+		return 0; \
+	return *(uint##size##_t*)ptr; \
+} \
+uint##size##_t mem_vram_bgepb_get##size(struct mem *mem, uint32_t addr) \
+{ \
+	void *ptr = get_vram_bgepb_ptr(mem, addr); \
+	if (!ptr) \
+		return 0; \
+	return *(uint##size##_t*)ptr; \
+} \
+uint##size##_t mem_vram_objepa_get##size(struct mem *mem, uint32_t addr) \
+{ \
+	void *ptr = get_vram_objepa_ptr(mem, addr); \
+	if (!ptr) \
+		return 0; \
+	return *(uint##size##_t*)ptr; \
+} \
+uint##size##_t mem_vram_objepb_get##size(struct mem *mem, uint32_t addr) \
+{ \
+	void *ptr = get_vram_objepb_ptr(mem, addr); \
+	if (!ptr) \
+		return 0; \
+	return *(uint##size##_t*)ptr; \
+} \
+uint##size##_t mem_vram_trpi_get##size(struct mem *mem, uint32_t addr) \
+{ \
+	void *ptr = get_vram_trpi_ptr(mem, addr); \
+	if (!ptr) \
+		return 0; \
+	return *(uint##size##_t*)ptr; \
+} \
+uint##size##_t mem_vram_texp_get##size(struct mem *mem, uint32_t addr) \
+{ \
+	void *ptr = get_vram_texp_ptr(mem, addr); \
 	if (!ptr) \
 		return 0; \
 	return *(uint##size##_t*)ptr; \
@@ -3855,7 +3967,7 @@ MEM_ARM9_GET(16);
 MEM_ARM9_GET(32);
 
 #define MEM_ARM9_SET(size) \
-void mem_arm9_set##size(mem_t *mem, uint32_t addr, uint##size##_t v, enum mem_type type) \
+void mem_arm9_set##size(struct mem *mem, uint32_t addr, uint##size##_t v, enum mem_type type) \
 { \
 	/* printf("[%08" PRIx32 "] ARM9 set" #size " addr: %08" PRIx32 "\n", cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr); */ \
 	if (size == 16) \
@@ -3919,8 +4031,8 @@ void mem_arm9_set##size(mem_t *mem, uint32_t addr, uint##size##_t v, enum mem_ty
 		case 0xA: \
 			return; \
 	} \
-	printf("[ARM9] [%08" PRIx32 "] unknown set" #size " addr: %08" PRIx32 "\n", \
-	       cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr); \
+	printf("[ARM9] [%08" PRIx32 "] unknown set" #size " [%08" PRIx32 "] = %x\n", \
+	       cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr, v); \
 }
 
 MEM_ARM9_SET(8);

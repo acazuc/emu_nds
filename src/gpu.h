@@ -13,17 +13,17 @@ do \
 	} \
 } while (0)
 
-typedef struct mem mem_t;
+struct mem;
 
 struct gpu_eng
 {
 	uint8_t *data;
-	uint8_t  (*get_vram_bg8 )(mem_t *mem, uint32_t addr);
-	uint16_t (*get_vram_bg16)(mem_t *mem, uint32_t addr);
-	uint32_t (*get_vram_bg32)(mem_t *mem, uint32_t addr);
-	uint8_t  (*get_vram_obj8 )(mem_t *mem, uint32_t addr);
-	uint16_t (*get_vram_obj16)(mem_t *mem, uint32_t addr);
-	uint32_t (*get_vram_obj32)(mem_t *mem, uint32_t addr);
+	uint8_t  (*get_vram_bg8 )(struct mem *mem, uint32_t addr);
+	uint16_t (*get_vram_bg16)(struct mem *mem, uint32_t addr);
+	uint32_t (*get_vram_bg32)(struct mem *mem, uint32_t addr);
+	uint8_t  (*get_vram_obj8 )(struct mem *mem, uint32_t addr);
+	uint16_t (*get_vram_obj16)(struct mem *mem, uint32_t addr);
+	uint32_t (*get_vram_obj32)(struct mem *mem, uint32_t addr);
 	uint32_t reg_base;
 	uint32_t pal_base;
 	uint32_t oam_base;
@@ -34,17 +34,17 @@ struct gpu_eng
 	int engb;
 };
 
-typedef struct gpu
+struct gpu
 {
 	struct gpu_eng enga;
 	struct gpu_eng engb;
-	mem_t *mem;
-} gpu_t;
+	struct mem *mem;
+};
 
-gpu_t *gpu_new(mem_t *mem);
-void gpu_del(gpu_t *gpu);
+struct gpu *gpu_new(struct mem *mem);
+void gpu_del(struct gpu *gpu);
 
-void gpu_draw(gpu_t *gpu, uint8_t y);
-void gpu_commit_bgpos(gpu_t *gpu);
+void gpu_draw(struct gpu *gpu, uint8_t y);
+void gpu_commit_bgpos(struct gpu *gpu);
 
 #endif

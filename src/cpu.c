@@ -8,9 +8,9 @@
 #include <assert.h>
 #include <stdio.h>
 
-cpu_t *cpu_new(mem_t *mem, int arm9)
+struct cpu *cpu_new(struct mem *mem, int arm9)
 {
-	cpu_t *cpu = calloc(sizeof(*cpu), 1);
+	struct cpu *cpu = calloc(sizeof(*cpu), 1);
 	if (!cpu)
 		return NULL;
 
@@ -44,14 +44,14 @@ cpu_t *cpu_new(mem_t *mem, int arm9)
 	return cpu;
 }
 
-void cpu_del(cpu_t *cpu)
+void cpu_del(struct cpu *cpu)
 {
 	if (!cpu)
 		return;
 	free(cpu);
 }
 
-static bool check_arm_cond(cpu_t *cpu, uint32_t cond)
+static bool check_arm_cond(struct cpu *cpu, uint32_t cond)
 {
 	switch (cond & 0xF)
 	{
@@ -92,7 +92,7 @@ static bool check_arm_cond(cpu_t *cpu, uint32_t cond)
 	return false;
 }
 
-static void print_regs(cpu_t *cpu)
+static void print_regs(struct cpu *cpu)
 {
 	printf("r00=%08" PRIx32 " r01=%08" PRIx32 " r02=%08" PRIx32 " r03=%08" PRIx32 " "
 	       "r04=%08" PRIx32 " r05=%08" PRIx32 " r06=%08" PRIx32 " r07=%08" PRIx32 " "
@@ -116,7 +116,7 @@ static void print_regs(cpu_t *cpu)
 	       cpu_get_reg(cpu, 0xF));
 }
 
-static void print_regs_ml(cpu_t *cpu)
+static void print_regs_ml(struct cpu *cpu)
 {
 	printf("r00=%08" PRIx32 " r01=%08" PRIx32 " r02=%08" PRIx32 " r03=%08" PRIx32 "\n"
 	       "r04=%08" PRIx32 " r05=%08" PRIx32 " r06=%08" PRIx32 " r07=%08" PRIx32 "\n"
@@ -140,7 +140,7 @@ static void print_regs_ml(cpu_t *cpu)
 	       cpu_get_reg(cpu, 0xF));
 }
 
-static void print_instr(cpu_t *cpu, const char *msg, const struct cpu_instr *instr)
+static void print_instr(struct cpu *cpu, const char *msg, const struct cpu_instr *instr)
 {
 	char tmp[1024] = "";
 
@@ -169,7 +169,7 @@ static void print_instr(cpu_t *cpu, const char *msg, const struct cpu_instr *ins
 	}
 }
 
-static bool handle_interrupt(cpu_t *cpu)
+static bool handle_interrupt(struct cpu *cpu)
 {
 	if (!cpu->irq_line)
 		return false;
@@ -216,7 +216,7 @@ static bool handle_interrupt(cpu_t *cpu)
 	return false;
 }
 
-void cpu_update_irq_state(cpu_t *cpu)
+void cpu_update_irq_state(struct cpu *cpu)
 {
 	uint32_t reg_if;
 	uint32_t reg_ie;
@@ -241,7 +241,7 @@ void cpu_update_irq_state(cpu_t *cpu)
 #endif
 }
 
-static bool decode_instruction(cpu_t *cpu)
+static bool decode_instruction(struct cpu *cpu)
 {
 	if (CPU_GET_FLAG_T(cpu))
 	{
@@ -293,7 +293,7 @@ static bool decode_instruction(cpu_t *cpu)
 	return true;
 }
 
-void cpu_cycle(cpu_t *cpu)
+void cpu_cycle(struct cpu *cpu)
 {
 #if 0
 	if (cpu_get_reg(cpu, CPU_REG_PC) == 0x02400020)
@@ -310,7 +310,7 @@ void cpu_cycle(cpu_t *cpu)
 	cpu->instr->exec(cpu);
 }
 
-void cpu_update_mode(cpu_t *cpu)
+void cpu_update_mode(struct cpu *cpu)
 {
 	for (size_t i = 0; i < 16; ++i)
 		cpu->regs.rptr[i] = &cpu->regs.r[i];
@@ -351,7 +351,7 @@ void cpu_update_mode(cpu_t *cpu)
 	}
 }
 
-uint32_t cp15_read(cpu_t *cpu, uint8_t cn, uint8_t cm, uint8_t cp)
+uint32_t cp15_read(struct cpu *cpu, uint8_t cn, uint8_t cm, uint8_t cp)
 {
 #if 0
 	printf("cp15[%" PRIx8 "%" PRIx8 "%" PRIx8 "] read\n", cn, cm, cp);
@@ -426,7 +426,7 @@ uint32_t cp15_read(cpu_t *cpu, uint8_t cn, uint8_t cm, uint8_t cp)
 	return 0;
 }
 
-static void update_itcm(cpu_t *cpu)
+static void update_itcm(struct cpu *cpu)
 {
 	if (!(cpu->cp15.cr & (1 << 18)))
 	{
@@ -447,7 +447,7 @@ static void update_itcm(cpu_t *cpu)
 #endif
 }
 
-static void update_dtcm(cpu_t *cpu)
+static void update_dtcm(struct cpu *cpu)
 {
 	if (!(cpu->cp15.cr & (1 << 16)))
 	{
@@ -468,7 +468,7 @@ static void update_dtcm(cpu_t *cpu)
 #endif
 }
 
-void cp15_write(cpu_t *cpu, uint8_t cn, uint8_t cm, uint8_t cp, uint32_t v)
+void cp15_write(struct cpu *cpu, uint8_t cn, uint8_t cm, uint8_t cp, uint32_t v)
 {
 #if 0
 	printf("cp15[%" PRIx8 "%" PRIx8 "%" PRIx8 "] = %08" PRIx32 "\n", cn, cm, cp, v);

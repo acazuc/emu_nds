@@ -5,7 +5,7 @@
 
 #define APU_FRAME_SAMPLES 803
 
-typedef struct mem mem_t;
+struct mem;
 
 struct apu_channel
 {
@@ -19,22 +19,22 @@ struct apu_channel
 	uint8_t adpcm_idx;
 };
 
-typedef struct apu
+struct apu
 {
 	int16_t *data;
 	struct apu_channel channels[16];
-	mem_t *mem;
+	struct mem *mem;
 	uint32_t clock;
 	uint32_t sample;
 	uint32_t next_sample;
-} apu_t;
+};
 
-apu_t *apu_new(mem_t *mem);
-void apu_del(apu_t *apu);
+struct apu *apu_new(struct mem *mem);
+void apu_del(struct apu *apu);
 
-void apu_cycles(apu_t *cpu, uint32_t cycles);
-void apu_sample(apu_t *apu, uint32_t cycles);
+void apu_cycles(struct apu *cpu, uint32_t cycles);
+void apu_sample(struct apu *apu, uint32_t cycles);
 
-void apu_start_channel(apu_t *apu, uint8_t channel);
+void apu_start_channel(struct apu *apu, uint8_t channel);
 
 #endif

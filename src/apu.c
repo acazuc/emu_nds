@@ -22,9 +22,9 @@ static const uint16_t adpcm_table[] =
 	0x7FFF
 };
 
-apu_t *apu_new(mem_t *mem)
+struct apu *apu_new(struct mem *mem)
 {
-	apu_t *apu = calloc(sizeof(*apu), 1);
+	struct apu *apu = calloc(sizeof(*apu), 1);
 	if (!apu)
 		return NULL;
 
@@ -32,14 +32,14 @@ apu_t *apu_new(mem_t *mem)
 	return apu;
 }
 
-void apu_del(apu_t *apu)
+void apu_del(struct apu *apu)
 {
 	if (!apu)
 		return;
 	free(apu);
 }
 
-static void gen_sample(apu_t *apu, int16_t *dst)
+static void gen_sample(struct apu *apu, int16_t *dst)
 {
 	uint32_t soundcnt = mem_arm7_get_reg32(apu->mem, MEM_ARM7_REG_SOUNDCNT);
 	if (!(soundcnt & (1 << 15)))
@@ -94,7 +94,7 @@ static void gen_sample(apu_t *apu, int16_t *dst)
 	dst[1] = r;
 }
 
-void apu_sample(apu_t *apu, uint32_t cycles)
+void apu_sample(struct apu *apu, uint32_t cycles)
 {
 	apu->clock += cycles;
 	if (apu->clock < apu->next_sample)
@@ -107,7 +107,7 @@ void apu_sample(apu_t *apu, uint32_t cycles)
 	apu->next_sample = (1120380 * apu->sample) / (APU_FRAME_SAMPLES - 1);
 }
 
-void apu_cycles(apu_t *apu, uint32_t cycles)
+void apu_cycles(struct apu *apu, uint32_t cycles)
 {
 	uint32_t powcnt2 = mem_arm7_get_reg32(apu->mem, MEM_ARM7_REG_POWCNT2);
 	if (!(powcnt2 & (1 << 0)))
@@ -213,10 +213,10 @@ void apu_cycles(apu_t *apu, uint32_t cycles)
 	}
 }
 
-void apu_start_channel(apu_t *apu, uint8_t id)
+void apu_start_channel(struct apu *apu, uint8_t id)
 {
 	struct apu_channel *channel = &apu->channels[id];
-	channel->pnt = (mem_arm7_get_reg16(apu->mem, MEM_ARM7_REG_SOUNDXPNT(id)) & 0x3FFFFF) * 8;
+	channel->pnt = mem_arm7_get_reg16(apu->mem, MEM_ARM7_REG_SOUNDXPNT(id)) * 8;
 	channel->tmr = mem_arm7_get_reg16(apu->mem, MEM_ARM7_REG_SOUNDXTMR(id));
 	channel->sad = mem_arm7_get_reg32(apu->mem, MEM_ARM7_REG_SOUNDXSAD(id));
 	channel->len = (mem_arm7_get_reg32(apu->mem, MEM_ARM7_REG_SOUNDXLEN(id)) & 0x3FFFFF) * 8;

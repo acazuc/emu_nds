@@ -48,9 +48,9 @@ struct line_buff
 	uint8_t obj[256 * 4];
 };
 
-gpu_t *gpu_new(mem_t *mem)
+struct gpu *gpu_new(struct mem *mem)
 {
-	gpu_t *gpu = calloc(sizeof(*gpu), 1);
+	struct gpu *gpu = calloc(sizeof(*gpu), 1);
 	if (!gpu)
 		return NULL;
 
@@ -78,29 +78,29 @@ gpu_t *gpu_new(mem_t *mem)
 	return gpu;
 }
 
-void gpu_del(gpu_t *gpu)
+void gpu_del(struct gpu *gpu)
 {
 	if (!gpu)
 		return;
 	free(gpu);
 }
 
-static inline uint32_t eng_get_reg8(gpu_t *gpu, struct gpu_eng *eng, uint32_t reg)
+static inline uint32_t eng_get_reg8(struct gpu *gpu, struct gpu_eng *eng, uint32_t reg)
 {
 	return mem_arm9_get_reg8(gpu->mem, reg + eng->reg_base);
 }
 
-static inline uint32_t eng_get_reg16(gpu_t *gpu, struct gpu_eng *eng, uint32_t reg)
+static inline uint32_t eng_get_reg16(struct gpu *gpu, struct gpu_eng *eng, uint32_t reg)
 {
 	return mem_arm9_get_reg16(gpu->mem, reg + eng->reg_base);
 }
 
-static inline uint32_t eng_get_reg32(gpu_t *gpu, struct gpu_eng *eng, uint32_t reg)
+static inline uint32_t eng_get_reg32(struct gpu *gpu, struct gpu_eng *eng, uint32_t reg)
 {
 	return mem_arm9_get_reg32(gpu->mem, reg + eng->reg_base);
 }
 
-static void draw_background_text(gpu_t *gpu, struct gpu_eng *eng, uint8_t y, uint8_t bg, uint8_t *data)
+static void draw_background_text(struct gpu *gpu, struct gpu_eng *eng, uint8_t y, uint8_t bg, uint8_t *data)
 {
 	static const uint32_t mapwidths[]  = {32 * 8, 64 * 8, 32 * 8, 64 * 8};
 	static const uint32_t mapheights[] = {32 * 8, 32 * 8, 64 * 8, 64 * 8};
@@ -108,6 +108,9 @@ static void draw_background_text(gpu_t *gpu, struct gpu_eng *eng, uint8_t y, uin
 	uint16_t bgcnt = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BG0CNT + bg * 2);
 	uint16_t bghofs = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BG0HOFS + bg * 4) & 0x1FF;
 	uint16_t bgvofs = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BG0VOFS + bg * 4) & 0x1FF;
+	uint32_t ext_pal_base = 0x2000 * bg;
+	if (bg < 2)
+		ext_pal_base += 0x4000 * ((bgcnt >> 13) & 0x1);
 	uint8_t size = (bgcnt >> 14) & 0x3;
 	uint32_t tilebase = ((bgcnt >> 2) & 0xF) * 0x4000;
 	uint32_t mapbase = ((bgcnt >> 8) & 0x1F) * 0x800;
@@ -168,6 +171,7 @@ static void draw_background_text(gpu_t *gpu, struct gpu_eng *eng, uint8_t y, uin
 			tiley = 7 - tiley;
 		uint8_t paladdr;
 		uint32_t tileaddr = tilebase;
+		uint16_t val;
 		if (bgcnt & (1 << 7))
 		{
 			tileaddr += tileid * 0x40;
@@ -175,6 +179,18 @@ static void draw_background_text(gpu_t *gpu, struct gpu_eng *eng, uint8_t y, uin
 			paladdr = eng->get_vram_bg8(gpu->mem, tileaddr);
 			if (!paladdr)
 				continue;
+			if (dispcnt & (1 << 30))
+			{
+				uint32_t addr = ext_pal_base | ((map & 0xF000) >> 3) | (paladdr * 2);
+				if (eng->engb)
+					val = mem_vram_bgepb_get16(gpu->mem, addr);
+				else
+					val = mem_vram_bgepa_get16(gpu->mem, addr);
+			}
+			else
+			{
+				val = mem_get_bg_palette(gpu->mem, eng->pal_base | (paladdr * 2));
+			}
 		}
 		else
 		{
@@ -192,13 +208,13 @@ static void draw_background_text(gpu_t *gpu, struct gpu_eng *eng, uint8_t y, uin
 			if (!paladdr)
 				continue;
 			paladdr |= ((map >> 8) & 0xF0);
+			val = mem_get_bg_palette(gpu->mem, eng->pal_base + paladdr * 2);
 		}
-		uint16_t val = mem_get_bg_palette(gpu->mem, eng->pal_base + paladdr * 2);
 		SETRGB5(&data[x * 4], val, 0xFF);
 	}
 }
 
-static void draw_background_affine(gpu_t *gpu, struct gpu_eng *eng, uint8_t y, uint8_t bg, uint8_t *data)
+static void draw_background_affine(struct gpu *gpu, struct gpu_eng *eng, uint8_t y, uint8_t bg, uint8_t *data)
 {
 	(void)y;
 	static const uint32_t mapsizes[]  = {16 * 8, 32 * 8, 64 * 8, 128 * 8};
@@ -208,7 +224,17 @@ static void draw_background_affine(gpu_t *gpu, struct gpu_eng *eng, uint8_t y, u
 	uint32_t tilebase = ((bgcnt >> 2) & 0xF) * 0x4000 + ((dispcnt >> 24) & 0x3) * 0x10000;
 	uint32_t mapbase = ((bgcnt >> 8) & 0x1F) * 0x800 + ((dispcnt >> 27) & 0x3) * 0x10000;
 	uint32_t mapsize = mapsizes[size];
-	uint8_t overflow = (bgcnt >> 13) & 1;
+	uint8_t overflow;
+	uint32_t ext_pal_base = 0x2000 * bg;
+	if (bg >= 2)
+	{
+		overflow = (bgcnt >> 13) & 0x1;
+	}
+	else
+	{
+		overflow = 0;
+		ext_pal_base += 0x4000 * ((bgcnt >> 13) & 0x1);
+	}
 	int16_t pa = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BG2PA + 0x10 * (bg - 2));
 	int16_t pc = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BG2PC + 0x10 * (bg - 2));
 	int32_t bgx = bg == 2 ? eng->bg2x : eng->bg3x;
@@ -254,85 +280,12 @@ static void draw_background_affine(gpu_t *gpu, struct gpu_eng *eng, uint8_t y, u
 	}
 }
 
-static void draw_background_bitmap_3(gpu_t *gpu, struct gpu_eng *eng, uint8_t y, uint8_t *data)
+static void draw_background_extended(struct gpu *gpu, struct gpu_eng *eng, uint8_t y, uint8_t *data)
 {
-	(void)y;
-	int16_t pa = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BG2PA);
-	int16_t pc = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BG2PC);
-	int32_t bgx = eng->bg2x;
-	int32_t bgy = eng->bg2y;
-	for (int32_t x = 0; x < 256; ++x)
-	{
-		int32_t vx = bgx / 256;
-		int32_t vy = bgy / 256;
-		bgx += pa;
-		bgy += pc;
-		if (vx < 0 || vx >= 256
-		 || vy < 0 || vy >= 192)
-			continue;
-		uint32_t addr = 2 * (vx + 256 * vy);
-		uint16_t val = eng->get_vram_bg16(gpu->mem, addr);
-		SETRGB5(&data[x * 4], val, 0xFF);
-	}
+	printf("extended background not supported\n");
 }
 
-static void draw_background_bitmap_4(gpu_t *gpu, struct gpu_eng *eng, uint8_t y, uint8_t *data)
-{
-	(void)y;
-	int16_t pa = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BG2PA);
-	int16_t pc = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BG2PC);
-	int32_t bgx = eng->bg2x;
-	int32_t bgy = eng->bg2y;
-	uint32_t dispcnt = eng_get_reg32(gpu, eng, MEM_ARM9_REG_DISPCNT);
-	uint32_t addr_offset = (dispcnt & (1 << 4)) ? 0xA000 : 0;
-	for (int32_t x = 0; x < 256; ++x)
-	{
-		int32_t vx = bgx / 256;
-		int32_t vy = bgy / 256;
-		bgx += pa;
-		bgy += pc;
-		if (vx < 0 || vx >= 256
-		 || vy < 0 || vy >= 192)
-			continue;
-		uint32_t addr = addr_offset + vx + 256 * vy;
-		uint8_t val = eng->get_vram_bg8(gpu->mem, addr);
-		if (!val)
-			continue;
-		uint16_t col = mem_get_bg_palette(gpu->mem, eng->pal_base + val * 2);
-		SETRGB5(&data[x * 4], col, 0xFF);
-	}
-}
-
-static void draw_background_bitmap_5(gpu_t *gpu, struct gpu_eng *eng, uint8_t y, uint8_t *data)
-{
-	if (y < 16 || y > 143)
-	{
-		memset(&data[0], 0, 4 * 256);
-		return;
-	}
-	memset(&data[0], 0, 4 * 40);
-	memset(&data[200 * 4], 0, 4 * 40);
-	int16_t pa = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BG2PA);
-	int16_t pc = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BG2PC);
-	int32_t bgx = eng->bg2x;
-	int32_t bgy = eng->bg2y;
-	uint8_t baseaddr = (eng_get_reg32(gpu, eng, MEM_ARM9_REG_DISPCNT) & (1 << 4)) ? 0xA000 : 0;
-	for (int32_t x = 0; x < 192; ++x)
-	{
-		int32_t vx = bgx / 256;
-		int32_t vy = bgy / 256;
-		bgx += pa;
-		bgy += pc;
-		if (vx < 0 || vx >= 160
-		 || vy < 0 || vy >= 128)
-			continue;
-		uint32_t addr = baseaddr + 2 * (vx + 192 * vy);
-		uint16_t val = eng->get_vram_bg16(gpu->mem, addr);
-		SETRGB5(&data[(40 + x) * 4], val, 0xFF);
-	}
-}
-
-static void draw_objects(gpu_t *gpu, struct gpu_eng *eng, uint8_t y, uint8_t *data)
+static void draw_objects(struct gpu *gpu, struct gpu_eng *eng, uint8_t y, uint8_t *data)
 {
 	static const uint8_t widths[16] =
 	{
@@ -534,7 +487,7 @@ static const uint8_t *layer_data(struct line_buff *line, enum layer_type layer, 
 	return NULL;
 }
 
-static void calcwindow(gpu_t *gpu, struct gpu_eng *eng, struct line_buff *line, uint8_t x, uint8_t y, uint8_t *winflags)
+static void calcwindow(struct gpu *gpu, struct gpu_eng *eng, struct line_buff *line, uint8_t x, uint8_t y, uint8_t *winflags)
 {
 	uint32_t dispcnt = eng_get_reg32(gpu, eng, MEM_ARM9_REG_DISPCNT);
 	uint16_t win0h = eng_get_reg16(gpu, eng, MEM_ARM9_REG_WIN0H);
@@ -652,7 +605,7 @@ static void calcwindow(gpu_t *gpu, struct gpu_eng *eng, struct line_buff *line, 
 	*winflags = winout & 0xFF;
 }
 
-static void compose(gpu_t *gpu, struct gpu_eng *eng, struct line_buff *line, uint8_t y)
+static void compose(struct gpu *gpu, struct gpu_eng *eng, struct line_buff *line, uint8_t y)
 {
 	uint16_t bd_col = mem_get_bg_palette(gpu->mem, eng->pal_base + 0);
 	uint8_t bd_color[4] = RGB5TO8(bd_col, 0xFF);
@@ -951,7 +904,7 @@ static void compose(gpu_t *gpu, struct gpu_eng *eng, struct line_buff *line, uin
 	}
 }
 
-static void draw_eng(gpu_t *gpu, struct gpu_eng *eng, uint8_t y)
+static void draw_eng(struct gpu *gpu, struct gpu_eng *eng, uint8_t y)
 {
 	struct line_buff line;
 	uint32_t dispcnt = eng_get_reg32(gpu, eng, MEM_ARM9_REG_DISPCNT);
@@ -972,6 +925,8 @@ static void draw_eng(gpu_t *gpu, struct gpu_eng *eng, uint8_t y)
 			assert(!"unimp");
 			break;
 	}
+	if (dispcnt & (1 << 31))
+		printf("unimplemented OBJ ext palette\n");
 	memset(&line, 0, sizeof(line));
 	switch (dispcnt & 0x7)
 	{
@@ -991,25 +946,49 @@ static void draw_eng(gpu_t *gpu, struct gpu_eng *eng, uint8_t y)
 			if (dispcnt & (1 << 0x9))
 				draw_background_text(gpu, eng, y, 1, line.bg1);
 			if (dispcnt & (1 << 0xA))
-				draw_background_affine(gpu, eng, y, 2, line.bg2);
+				draw_background_text(gpu, eng, y, 2, line.bg2);
+			if (dispcnt & (1 << 0xB))
+				draw_background_affine(gpu, eng, y, 3, line.bg3);
 			break;
 		case 2:
+			if (dispcnt & (1 << 0x8))
+				draw_background_text(gpu, eng, y, 0, line.bg0);
+			if (dispcnt & (1 << 0x9))
+				draw_background_text(gpu, eng, y, 1, line.bg1);
 			if (dispcnt & (1 << 0xA))
 				draw_background_affine(gpu, eng, y, 2, line.bg2);
 			if (dispcnt & (1 << 0xB))
 				draw_background_affine(gpu, eng, y, 3, line.bg3);
 			break;
 		case 3:
+			if (dispcnt & (1 << 0x8))
+				draw_background_text(gpu, eng, y, 0, line.bg0);
+			if (dispcnt & (1 << 0x9))
+				draw_background_text(gpu, eng, y, 1, line.bg1);
 			if (dispcnt & (1 << 0xA))
-				draw_background_bitmap_3(gpu, eng, y, line.bg2);
+				draw_background_text(gpu, eng, y, 2, line.bg2);
+			if (dispcnt & (1 << 0xB))
+				draw_background_extended(gpu, eng, y, line.bg3);
 			break;
 		case 4:
+			if (dispcnt & (1 << 0x8))
+				draw_background_text(gpu, eng, y, 0, line.bg0);
+			if (dispcnt & (1 << 0x9))
+				draw_background_text(gpu, eng, y, 1, line.bg1);
 			if (dispcnt & (1 << 0xA))
-				draw_background_bitmap_4(gpu, eng, y, line.bg2);
+				draw_background_affine(gpu, eng, y, 2, line.bg2);
+			if (dispcnt & (1 << 0xB))
+				draw_background_extended(gpu, eng, y, line.bg3);
 			break;
 		case 5:
+			if (dispcnt & (1 << 0x8))
+				draw_background_text(gpu, eng, y, 0, line.bg0);
+			if (dispcnt & (1 << 0x9))
+				draw_background_text(gpu, eng, y, 1, line.bg1);
 			if (dispcnt & (1 << 0xA))
-				draw_background_bitmap_5(gpu, eng, y, line.bg2);
+				draw_background_extended(gpu, eng, y, line.bg2);
+			if (dispcnt & (1 << 0xB))
+				draw_background_extended(gpu, eng, y, line.bg3);
 			break;
 		default:
 			printf("invalid mode: %x\n", dispcnt & 0x7);
@@ -1028,7 +1007,7 @@ static void draw_eng(gpu_t *gpu, struct gpu_eng *eng, uint8_t y)
 	eng->bg3y += bg3pd;
 }
 
-void gpu_draw(gpu_t *gpu, uint8_t y)
+void gpu_draw(struct gpu *gpu, uint8_t y)
 {
 	uint32_t powcnt1 = mem_arm9_get_reg32(gpu->mem, MEM_ARM9_REG_POWCNT1);
 #if 0
@@ -1044,7 +1023,7 @@ void gpu_draw(gpu_t *gpu, uint8_t y)
 		memset(&gpu->engb.data[y * 256 * 4], 0, 256 * 4);
 }
 
-static void eng_commit_bgpos(gpu_t *gpu, struct gpu_eng *eng)
+static void eng_commit_bgpos(struct gpu *gpu, struct gpu_eng *eng)
 {
 	eng->bg2x = eng_get_reg32(gpu, eng, MEM_ARM9_REG_BG2X) & 0xFFFFFFF;
 	eng->bg2y = eng_get_reg32(gpu, eng, MEM_ARM9_REG_BG2Y) & 0xFFFFFFF;
@@ -1056,7 +1035,7 @@ static void eng_commit_bgpos(gpu_t *gpu, struct gpu_eng *eng)
 	TRANSFORM_INT28(eng->bg3y);
 }
 
-void gpu_commit_bgpos(gpu_t *gpu)
+void gpu_commit_bgpos(struct gpu *gpu)
 {
 	eng_commit_bgpos(gpu, &gpu->enga);
 	eng_commit_bgpos(gpu, &gpu->engb);
