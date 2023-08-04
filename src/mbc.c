@@ -36,6 +36,7 @@ struct mbc *mbc_new(struct nds *nds, const void *data, size_t size)
 			mbc->backup_type = MBC_FLASH_256K;
 			break;
 		case 0x50395941:
+		case 0x45395941:
 			mbc->backup_type = MBC_EEPROM_64K;
 			break;
 		default:
