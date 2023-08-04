@@ -15,16 +15,9 @@ static const uint16_t timer_increments[4] = {1 << 10, 1 << 4, 1 << 2, 1 << 0};
 
 static const uint32_t dma_len_max[4] = {0x4000, 0x4000, 0x4000, 0x10000};
 
-/* XXX until cache is implemented, use this */
-#if 0
 static const uint8_t arm7_mram_cycles_32[] = {0, 2, 10, 2,  9};
 static const uint8_t arm7_mram_cycles_16[] = {0, 1,  9, 1,  8};
 static const uint8_t arm7_mram_cycles_8[]  = {0, 1,  9, 1,  8};
-#else
-static const uint8_t arm7_mram_cycles_32[] = {0, 0, 0, 0, 0};
-static const uint8_t arm7_mram_cycles_16[] = {0, 0, 0, 0, 0};
-static const uint8_t arm7_mram_cycles_8[]  = {0, 0, 0, 0, 0};
-#endif
 
 static const uint8_t arm7_wram_cycles_32[] = {0, 1,  1, 1,  1};
 static const uint8_t arm7_wram_cycles_16[] = {0, 1,  1, 1,  1};
@@ -34,14 +27,15 @@ static const uint8_t arm7_vram_cycles_32[] = {0, 2,  1, 2,  2};
 static const uint8_t arm7_vram_cycles_16[] = {0, 1,  1, 1,  1};
 static const uint8_t arm7_vram_cycles_8[]  = {0, 1,  1, 1,  1};
 
+/* XXX until cache is implemented, use this */
 #if 0
 static const uint8_t arm9_mram_cycles_32[] = {0, 4, 20, 18, 18};
 static const uint8_t arm9_mram_cycles_16[] = {0, 2, 18,  9,  9};
 static const uint8_t arm9_mram_cycles_8[]  = {0, 2, 18,  9,  9};
 #else
-static const uint8_t arm9_mram_cycles_32[] = {0, 0, 0, 0, 0};
-static const uint8_t arm9_mram_cycles_16[] = {0, 0, 0, 0, 0};
-static const uint8_t arm9_mram_cycles_8[]  = {0, 0, 0, 0, 0};
+static const uint8_t arm9_mram_cycles_32[] = {0, 1, 1, 1, 1};
+static const uint8_t arm9_mram_cycles_16[] = {0, 1, 1, 1, 1};
+static const uint8_t arm9_mram_cycles_8[]  = {0, 1, 1, 1, 1};
 #endif
 
 static const uint8_t arm9_wram_cycles_32[] = {0, 2,  8,  8,  8};
@@ -73,7 +67,7 @@ struct mem *mem_new(struct nds *nds, struct mbc *mbc)
 	mem_arm9_set_reg32(mem, MEM_ARM7_REG_ROMCTRL, 1 << 23);
 	mem_arm7_set_reg32(mem, MEM_ARM7_REG_SOUNDBIAS, 0x200);
 	mem_arm7_set_reg32(mem, MEM_ARM7_REG_POWCNT2, 1);
-	mem_arm9_set_reg32(mem, MEM_ARM9_REG_GXSTAT, 1 << 26);
+	mem_arm9_set_reg32(mem, MEM_ARM9_REG_GXSTAT, (1 << 26) | (1 << 25));
 	mem->spi_powerman.regs[0x0] = 0x0C; /* enable backlight */
 	mem->spi_powerman.regs[0x4] = 0x42; /* high brightness */
 	update_vram_maps(mem);
