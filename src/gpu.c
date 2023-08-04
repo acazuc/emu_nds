@@ -127,10 +127,6 @@ static void draw_background_text(struct gpu *gpu, struct gpu_eng *eng,
 		tilebase += ((dispcnt >> 24) & 0x7) * 0x10000;
 		mapbase += ((dispcnt >> 27) & 0x7) * 0x10000;
 	}
-#if 0
-	printf("BGCNT: %04" PRIx16 ", tilebase: %08" PRIx32 ", mapbase: %08" PRIx32 "\n",
-	       bgcnt, tilebase, mapbase);
-#endif
 	uint32_t mapw = mapwidths[size];
 	uint32_t maph = mapheights[size];
 	int32_t vy = y + bgvofs;
@@ -169,10 +165,6 @@ static void draw_background_text(struct gpu *gpu, struct gpu_eng *eng,
 		mapaddr += (mapx + mapy * 32) * 2;
 		uint16_t map = eng->get_vram_bg16(gpu->mem, mapaddr);
 		uint16_t tileid = map & 0x3FF;
-#if 0
-		printf("[BG0] %03ux%03u, tile: %04x (%08x)\n",
-		       x, y, map, eng->bg_base + (mapaddr & eng->bg_mask));
-#endif
 		if (map & (1 << 10))
 			tilex = 7 - tilex;
 		if (map & (1 << 11))
@@ -205,10 +197,6 @@ static void draw_background_text(struct gpu *gpu, struct gpu_eng *eng,
 			tileaddr += tileid * 0x20;
 			tileaddr += tilex / 2 + tiley * 4;
 			paladdr = eng->get_vram_bg8(gpu->mem, tileaddr);
-#if 0
-			printf("[BG0] %03ux%03u, pixel: %02x (%08x)\n",
-			       x, y, paladdr, eng->bg_base + (tileaddr & eng->bg_mask));
-#endif
 			if (tilex & 1)
 				paladdr >>= 4;
 			else
@@ -274,9 +262,6 @@ static void draw_background_affine(struct gpu *gpu, struct gpu_eng *eng,
 		uint32_t tiley = vy % 8;
 		uint32_t mapaddr = mapbase + mapx + mapy * (mapsize / 8);
 		uint16_t tileid = eng->get_vram_bg8(gpu->mem, mapaddr);
-#if 0
-		printf("[BG1] %03ux%03u, tileid: %03x\n", x, y, tileid);
-#endif
 		uint8_t paladdr;
 		uint32_t tileaddr = tilebase + tileid * 0x40;
 		tileaddr += tilex + tiley * 8;
@@ -331,6 +316,8 @@ static void draw_background_ext_direct(struct gpu *gpu, struct gpu_eng *eng,
 		}
 		uint32_t addr = baseaddr + 2 * (vx + mapwidth * vy);
 		uint16_t val = eng->get_vram_bg16(gpu->mem, addr);
+		if (!(val & (1 << 15)))
+			continue;
 		SETRGB5(&data[x * 4], val, 0xFF);
 	}
 }
@@ -388,7 +375,114 @@ static void draw_background_ext_paletted(struct gpu *gpu, struct gpu_eng *eng,
 static void draw_background_ext_tiled(struct gpu *gpu, struct gpu_eng *eng,
                                       uint8_t y, uint8_t bg, uint8_t *data)
 {
-	printf("unhandled ext tiled\n");
+	(void)y;
+	static const uint32_t mapsizes[]  = {16 * 8, 32 * 8, 64 * 8, 128 * 8};
+	uint16_t bgcnt = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BG0CNT + bg * 2);
+	uint8_t size = (bgcnt >> 14) & 0x3;
+	uint32_t dispcnt = eng_get_reg32(gpu, eng, MEM_ARM9_REG_DISPCNT);
+	uint32_t ext_pal_base = 0x2000 * bg;
+	uint32_t tilebase = ((bgcnt >> 2) & 0xF) * 0x4000;
+	uint32_t mapbase = ((bgcnt >> 8) & 0x1F) * 0x800;
+	if (!eng->engb)
+	{
+		tilebase += ((dispcnt >> 24) & 0x7) * 0x10000;
+		mapbase += ((dispcnt >> 27) & 0x7) * 0x10000;
+	}
+	uint32_t mapsize = mapsizes[size];
+	uint8_t overflow;
+	if (bg >= 2)
+		overflow = (bgcnt >> 13) & 0x1;
+	else
+		overflow = 0;
+	int16_t pa = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BG2PA + 0x10 * (bg - 2));
+	int16_t pc = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BG2PC + 0x10 * (bg - 2));
+	int32_t bgx = bg == 2 ? eng->bg2x : eng->bg3x;
+	int32_t bgy = bg == 2 ? eng->bg2y : eng->bg3y;
+	for (int32_t x = 0; x < 256; ++x)
+	{
+		int32_t vx = bgx / 256;
+		int32_t vy = bgy / 256;
+		bgx += pa;
+		bgy += pc;
+		if (overflow)
+		{
+			vx %= mapsize;
+			vy %= mapsize;
+			if (vx < 0)
+				vx += mapsize;
+			if (vy < 0)
+				vy += mapsize;
+		}
+		else
+		{
+			if (vx < 0 || (uint32_t)vx >= mapsize
+			 || vy < 0 || (uint32_t)vy >= mapsize)
+				continue;
+		}
+		uint32_t mapx = vx / 8;
+		uint32_t mapy = vy / 8;
+		uint32_t tilex = vx % 8;
+		uint32_t tiley = vy % 8;
+		uint32_t mapoff = 0;
+		if (mapy >= 32)
+		{
+			mapy -= 32;
+			mapoff = 0x800;
+			if (size == 3)
+				mapoff += 0x800;
+		}
+		if (mapx >= 32)
+		{
+			mapx -= 32;
+			mapoff += 0x800;
+		}
+		uint32_t mapaddr = mapbase + mapoff;
+		mapaddr += (mapx + mapy * 32) * 2;
+		uint16_t map = eng->get_vram_bg16(gpu->mem, mapaddr);
+		uint16_t tileid = map & 0x3FF;
+		if (map & (1 << 10))
+			tilex = 7 - tilex;
+		if (map & (1 << 11))
+			tiley = 7 - tiley;
+		uint8_t paladdr;
+		uint32_t tileaddr = tilebase;
+		uint16_t val;
+		if (bgcnt & (1 << 7))
+		{
+			tileaddr += tileid * 0x40;
+			tileaddr += tilex + tiley * 8;
+			paladdr = eng->get_vram_bg8(gpu->mem, tileaddr);
+			if (!paladdr)
+				continue;
+			if (dispcnt & (1 << 30))
+			{
+				uint32_t addr = ext_pal_base | ((map & 0xF000) >> 3) | (paladdr * 2);
+				if (eng->engb)
+					val = mem_vram_bgepb_get16(gpu->mem, addr);
+				else
+					val = mem_vram_bgepa_get16(gpu->mem, addr);
+			}
+			else
+			{
+				val = mem_get_bg_palette(gpu->mem, eng->pal_base | (paladdr * 2));
+			}
+		}
+		else
+		{
+			tileaddr += tileid * 0x20;
+			tileaddr += tilex / 2 + tiley * 4;
+			paladdr = eng->get_vram_bg8(gpu->mem, tileaddr);
+			if (tilex & 1)
+				paladdr >>= 4;
+			else
+				paladdr &= 0xF;
+			if (!paladdr)
+				continue;
+			paladdr |= ((map >> 8) & 0xF0);
+			val = mem_get_bg_palette(gpu->mem, eng->pal_base + paladdr * 2);
+		}
+		SETRGB5(&data[x * 4], val, 0xFF);
+	}
 }
 
 static void draw_background_extended(struct gpu *gpu, struct gpu_eng *eng,
@@ -682,22 +776,14 @@ static const uint8_t *layer_data(struct line_buff *line, enum layer_type layer, 
 static void calcwindow(struct gpu *gpu, struct gpu_eng *eng, struct line_buff *line, uint8_t x, uint8_t y, uint8_t *winflags)
 {
 	uint32_t dispcnt = eng_get_reg32(gpu, eng, MEM_ARM9_REG_DISPCNT);
-	uint16_t win0h = eng_get_reg16(gpu, eng, MEM_ARM9_REG_WIN0H);
-	uint16_t win0v = eng_get_reg16(gpu, eng, MEM_ARM9_REG_WIN0V);
-	uint16_t win1h = eng_get_reg16(gpu, eng, MEM_ARM9_REG_WIN1H);
-	uint16_t win1v = eng_get_reg16(gpu, eng, MEM_ARM9_REG_WIN1V);
 	uint16_t winin = eng_get_reg16(gpu, eng, MEM_ARM9_REG_WININ);
 	uint16_t winout = eng_get_reg16(gpu, eng, MEM_ARM9_REG_WINOUT);
-	uint8_t win0l = win0h >> 8;
-	uint8_t win0r = win0h & 0xFF;
-	uint8_t win0t = win0v >> 8;
-	uint8_t win0b = win0v & 0xFF;
-	uint8_t win1l = win1h >> 8;
-	uint8_t win1r = win1h & 0xFF;
-	uint8_t win1t = win1v >> 8;
-	uint8_t win1b = win1v & 0xFF;
 	if (dispcnt & (1 << 13))
 	{
+		uint8_t win0l = eng_get_reg16(gpu, eng, MEM_ARM9_REG_WIN0H + 1);
+		uint8_t win0r = eng_get_reg16(gpu, eng, MEM_ARM9_REG_WIN0H);
+		uint8_t win0t = eng_get_reg16(gpu, eng, MEM_ARM9_REG_WIN0V + 1);
+		uint8_t win0b = eng_get_reg16(gpu, eng, MEM_ARM9_REG_WIN0V);
 		if (win0l > win0r)
 		{
 			if (win0t > win0b)
@@ -743,6 +829,10 @@ static void calcwindow(struct gpu *gpu, struct gpu_eng *eng, struct line_buff *l
 	}
 	if (dispcnt & (1 << 14))
 	{
+		uint8_t win1l = eng_get_reg16(gpu, eng, MEM_ARM9_REG_WIN1H + 1);
+		uint8_t win1r = eng_get_reg16(gpu, eng, MEM_ARM9_REG_WIN1H);
+		uint8_t win1t = eng_get_reg16(gpu, eng, MEM_ARM9_REG_WIN1V + 1);
+		uint8_t win1b = eng_get_reg16(gpu, eng, MEM_ARM9_REG_WIN1V);
 		if (win1l > win1r)
 		{
 			if (win1t > win1b)
@@ -864,7 +954,7 @@ static void compose(struct gpu *gpu, struct gpu_eng *eng, struct line_buff *line
 		}
 	}
 	uint32_t dispcnt = eng_get_reg32(gpu, eng, MEM_ARM9_REG_DISPCNT);
-	bool has_window = (dispcnt & (7 << 13)) != 0;
+	uint32_t has_window = dispcnt & (7 << 13);
 	uint16_t bldcnt = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BLDCNT);
 	uint8_t top_mask = (bldcnt >> 0) & 0x3F;
 	uint8_t bot_mask = (bldcnt >> 8) & 0x3F;
@@ -878,13 +968,9 @@ static void compose(struct gpu *gpu, struct gpu_eng *eng, struct line_buff *line
 	{
 		uint8_t winflags;
 		if (has_window)
-		{
 			calcwindow(gpu, eng, line, x, y, &winflags);
-		}
 		else
-		{
 			winflags = 0xFF;
-		}
 		uint8_t pixel_blend = blending;
 		if (!(winflags & (1 << 5)))
 			pixel_blend = 0;
@@ -988,8 +1074,7 @@ static void compose(struct gpu *gpu, struct gpu_eng *eng, struct line_buff *line
 				}
 				break;
 			case 2:
-			{
-				if (top_layer_data != NULL)
+				if (top_layer_data)
 				{
 					for (size_t i = 0; i < 3; ++i)
 						dst[i] = top_layer_data[i] + (((255 - top_layer_data[i]) * bldy) >> 4);
@@ -1000,10 +1085,8 @@ static void compose(struct gpu *gpu, struct gpu_eng *eng, struct line_buff *line
 					*(uint32_t*)dst = *(uint32_t*)top_layer_data;
 				}
 				break;
-			}
 			case 3:
-			{
-				if (top_layer_data != NULL)
+				if (top_layer_data)
 				{
 					for (size_t i = 0; i < 3; ++i)
 						dst[i] = top_layer_data[i] - ((top_layer_data[i] * bldy) >> 4);
@@ -1014,7 +1097,6 @@ static void compose(struct gpu *gpu, struct gpu_eng *eng, struct line_buff *line
 					*(uint32_t*)dst = *(uint32_t*)top_layer_data;
 				}
 				break;
-			}
 		}
 	}
 	uint16_t master_bright = eng_get_reg16(gpu, eng, MEM_ARM9_REG_MASTER_BRIGHT);
