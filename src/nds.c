@@ -294,6 +294,7 @@ void nds_frame(struct nds *nds, uint8_t *video_top_buf, uint32_t video_top_pitch
 #if 0
 	printf("touch: %d @ %dx%d\n", touch, touch_x, touch_y);
 #endif
+	printf("gxfifo dma count: %u\n", nds->mem->gxfifo_dma_count);
 	uint32_t powcnt1 = mem_arm9_get_reg32(nds->mem, MEM_ARM9_REG_POWCNT1);
 	if (powcnt1 & (1 << 15))
 	{
@@ -332,11 +333,11 @@ void nds_frame(struct nds *nds, uint8_t *video_top_buf, uint32_t video_top_pitch
 		if ((mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) & (1 << 5))
 		 && y == (((mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) >> 8) & 0xFF)
 		        | ((mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) << 1) & 0x100)))
-			mem_arm9_if(nds->mem, 1 << 2);
+			mem_arm9_irq(nds->mem, 1 << 2);
 		if ((mem_arm7_get_reg16(nds->mem, MEM_ARM7_REG_DISPSTAT) & (1 << 5))
 		 && y == (((mem_arm7_get_reg16(nds->mem, MEM_ARM7_REG_DISPSTAT) >> 8) & 0xFF)
 		        | ((mem_arm7_get_reg16(nds->mem, MEM_ARM7_REG_DISPSTAT) << 1) & 0x100)))
-			mem_arm7_if(nds->mem, 1 << 2);
+			mem_arm7_irq(nds->mem, 1 << 2);
 
 		nds_cycles(nds, 256 * 12);
 #ifdef ENABLE_MULTITHREAD
@@ -351,9 +352,9 @@ void nds_frame(struct nds *nds, uint8_t *video_top_buf, uint32_t video_top_pitch
 		mem_arm9_set_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT, (mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) & 0xFFFC) | 0x2);
 		mem_arm7_set_reg16(nds->mem, MEM_ARM7_REG_DISPSTAT, (mem_arm7_get_reg16(nds->mem, MEM_ARM7_REG_DISPSTAT) & 0xFFFC) | 0x2);
 		if (mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) & (1 << 4))
-			mem_arm9_if(nds->mem, 1 << 1);
+			mem_arm9_irq(nds->mem, 1 << 1);
 		if (mem_arm7_get_reg16(nds->mem, MEM_ARM7_REG_DISPSTAT) & (1 << 4))
-			mem_arm7_if(nds->mem, 1 << 1);
+			mem_arm7_irq(nds->mem, 1 << 1);
 		mem_hblank(nds->mem);
 
 		nds_cycles(nds, 99 * 12);
@@ -364,9 +365,9 @@ void nds_frame(struct nds *nds, uint8_t *video_top_buf, uint32_t video_top_pitch
 
 	gpu_commit_bgpos(nds->gpu);
 	if (mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) & (1 << 3))
-		mem_arm9_if(nds->mem, 1 << 0);
+		mem_arm9_irq(nds->mem, 1 << 0);
 	if (mem_arm7_get_reg16(nds->mem, MEM_ARM7_REG_DISPSTAT) & (1 << 3))
-		mem_arm7_if(nds->mem, 1 << 0);
+		mem_arm7_irq(nds->mem, 1 << 0);
 	mem_vblank(nds->mem);
 
 	for (uint16_t y = 192; y < 263; ++y)
@@ -378,11 +379,11 @@ void nds_frame(struct nds *nds, uint8_t *video_top_buf, uint32_t video_top_pitch
 		if ((mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) & (1 << 5))
 		 && y == (((mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) >> 8) & 0xFF)
 		        | ((mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) << 1) & 0x100)))
-			mem_arm9_if(nds->mem, 1 << 2);
+			mem_arm9_irq(nds->mem, 1 << 2);
 		if ((mem_arm7_get_reg16(nds->mem, MEM_ARM7_REG_DISPSTAT) & (1 << 5))
 		 && y == (((mem_arm7_get_reg16(nds->mem, MEM_ARM7_REG_DISPSTAT) >> 8) & 0xFF)
 		        | ((mem_arm7_get_reg16(nds->mem, MEM_ARM7_REG_DISPSTAT) << 1) & 0x100)))
-			mem_arm7_if(nds->mem, 1 << 2);
+			mem_arm7_irq(nds->mem, 1 << 2);
 
 		/* vblank */
 		nds_cycles(nds, 256 * 12);
@@ -391,9 +392,9 @@ void nds_frame(struct nds *nds, uint8_t *video_top_buf, uint32_t video_top_pitch
 		mem_arm9_set_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT, (mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) & 0xFFFC) | 0x3);
 		mem_arm7_set_reg16(nds->mem, MEM_ARM7_REG_DISPSTAT, (mem_arm7_get_reg16(nds->mem, MEM_ARM7_REG_DISPSTAT) & 0xFFFC) | 0x3);
 		if (mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) & (1 << 4))
-			mem_arm9_if(nds->mem, 1 << 1);
+			mem_arm9_irq(nds->mem, 1 << 1);
 		if (mem_arm7_get_reg16(nds->mem, MEM_ARM7_REG_DISPSTAT) & (1 << 4))
-			mem_arm7_if(nds->mem, 1 << 1);
+			mem_arm7_irq(nds->mem, 1 << 1);
 
 		nds_cycles(nds, 99 * 12);
 	}
@@ -460,7 +461,7 @@ void nds_test_keypad_int(struct nds *nds)
 		enabled = keys & keycnt;
 	if (enabled)
 	{
-		mem_arm7_if(nds->mem, 1 << 12);
-		mem_arm9_if(nds->mem, 1 << 12);
+		mem_arm7_irq(nds->mem, 1 << 12);
+		mem_arm9_irq(nds->mem, 1 << 12);
 	}
 }

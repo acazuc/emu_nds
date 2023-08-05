@@ -192,7 +192,7 @@ static bool handle_interrupt(struct cpu *cpu)
 		if (!(cpu->irq_line & (1 << i)))
 			continue;
 #if 0
-		printf("[ARM%c] IRQ %02" PRIx8 "\n", cpu->arm9 ? '9' : '7', i);
+		printf("[ARM%c] IRQ %" PRIu8 "\n", cpu->arm9 ? '9' : '7', i);
 #endif
 		cpu->regs.spsr_modes[3] = cpu->regs.cpsr;
 		CPU_SET_MODE(cpu, CPU_MODE_IRQ);

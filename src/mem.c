@@ -98,6 +98,7 @@ static const struct gx_cmd_def gx_cmd_defs[256] =
 };
 
 static void update_vram_maps(struct mem *mem);
+static void update_gxfifo_irq(struct mem *mem);
 
 struct mem *mem_new(struct nds *nds, struct mbc *mbc)
 {
@@ -114,7 +115,7 @@ struct mem *mem_new(struct nds *nds, struct mbc *mbc)
 	mem_arm9_set_reg32(mem, MEM_ARM7_REG_ROMCTRL, 1 << 23);
 	mem_arm7_set_reg32(mem, MEM_ARM7_REG_SOUNDBIAS, 0x200);
 	mem_arm7_set_reg32(mem, MEM_ARM7_REG_POWCNT2, 1);
-	mem_arm9_set_reg32(mem, MEM_ARM9_REG_GXSTAT, (1 << 26) | (1 << 25) | (1 << 1));
+	mem_arm9_set_reg32(mem, MEM_ARM9_REG_GXSTAT, (1 << 25) | (1 << 1));
 	mem->spi_powerman.regs[0x0] = 0x0C; /* enable backlight */
 	mem->spi_powerman.regs[0x4] = 0x42; /* high brightness */
 	update_vram_maps(mem);
@@ -163,7 +164,7 @@ static void arm##armv##_timers(struct mem *mem, uint32_t cycles) \
 			mem->arm##armv##_timers[i].v -= (0x10000 << 10); \
 			mem->arm##armv##_timers[i].v += mem_arm##armv##_get_reg16(mem, MEM_ARM##armv##_REG_TM0CNT_L + i * 4) << 10; \
 			if (cnt_h & (1 << 6)) \
-				mem_arm##armv##_if(mem, 1 << (3 + i)); \
+				mem_arm##armv##_irq(mem, 1 << (3 + i)); \
 			prev_overflow++; \
 		} \
 		while (mem->arm##armv##_timers[i].v >= (0x10000 << 10)); \
@@ -198,7 +199,7 @@ static void arm##armv##_dma(struct mem *mem, uint8_t id, uint32_t cycles) \
 		uint32_t step; \
 		if (cnt_h & (1 << 10)) \
 		{ \
-			printf("[ARM" #armv "] DMA %" PRIu8 " 32 bits from 0x%" PRIx32 " to 0x%" PRIx32 "\n", id, dma->src, dma->dst); \
+			/* printf("[ARM" #armv "] DMA %" PRIu8 " 32 bits from 0x%" PRIx32 " to 0x%" PRIx32 "\n", id, dma->src, dma->dst); */ \
 			mem_arm##armv##_set32(mem, dma->dst, \
 			                      mem_arm##armv##_get32(mem, dma->src, MEM_DIRECT), \
 			                      MEM_DIRECT); \
@@ -206,7 +207,7 @@ static void arm##armv##_dma(struct mem *mem, uint8_t id, uint32_t cycles) \
 		} \
 		else \
 		{ \
-			printf("[ARM" #armv "] DMA %" PRIu8 " 16 bits from 0x%" PRIx32 " to 0x%" PRIx32 "\n", id, dma->src, dma->dst); \
+			/* printf("[ARM" #armv "] DMA %" PRIu8 " 16 bits from 0x%" PRIx32 " to 0x%" PRIx32 "\n", id, dma->src, dma->dst); */ \
 			mem_arm##armv##_set16(mem, dma->dst, \
 			                      mem_arm##armv##_get16(mem, dma->src, MEM_DIRECT), \
 			                      MEM_DIRECT); \
@@ -242,6 +243,7 @@ static void arm##armv##_dma(struct mem *mem, uint8_t id, uint32_t cycles) \
 		dma->cnt++; \
 		if (dma->cnt != dma->len) \
 			continue; \
+		/* printf("[ARM" #armv "] DMA %" PRIu8 " end\n", id); */ \
 		if ((cnt_h & (1 << 9))) \
 		{ \
 			if ((armv == 7 && ((cnt_h >> 12) & 0x3) == 0x2) \
@@ -256,15 +258,25 @@ static void arm##armv##_dma(struct mem *mem, uint8_t id, uint32_t cycles) \
 			else \
 			{ \
 				dma->status &= ~MEM_DMA_ACTIVE; \
+				if (dma->dst == (0x4000000 | MEM_ARM9_REG_GXFIFO)) \
+				{ \
+					mem->gxfifo_dma_count--; \
+					update_gxfifo_irq(mem); \
+				} \
 			} \
 		} \
 		else \
 		{ \
 			dma->status = 0; \
+			if (dma->dst == (0x4000000 | MEM_ARM9_REG_GXFIFO)) \
+			{ \
+				mem->gxfifo_dma_count--; \
+				update_gxfifo_irq(mem); \
+			} \
 		} \
 		dma->cnt = 0; \
 		if (cnt_h & (1 << 14)) \
-			mem_arm##armv##_if(mem, (1 << (8 + id))); \
+			mem_arm##armv##_irq(mem, (1 << (8 + id))); \
 		if (!(dma->status & MEM_DMA_ACTIVE)) \
 		{ \
 			mem_arm##armv##_set_reg16(mem, MEM_ARM##armv##_REG_DMA0CNT_H + 0xC * id, \
@@ -309,6 +321,8 @@ static void arm##armv##_dma_control(struct mem *mem, uint8_t id) \
 	dma->cnt = 0; \
 	arm##armv##_load_dma_length(mem, id); \
 	uint16_t cnt_h = mem_arm##armv##_get_reg16(mem, MEM_ARM##armv##_REG_DMA0CNT_H + 0xC * id); \
+	uint8_t prev_status = dma->status; \
+	(void)prev_status; \
 	dma->status = 0; \
 	if (cnt_h & (1 << 15)) \
 		dma->status |= MEM_DMA_ENABLE; \
@@ -320,12 +334,19 @@ static void arm##armv##_dma_control(struct mem *mem, uint8_t id) \
 	else \
 	{ \
 		if (!(cnt_h & (7 << 11))) \
+		{ \
 			dma->status |= MEM_DMA_ACTIVE; \
+			if (dma->dst == (0x4000000 | MEM_ARM9_REG_GXFIFO)) \
+			{ \
+				mem->gxfifo_dma_count++; \
+				update_gxfifo_irq(mem); \
+			} \
+		} \
 	} \
-	if ((dma->status & MEM_DMA_ENABLE)) \
-		printf("[ARM" #armv "] enable DMA %" PRIu8 " type %" PRId32 " of %08" PRIx32 " words from %08" PRIx32 " to %08" PRIx32 ": %04" PRIx16 "\n", \
+	if (0 && (dma->status & MEM_DMA_ENABLE)) \
+		printf("[ARM" #armv "] enable DMA %" PRIu8 " type %" PRId32 " of %08" PRIx32 " words from %08" PRIx32 " to %08" PRIx32 " CNT_H=%04" PRIx16 " PREV=%02" PRIx8 "\n",  \
 		       id, armv == 7 ? ((cnt_h >> 12) & 3) : ((cnt_h >> 11) & 7), \
-		       dma->len, dma->src, dma->dst, cnt_h); \
+		       dma->len, dma->src, dma->dst, cnt_h, prev_status); \
 } \
 static void arm##armv##_dma_start(struct mem *mem, uint8_t cond) \
 { \
@@ -360,8 +381,13 @@ static void arm##armv##_dma_start(struct mem *mem, uint8_t cond) \
 		{ \
 			if (cond == 5) \
 				mem->dscard_dma_count++; \
+			if (dma->dst == (0x4000000 | MEM_ARM9_REG_GXFIFO)) \
+			{ \
+				mem->gxfifo_dma_count++; \
+				update_gxfifo_irq(mem); \
+			} \
 		} \
-		printf("[ARM" #armv "] start DMA %" PRIu8 " of %08" PRIx32 " words from %08" PRIx32 " to %08" PRIx32 "\n", i, dma->len, dma->src, dma->dst); \
+		/* printf("[ARM" #armv "] start DMA %" PRIu8 " of %08" PRIx32 " words from %08" PRIx32 " to %08" PRIx32 "\n", i, dma->len, dma->src, dma->dst); */ \
 	} \
 }
 
@@ -397,13 +423,35 @@ void mem_dscard(struct mem *mem)
 	arm9_dma_start(mem, 5);
 }
 
-void mem_arm9_if(struct mem *mem, uint32_t f)
+static void update_gxfifo_irq(struct mem *mem)
+{
+	/* nasty hack v2: fake non-available DMA if irq is running */
+	if (mem->gxfifo_dma_count)
+	{
+		mem_arm9_set_reg32(mem, MEM_ARM9_REG_IF, mem_arm9_get_reg32(mem, MEM_ARM9_REG_IF) & ~(1 << 21));
+		cpu_update_irq_state(mem->nds->arm9);
+		return;
+	}
+	switch ((mem_arm9_get_reg32(mem, MEM_ARM9_REG_GXSTAT) >> 30) & 0x3)
+	{
+		case 0:
+		case 3:
+			mem_arm9_set_reg32(mem, MEM_ARM9_REG_IF, mem_arm9_get_reg32(mem, MEM_ARM9_REG_IF) & ~(1 << 21));
+			break;
+		case 1:
+		case 2:
+			mem_arm9_set_reg32(mem, MEM_ARM9_REG_IF, mem_arm9_get_reg32(mem, MEM_ARM9_REG_IF) | (1 << 21));
+			break;
+	}
+	cpu_update_irq_state(mem->nds->arm9);
+}
+void mem_arm9_irq(struct mem *mem, uint32_t f)
 {
 	mem_arm9_set_reg32(mem, MEM_ARM9_REG_IF, mem_arm9_get_reg32(mem, MEM_ARM9_REG_IF) | f);
 	cpu_update_irq_state(mem->nds->arm9);
 }
 
-void mem_arm7_if(struct mem *mem, uint32_t f)
+void mem_arm7_irq(struct mem *mem, uint32_t f)
 {
 	mem_arm7_set_reg32(mem, MEM_ARM7_REG_IF, mem_arm7_get_reg32(mem, MEM_ARM7_REG_IF) | f);
 	cpu_update_irq_state(mem->nds->arm7);
@@ -696,7 +744,7 @@ static void spi_write(struct mem *mem, uint8_t v)
 		}
 	}
 	if (mem_arm7_get_reg16(mem, MEM_ARM7_REG_SPICNT) & (1 << 14))
-		mem_arm7_if(mem, 1 << 23);
+		mem_arm7_irq(mem, 1 << 23);
 }
 
 static uint8_t auxspi_read(struct mem *mem)
@@ -1001,7 +1049,7 @@ static void set_arm7_reg8(struct mem *mem, uint32_t addr, uint8_t v)
 			mem->arm7_regs[addr] = v & 0x47;
 			if ((v & (1 << 5))
 			 && (mem->arm9_regs[MEM_ARM9_REG_IPCSYNC + 1] & (1 << 6)))
-				mem_arm9_if(mem, 1 << 16);
+				mem_arm9_irq(mem, 1 << 16);
 #if 0
 			printf("[ARM7] IPCSYNC write 0x%02" PRIx8 "\n", v);
 #endif
@@ -1612,7 +1660,7 @@ static void set_arm7_reg8(struct mem *mem, uint32_t addr, uint8_t v)
 			mem->arm9_fifo.len++;
 			if (mem->arm9_fifo.len == 4
 			 && (mem->arm9_regs[MEM_ARM9_REG_IPCFIFOCNT + 1] & (1 << 2)))
-				mem_arm9_if(mem, 1 << 18);
+				mem_arm9_irq(mem, 1 << 18);
 #if 0
 			printf("[ARM7] IPCFIFO write (now %" PRIu8 ")\n", mem->arm9_fifo.len);
 #endif
@@ -2050,7 +2098,7 @@ static uint8_t get_arm7_reg8(struct mem *mem, uint32_t addr)
 			mem->arm7_fifo.len--;
 			if (!mem->arm7_fifo.len
 			 && (mem->arm9_regs[MEM_ARM9_REG_IPCFIFOCNT] & (1 << 2)))
-				mem_arm9_if(mem, 1 << 17);
+				mem_arm9_irq(mem, 1 << 17);
 			return v;
 		}
 		case MEM_ARM7_REG_VRAMSTAT:
@@ -2662,7 +2710,7 @@ static void set_arm9_reg8(struct mem *mem, uint32_t addr, uint8_t v)
 			mem->arm9_regs[addr] = v & 0x47;
 			if ((v & (1 << 5))
 			 && (mem->arm7_regs[MEM_ARM7_REG_IPCSYNC + 1] & (1 << 6)))
-				mem_arm7_if(mem, 1 << 16);
+				mem_arm7_irq(mem, 1 << 16);
 #if 0
 			printf("[ARM9] IPCSYNC write 0x%02" PRIx8 "\n", v);
 #endif
@@ -3125,7 +3173,7 @@ static void set_arm9_reg8(struct mem *mem, uint32_t addr, uint8_t v)
 			mem->arm7_fifo.len++;
 			if (mem->arm7_fifo.len == 4
 			 && (mem->arm7_regs[MEM_ARM7_REG_IPCFIFOCNT + 1] & (1 << 2)))
-				mem_arm7_if(mem, 1 << 18);
+				mem_arm7_irq(mem, 1 << 18);
 #if 0
 			printf("[ARM9] IPCFIFO write (now %" PRIu8 ")\n", mem->arm7_fifo.len);
 #endif
@@ -3236,18 +3284,7 @@ static void set_arm9_reg8(struct mem *mem, uint32_t addr, uint8_t v)
 #endif
 			mem->arm9_regs[addr] &= 0x3F;
 			mem->arm9_regs[addr] |= v & 0xC0;
-			switch ((v >> 6) & 0x3)
-			{
-				case 0:
-				case 3:
-					mem_arm9_set_reg32(mem, MEM_ARM9_REG_IF, mem_arm9_get_reg32(mem, MEM_ARM9_REG_IF) & ~(1 << 21));
-					break;
-				case 1:
-				case 2:
-					mem_arm9_set_reg32(mem, MEM_ARM9_REG_IF, mem_arm9_get_reg32(mem, MEM_ARM9_REG_IF) | (1 << 21));
-					break;
-			}
-			cpu_update_irq_state(mem->nds->arm9);
+			update_gxfifo_irq(mem);
 			return;
 		case 0x58: /* silent these. they are memset(0) */
 		case 0x59:
@@ -3769,12 +3806,22 @@ static uint8_t get_arm9_reg8(struct mem *mem, uint32_t addr)
 		case MEM_ARM9_REG_GXSTAT:
 		case MEM_ARM9_REG_GXSTAT + 1:
 		case MEM_ARM9_REG_GXSTAT + 2:
-		case MEM_ARM9_REG_GXSTAT + 3:
 #if 0
 			printf("[ARM9] [%08" PRIx32 "] GXSTAT[%08" PRIx32 "] read 0x%02" PRIx8 "\n",
 			       cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr, mem->arm9_regs[addr]);
 #endif
 			return mem->arm9_regs[addr];
+		case MEM_ARM9_REG_GXSTAT + 3:
+		{
+#if 0
+			printf("[ARM9] [%08" PRIx32 "] GXSTAT[%08" PRIx32 "] read 0x%02" PRIx8 "\n",
+			       cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr, mem->arm9_regs[addr]);
+#endif
+			uint8_t v = mem->arm9_regs[addr];
+			if (!mem->gxfifo_dma_count)
+				v |= (1 << 2);
+			return v;
+		}
 		case MEM_ARM9_REG_AUXSPICNT:
 		case MEM_ARM9_REG_AUXSPICNT + 1:
 #if 0
@@ -3880,7 +3927,7 @@ static uint8_t get_arm9_reg8(struct mem *mem, uint32_t addr)
 			mem->arm9_fifo.len--;
 			if (!mem->arm9_fifo.len
 			 && (mem->arm7_regs[MEM_ARM7_REG_IPCFIFOCNT] & (1 << 2)))
-				mem_arm7_if(mem, 1 << 17);
+				mem_arm7_irq(mem, 1 << 17);
 			return v;
 		}
 		case MEM_ARM9_REG_ROMCTRL + 2:

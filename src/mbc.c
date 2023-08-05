@@ -191,8 +191,8 @@ static void end_cmd(struct mbc *mbc)
 	mbc->nds->mem->arm9_regs[MEM_ARM9_REG_ROMCTRL + 3] &= ~(1 << 7); /* XXX another way */
 	if (mem_arm9_get_reg16(mbc->nds->mem, MEM_ARM9_REG_AUXSPICNT) & (1 << 14))
 	{
-		mem_arm9_if(mbc->nds->mem, 1 << 19);
-		mem_arm7_if(mbc->nds->mem, 1 << 19);
+		mem_arm9_irq(mbc->nds->mem, 1 << 19);
+		mem_arm7_irq(mbc->nds->mem, 1 << 19);
 	}
 }
 

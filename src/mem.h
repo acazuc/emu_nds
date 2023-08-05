@@ -529,7 +529,8 @@ struct mem
 	uint32_t vram_texp_bases[8]; /* 0x4000 units, (only 6 effective) */
 	uint8_t *sram; /* backup + firmware sram */
 	size_t sram_size;
-	uint8_t dscard_dma_count;
+	uint8_t dscard_dma_count; /* XXX this should be removed */
+	uint8_t gxfifo_dma_count; /* XXX this should be removed */
 	uint32_t itcm_base;
 	uint32_t itcm_mask;
 	uint32_t dtcm_base;
@@ -547,8 +548,8 @@ void mem_vblank(struct mem *mem);
 void mem_hblank(struct mem *mem);
 void mem_dscard(struct mem *mem);
 
-void mem_arm9_if(struct mem *mem, uint32_t f);
-void mem_arm7_if(struct mem *mem, uint32_t f);
+void mem_arm9_irq(struct mem *mem, uint32_t f);
+void mem_arm7_irq(struct mem *mem, uint32_t f);
 
 uint8_t  mem_arm7_get8 (struct mem *mem, uint32_t addr, enum mem_type type);
 uint16_t mem_arm7_get16(struct mem *mem, uint32_t addr, enum mem_type type);
