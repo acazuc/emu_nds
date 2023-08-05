@@ -126,6 +126,10 @@ struct gpu_g3d
 	uint8_t primitive;
 	uint8_t tmp_vertex;
 	uint8_t swap_buffers;
+	uint8_t viewport_left;
+	uint8_t viewport_right;
+	uint8_t viewport_top;
+	uint8_t viewport_bottom;
 };
 
 struct gpu

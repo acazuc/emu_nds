@@ -81,6 +81,10 @@ struct gpu *gpu_new(struct mem *mem)
 	gpu->g3d.front = &gpu->g3d.bufs[0];
 	gpu->g3d.back = &gpu->g3d.bufs[1];
 	gpu->g3d.position.w = 1 << 12;
+	gpu->g3d.viewport_left = 0;
+	gpu->g3d.viewport_top = 0;
+	gpu->g3d.viewport_right = 255;
+	gpu->g3d.viewport_bottom = 191;
 	return gpu;
 }
 
@@ -109,6 +113,8 @@ static inline uint32_t eng_get_reg32(struct gpu *gpu, struct gpu_eng *eng, uint3
 static void draw_background_3d(struct gpu *gpu, struct gpu_eng *eng,
                                uint8_t y, uint8_t bg, uint8_t *data)
 {
+	(void)eng;
+	(void)bg;
 	memcpy(data, &gpu->g3d.front->data[(191 - y) * 256 * 4], 256 * 4);
 }
 
@@ -1425,14 +1431,14 @@ static void draw_top_flat(struct gpu *gpu, struct polygon *polygon,
 	}
 	miny = v1->screen_y;
 	maxy = v3->screen_y;
-	if (miny < 0)
-		miny = 0;
-	if (maxy >= 192 * (1 << 12))
+	if (miny < gpu->g3d.viewport_top * (1 << 12))
+		miny = gpu->g3d.viewport_top * (1 << 12);
+	if (maxy > gpu->g3d.viewport_bottom * (1 << 12))
 	{
-		int64_t diff = maxy - ((192 * (1 << 12)) - 1);
+		int64_t diff = maxy - (gpu->g3d.viewport_bottom * (1 << 12));
 		n1 -= (step1 * diff) / (1 << 12);
 		n2 -= (step2 * diff) / (1 << 12);
-		maxy = (192 * (1 << 12)) - 1;
+		maxy = gpu->g3d.viewport_bottom * (1 << 12);
 	}
 	int32_t starty = maxy / (1 << 12);
 	int32_t endy = miny / (1 << 12);
@@ -1440,10 +1446,10 @@ static void draw_top_flat(struct gpu *gpu, struct polygon *polygon,
 	{
 		minx = n1;
 		maxx = n2;
-		if (minx < 0)
-			minx = 0;
-		if (maxx >= 256 * (1 << 12))
-			maxx = (256 * (1 << 12)) - 1;
+		if (minx < gpu->g3d.viewport_left)
+			minx = gpu->g3d.viewport_left;
+		if (maxx > gpu->g3d.viewport_right * (1 << 12))
+			maxx = (gpu->g3d.viewport_right * (1 << 12));
 		int32_t startx = minx / (1 << 12);
 		int32_t endx = maxx / (1 << 12);
 		for (int32_t x = startx; x <= endx; ++x)
@@ -1500,25 +1506,25 @@ static void draw_bot_flat(struct gpu *gpu, struct polygon *polygon,
 	}
 	miny = v1->screen_y;
 	maxy = v2->screen_y;
-	if (miny < 0)
+	if (miny < gpu->g3d.viewport_top * (1 << 12))
 	{
-		int64_t diff = -miny;
+		int64_t diff = ((int64_t)gpu->g3d.viewport_top * (1 << 12)) - miny;
 		n1 += (step1 * diff) / (1 << 12);
 		n2 += (step2 * diff) / (1 << 12);
-		miny = 0;
+		miny = gpu->g3d.viewport_top * (1 << 12);
 	}
-	if (maxy > 256 * (1 << 12))
-		maxy = 256 * (1 << 12);
+	if (maxy > gpu->g3d.viewport_bottom * (1 << 12))
+		maxy = gpu->g3d.viewport_bottom * (1 << 12);
 	int32_t starty = miny / (1 << 12);
 	int32_t endy = maxy / (1 << 12);
 	for (int32_t y = starty; y < endy; ++y)
 	{
 		minx = n1;
 		maxx = n2;
-		if (minx < 0)
-			minx = 0;
-		if (maxx >= 256 * (1 << 12))
-			maxx = (256 * (1 << 12)) - 1;
+		if (minx < gpu->g3d.viewport_left)
+			minx = gpu->g3d.viewport_left;
+		if (maxx > gpu->g3d.viewport_right * (1 << 12))
+			maxx = (gpu->g3d.viewport_right * (1 << 12));
 		int32_t startx = minx / (1 << 12);
 		int32_t endx = maxx / (1 << 12);
 		for (int32_t x = startx; x <= endx; ++x)
@@ -1603,32 +1609,14 @@ static void draw_triangle(struct gpu *gpu, struct polygon *polygon,
 		case 0:
 			return;
 		case 1:
-			if (polygon->attr & (1 << 31))
-			{
-				if ((v2->screen_x - v1->screen_x) * (v3->screen_y - v2->screen_y)
-				  - (v2->screen_y - v1->screen_y) * (v3->screen_x - v2->screen_x) > 0)
-					return;
-			}
-			else
-			{
-				if ((v2->screen_x - v1->screen_x) * (v3->screen_y - v2->screen_y)
-				  - (v2->screen_y - v1->screen_y) * (v3->screen_x - v2->screen_x) < 0)
-					return;
-			}
+			if ((v2->screen_x - v1->screen_x) * (v3->screen_y - v2->screen_y)
+			  - (v2->screen_y - v1->screen_y) * (v3->screen_x - v2->screen_x) < 0)
+				return;
 			break;
 		case 2:
-			if (polygon->attr & (1 << 31))
-			{
-				if ((v2->screen_x - v1->screen_x) * (v3->screen_y - v2->screen_y)
-				  - (v2->screen_y - v1->screen_y) * (v3->screen_x - v2->screen_x) < 0)
-					return;
-			}
-			else
-			{
-				if ((v2->screen_x - v1->screen_x) * (v3->screen_y - v2->screen_y)
-				  - (v2->screen_y - v1->screen_y) * (v3->screen_x - v2->screen_x) > 0)
-					return;
-			}
+			if ((v2->screen_x - v1->screen_x) * (v3->screen_y - v2->screen_y)
+			  - (v2->screen_y - v1->screen_y) * (v3->screen_x - v2->screen_x) > 0)
+				return;
 			break;
 		case 3:
 			break;
@@ -1730,7 +1718,7 @@ static void mtx_mult_vec2(struct vec2 *r, struct matrix *m, struct vec2 *v)
 #undef MULT_COMP
 }
 
-static void mtx_print(const struct matrix *m)
+static inline void mtx_print(const struct matrix *m)
 {
 	printf("{" I12_FMT" , " I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
 	       I12_PRT(m->x.x), I12_PRT(m->y.x), I12_PRT(m->z.x), I12_PRT(m->w.x));
@@ -2348,7 +2336,7 @@ static void cmd_texcoord(struct gpu *gpu, uint32_t *params)
 }
 
 static void push_triangle(struct gpu *gpu, uint16_t v1, uint16_t v2,
-                          uint16_t v3, uint8_t front_swap)
+                          uint16_t v3)
 {
 	if (gpu->g3d.back->polygons_nb == sizeof(gpu->g3d.back->polygons) / sizeof(*gpu->g3d.back->polygons))
 	{
@@ -2362,7 +2350,6 @@ static void push_triangle(struct gpu *gpu, uint16_t v1, uint16_t v2,
 	struct polygon *polygon = &gpu->g3d.back->polygons[gpu->g3d.back->polygons_nb++];
 	polygon->quad = 0;
 	polygon->attr = gpu->g3d.commit_polygon_attr;
-	polygon->attr |= (uint32_t)front_swap << 31;
 	polygon->vertexes[0] = v1;
 	polygon->vertexes[1] = v2;
 	polygon->vertexes[2] = v3;
@@ -2403,11 +2390,10 @@ static void push_vertex(struct gpu *gpu)
 	v->b = gpu->g3d.b;
 	v->normal = gpu->g3d.normal;
 	v->texcoord = gpu->g3d.texcoord;
-	/* XXX viewport */
 	if (v->position.w)
 	{
-		v->screen_x = ((int64_t)(v->position.x + v->position.w) * 256 * (1 << 12) / (2 * v->position.w));
-		v->screen_y = ((int64_t)(v->position.y + v->position.w) * 192 * (1 << 12) / (2 * v->position.w));
+		v->screen_x = ((int64_t)(v->position.x + v->position.w) * (gpu->g3d.viewport_right - gpu->g3d.viewport_left + 1) * (1 << 12) / (2 * v->position.w)) + gpu->g3d.viewport_left;
+		v->screen_y = ((int64_t)(v->position.y + v->position.w) * (gpu->g3d.viewport_bottom - gpu->g3d.viewport_top + 1) * (1 << 12) / (2 * v->position.w)) + gpu->g3d.viewport_top;
 	}
 	else
 	{
@@ -2449,8 +2435,7 @@ static void push_vertex(struct gpu *gpu)
 			push_triangle(gpu,
 			              gpu->g3d.back->vertexes_nb - 3,
 			              gpu->g3d.back->vertexes_nb - 2,
-			              gpu->g3d.back->vertexes_nb - 1,
-			              0);
+			              gpu->g3d.back->vertexes_nb - 1);
 			break;
 		case PRIMITIVE_QUADS:
 			if (gpu->g3d.tmp_vertex < 3)
@@ -2471,11 +2456,20 @@ static void push_vertex(struct gpu *gpu)
 				gpu->g3d.tmp_vertex++;
 				break;
 			}
-			push_triangle(gpu,
-			              gpu->g3d.back->vertexes_nb - 3,
-			              gpu->g3d.back->vertexes_nb - 2,
-			              gpu->g3d.back->vertexes_nb - 1,
-			              gpu->g3d.tmp_vertex & 1);
+			if (gpu->g3d.tmp_vertex & 1)
+			{
+				push_triangle(gpu,
+				              gpu->g3d.back->vertexes_nb - 2,
+				              gpu->g3d.back->vertexes_nb - 3,
+				              gpu->g3d.back->vertexes_nb - 1);
+			}
+			else
+			{
+				push_triangle(gpu,
+				              gpu->g3d.back->vertexes_nb - 3,
+				              gpu->g3d.back->vertexes_nb - 2,
+				              gpu->g3d.back->vertexes_nb - 1);
+			}
 			gpu->g3d.tmp_vertex++;
 			break;
 		case PRIMITIVE_QUAD_STRIP:
@@ -2615,7 +2609,27 @@ static void cmd_swap_buffers(struct gpu *gpu, uint32_t *params)
 #if 0
 	printf("[GX] SWAP_BUFFERS 0x%08" PRIx32 "\n", params[0]);
 #endif
+	(void)params;
 	gpu->g3d.swap_buffers = 1;
+}
+
+static void cmd_viewport(struct gpu *gpu, uint32_t *params)
+{
+#if 0
+	printf("[GX] VIEWPORT 0x%08" PRIx32 "\n", params[0]);
+#endif
+	gpu->g3d.viewport_left   = (params[0] >>  0) & 0xFF;
+	gpu->g3d.viewport_top    = (params[0] >>  8) & 0xFF;
+	if (gpu->g3d.viewport_top > 191)
+		gpu->g3d.viewport_top = 191;
+	gpu->g3d.viewport_right  = (params[0] >> 16) & 0xFF;
+	gpu->g3d.viewport_bottom = (params[0] >> 24) & 0xFF;
+	if (gpu->g3d.viewport_bottom > 191)
+		gpu->g3d.viewport_bottom = 191;
+	if (gpu->g3d.viewport_right < gpu->g3d.viewport_left)
+		gpu->g3d.viewport_right = gpu->g3d.viewport_left;
+	if (gpu->g3d.viewport_bottom < gpu->g3d.viewport_top)
+		gpu->g3d.viewport_bottom = gpu->g3d.viewport_top;
 }
 
 void gpu_gx_cmd(struct gpu *gpu, uint8_t cmd, uint32_t *params)
@@ -2701,6 +2715,9 @@ void gpu_gx_cmd(struct gpu *gpu, uint8_t cmd, uint32_t *params)
 			break;
 		case GX_CMD_SWAP_BUFFERS:
 			cmd_swap_buffers(gpu, params);
+			break;
+		case GX_CMD_VIEWPORT:
+			cmd_viewport(gpu, params);
 			break;
 		default:
 			printf("[GX] unhandled gx cmd 0x%" PRIx8 "\n", cmd);
