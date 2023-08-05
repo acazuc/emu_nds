@@ -71,7 +71,7 @@ static void gen_sample(struct apu *apu, int16_t *dst)
 		struct apu_channel *channel = &apu->channels[i];
 		int32_t sample = channel->sample;
 		uint8_t volume = cnt & 0x7F;
-		sample = (sample * volume) / 128;
+		sample = (sample * volume) / 128 / 2; /* divide by two to avoid being too loud */
 		static const uint8_t dividers[4] = {0, 1, 2, 4};
 		uint8_t divider = dividers[(cnt >> 8) & 0x3];
 		sample >>= divider;
