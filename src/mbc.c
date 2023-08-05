@@ -39,6 +39,10 @@ struct mbc *mbc_new(struct nds *nds, const void *data, size_t size)
 		case 0x45395941:
 			mbc->backup_type = MBC_EEPROM_64K;
 			break;
+		case 0x50443241:
+		case 0x50543841:
+			mbc->backup_type = MBC_EEPROM_8K;
+			break;
 		default:
 			mbc->backup_type = MBC_BACKUP_UNKNOWN;
 			printf("unknown backup for gamecode %08" PRIx32 "\n",
