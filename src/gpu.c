@@ -103,8 +103,7 @@ static inline uint32_t eng_get_reg32(struct gpu *gpu, struct gpu_eng *eng, uint3
 static void draw_background_3d(struct gpu *gpu, struct gpu_eng *eng,
                                uint8_t y, uint8_t bg, uint8_t *data)
 {
-	printf("unhandled 3d background\n");
-	return;
+	//printf("unhandled 3d background\n");
 }
 
 static void draw_background_text(struct gpu *gpu, struct gpu_eng *eng,
