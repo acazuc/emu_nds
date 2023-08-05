@@ -69,7 +69,7 @@ static void gen_sample(struct apu *apu, int16_t *dst)
 		if (!(cnt & (1 << 31)))
 			continue;
 		struct apu_channel *channel = &apu->channels[i];
-		int16_t sample = channel->sample;
+		int32_t sample = channel->sample;
 		uint8_t volume = cnt & 0x7F;
 		sample = (sample * volume) / 128;
 		static const uint8_t dividers[4] = {0, 1, 2, 4};
