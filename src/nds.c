@@ -294,7 +294,6 @@ void nds_frame(struct nds *nds, uint8_t *video_top_buf, uint32_t video_top_pitch
 #if 0
 	printf("touch: %d @ %dx%d\n", touch, touch_x, touch_y);
 #endif
-	printf("gxfifo dma count: %u\n", nds->mem->gxfifo_dma_count);
 	uint32_t powcnt1 = mem_arm9_get_reg32(nds->mem, MEM_ARM9_REG_POWCNT1);
 	if (powcnt1 & (1 << 15))
 	{
@@ -363,6 +362,7 @@ void nds_frame(struct nds *nds, uint8_t *video_top_buf, uint32_t video_top_pitch
 #endif
 	}
 
+	gpu_g3d_draw(nds->gpu);
 	gpu_commit_bgpos(nds->gpu);
 	if (mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) & (1 << 3))
 		mem_arm9_irq(nds->mem, 1 << 0);

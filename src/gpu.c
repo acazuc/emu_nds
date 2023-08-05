@@ -78,6 +78,9 @@ struct gpu *gpu_new(struct mem *mem)
 	gpu->engb.get_vram_obj16 = mem_vram_objb_get16;
 	gpu->engb.get_vram_obj32 = mem_vram_objb_get32;
 	gpu->engb.engb = 1;
+	gpu->g3d.front = &gpu->g3d.bufs[0];
+	gpu->g3d.back = &gpu->g3d.bufs[1];
+	gpu->g3d.position.w = 1 << 12;
 	return gpu;
 }
 
@@ -106,7 +109,7 @@ static inline uint32_t eng_get_reg32(struct gpu *gpu, struct gpu_eng *eng, uint3
 static void draw_background_3d(struct gpu *gpu, struct gpu_eng *eng,
                                uint8_t y, uint8_t bg, uint8_t *data)
 {
-	//printf("unhandled 3d background\n");
+	memcpy(data, &gpu->g3d.front->data[(191 - y) * 256 * 4], 256 * 4);
 }
 
 static void draw_background_text(struct gpu *gpu, struct gpu_eng *eng,
@@ -1358,9 +1361,319 @@ void gpu_commit_bgpos(struct gpu *gpu)
 	eng_commit_bgpos(gpu, &gpu->engb);
 }
 
-static int32_t fp12_add(int32_t a, int32_t b)
+static void vertex_mix(struct vertex *d, struct vertex *v1, struct vertex *v2,
+                       int64_t num, int64_t dem)
 {
-	return a + b;
+	int64_t rnum = dem - num;
+	d->position.x = (v1->position.x * rnum + v2->position.x * num) / dem;
+	d->position.y = (v1->position.y * rnum + v2->position.y * num) / dem;
+	d->position.z = (v1->position.z * rnum + v2->position.z * num) / dem;
+	d->position.w = (v1->position.w * rnum + v2->position.w * num) / dem;
+	d->normal.x = (v1->normal.x * rnum + v2->normal.x * num) / dem;
+	d->normal.y = (v1->normal.y * rnum + v2->normal.y * num) / dem;
+	d->normal.z = (v1->normal.z * rnum + v2->normal.z * num) / dem;
+	d->texcoord.x = (v1->texcoord.x * rnum + v2->texcoord.x * num) / dem;
+	d->texcoord.y = (v1->texcoord.y * rnum + v2->texcoord.y * num) / dem;
+	d->r = (v1->r * rnum + v2->r * num) / dem;
+	d->g = (v1->g * rnum + v2->g * num) / dem;
+	d->b = (v1->b * rnum + v2->b * num) / dem;
+	d->screen_x = (v1->screen_x * rnum + v2->screen_x * num) / dem;
+	d->screen_y = (v1->screen_y * rnum + v2->screen_y * num) / dem;
+}
+
+#include <math.h>
+
+static void draw_top_flat(struct gpu *gpu, struct polygon *polygon,
+                          struct vertex *v1, struct vertex *v2,
+                          struct vertex *v3)
+{
+#if 0
+	printf("draw top flat triangle:\n");
+	printf("     {" I12_FMT ", " I12_FMT "}\n",
+	       I12_PRT(v1->screen_x), I12_PRT(v1->screen_y));
+	printf("     {" I12_FMT ", " I12_FMT "}\n",
+	       I12_PRT(v2->screen_x), I12_PRT(v2->screen_y));
+	printf("     {" I12_FMT ", " I12_FMT "}\n",
+	       I12_PRT(v3->screen_x), I12_PRT(v3->screen_y));
+#endif
+	int32_t step1;
+	int32_t step2;
+	int32_t tmp;
+	int32_t n1;
+	int32_t n2;
+	int32_t minx;
+	int32_t maxx;
+	int32_t miny;
+	int32_t maxy;
+
+	if (v3->screen_y == v1->screen_y
+	 || v3->screen_y == v2->screen_y)
+		return;
+	if (v1->position.z <= 0 || v2->position.z <= 0 || v3->position.z <= 0
+	 || v1->position.w <= 0 || v2->position.w <= 0 || v3->position.w <= 0)
+		return;
+
+	step1 = ((int64_t)(v3->screen_x - v1->screen_x) * (1 << 12)) / (v3->screen_y - v1->screen_y);
+	step2 = ((int64_t)(v3->screen_x - v2->screen_x) * (1 << 12)) / (v3->screen_y - v2->screen_y);
+	n1 = v3->screen_x;
+	n2 = v3->screen_x;
+	if (step1 < step2)
+	{
+		tmp = step1;
+		step1 = step2;
+		step2 = tmp;
+	}
+	miny = v1->screen_y;
+	maxy = v3->screen_y;
+	if (miny < 0)
+		miny = 0;
+	if (maxy >= 192 * (1 << 12))
+	{
+		int64_t diff = maxy - ((192 * (1 << 12)) - 1);
+		n1 -= (step1 * diff) / (1 << 12);
+		n2 -= (step2 * diff) / (1 << 12);
+		maxy = (192 * (1 << 12)) - 1;
+	}
+	int32_t starty = maxy / (1 << 12);
+	int32_t endy = miny / (1 << 12);
+	for (int32_t y = starty; y >= endy; --y)
+	{
+		minx = n1;
+		maxx = n2;
+		if (minx < 0)
+			minx = 0;
+		if (maxx >= 256 * (1 << 12))
+			maxx = (256 * (1 << 12)) - 1;
+		int32_t startx = minx / (1 << 12);
+		int32_t endx = maxx / (1 << 12);
+		for (int32_t x = startx; x <= endx; ++x)
+		{
+			gpu->g3d.front->data[(256 * y + x) * 4 + 0] += 4;
+			gpu->g3d.front->data[(256 * y + x) * 4 + 1] += 4;
+			gpu->g3d.front->data[(256 * y + x) * 4 + 2] += 4;
+			gpu->g3d.front->data[(256 * y + x) * 4 + 3] = 0xFF;
+		}
+		n1 -= step1;
+		n2 -= step2;
+	}
+}
+
+static void draw_bot_flat(struct gpu *gpu, struct polygon *polygon,
+                          struct vertex *v1, struct vertex *v2,
+                          struct vertex *v3)
+{
+#if 0
+	printf("draw bot flat triangle:\n");
+	printf("     {" I12_FMT ", " I12_FMT "}\n",
+	       I12_PRT(v1->screen_x), I12_PRT(v1->screen_y));
+	printf("     {" I12_FMT ", " I12_FMT "}\n",
+	       I12_PRT(v2->screen_x), I12_PRT(v2->screen_y));
+	printf("     {" I12_FMT ", " I12_FMT "}\n",
+	       I12_PRT(v3->screen_x), I12_PRT(v3->screen_y));
+#endif
+	int32_t step1;
+	int32_t step2;
+	int32_t tmp;
+	int32_t n1;
+	int32_t n2;
+	int32_t minx;
+	int32_t maxx;
+	int32_t miny;
+	int32_t maxy;
+
+	if (v2->screen_y == v1->screen_y
+	 || v3->screen_y == v1->screen_y)
+		return;
+	if (v1->position.z <= 0 || v2->position.z <= 0 || v3->position.z <= 0
+	 || v1->position.w <= 0 || v2->position.w <= 0 || v3->position.w <= 0)
+		return;
+
+	step1 = ((int64_t)(v2->screen_x - v1->screen_x) * (1 << 12)) / (v2->screen_y - v1->screen_y);
+	step2 = ((int64_t)(v3->screen_x - v1->screen_x) * (1 << 12)) / (v3->screen_y - v1->screen_y);
+	n1 = v1->screen_x;
+	n2 = v1->screen_x;
+	if (step2 < step1)
+	{
+		tmp = step1;
+		step1 = step2;
+		step2 = tmp;
+	}
+	miny = v1->screen_y;
+	maxy = v2->screen_y;
+	if (miny < 0)
+	{
+		int64_t diff = -miny;
+		n1 += (step1 * diff) / (1 << 12);
+		n2 += (step2 * diff) / (1 << 12);
+		miny = 0;
+	}
+	if (maxy > 256 * (1 << 12))
+		maxy = 256 * (1 << 12);
+	int32_t starty = miny / (1 << 12);
+	int32_t endy = maxy / (1 << 12);
+	for (int32_t y = starty; y < endy; ++y)
+	{
+		minx = n1;
+		maxx = n2;
+		if (minx < 0)
+			minx = 0;
+		if (maxx >= 256 * (1 << 12))
+			maxx = (256 * (1 << 12)) - 1;
+		int32_t startx = minx / (1 << 12);
+		int32_t endx = maxx / (1 << 12);
+		for (int32_t x = startx; x <= endx; ++x)
+		{
+			gpu->g3d.front->data[(256 * y + x) * 4 + 0] += 4;
+			gpu->g3d.front->data[(256 * y + x) * 4 + 1] += 4;
+			gpu->g3d.front->data[(256 * y + x) * 4 + 2] += 4;
+			gpu->g3d.front->data[(256 * y + x) * 4 + 3] = 0xFF;
+		}
+		n1 += step1;
+		n2 += step2;
+	}
+}
+
+static void draw_not_flat(struct gpu *gpu, struct polygon *polygon,
+                          struct vertex *v1, struct vertex *v2,
+                          struct vertex *v3)
+{
+	struct vertex new;
+
+	vertex_mix(&new, v1, v3, v2->screen_y - v1->screen_y,
+	           v3->screen_y - v1->screen_y);
+	draw_top_flat(gpu, polygon, v2, &new, v3);
+	draw_bot_flat(gpu, polygon, v1, v2, &new);
+}
+
+static void sort_vertices(struct vertex **v1, struct vertex **v2,
+                          struct vertex **v3)
+{
+	struct vertex *tmp;
+	if ((*v1)->screen_y > (*v2)->screen_y)
+	{
+		tmp = *v1;
+		*v1 = *v2;
+		*v2 = tmp;
+	}
+	if ((*v1)->screen_y > (*v3)->screen_y)
+	{
+		tmp = *v1;
+		*v1 = *v3;
+		*v3 = tmp;
+	}
+	if ((*v2)->screen_y > (*v3)->screen_y)
+	{
+		tmp = *v2;
+		*v2 = *v3;
+		*v3 = tmp;
+	}
+}
+
+static void draw_triangle(struct gpu *gpu, struct polygon *polygon,
+                          struct vertex *v1, struct vertex *v2,
+                          struct vertex *v3)
+{
+#if 0
+	printf("draw triangle:\n");
+	printf("     {" I12_FMT ", " I12_FMT "}\n",
+	       I12_PRT(v1->screen_x), I12_PRT(v1->screen_y));
+	printf("     {" I12_FMT ", " I12_FMT "}\n",
+	       I12_PRT(v2->screen_x), I12_PRT(v2->screen_y));
+	printf("     {" I12_FMT ", " I12_FMT "}\n",
+	       I12_PRT(v3->screen_x), I12_PRT(v3->screen_y));
+#endif
+#if 1
+	if (((polygon->attr >> 16) & 0x1F) < 0x10)
+		return;
+#endif
+#if 1
+	switch ((polygon->attr >> 0x4) & 0x3)
+	{
+		case 0: /* modulation */
+		case 1: /* decal */
+		case 2: /* toon */
+			break;
+		case 3: /* shadow */
+			return;
+	}
+#endif
+#if 0
+	switch ((polygon->attr >> 0x6) & 0x3)
+	{
+		case 0:
+			return;
+		case 1:
+			if (polygon->attr & (1 << 31))
+			{
+				if ((v2->screen_x - v1->screen_x) * (v3->screen_y - v2->screen_y)
+				  - (v2->screen_y - v1->screen_y) * (v3->screen_x - v2->screen_x) > 0)
+					return;
+			}
+			else
+			{
+				if ((v2->screen_x - v1->screen_x) * (v3->screen_y - v2->screen_y)
+				  - (v2->screen_y - v1->screen_y) * (v3->screen_x - v2->screen_x) < 0)
+					return;
+			}
+			break;
+		case 2:
+			if (polygon->attr & (1 << 31))
+			{
+				if ((v2->screen_x - v1->screen_x) * (v3->screen_y - v2->screen_y)
+				  - (v2->screen_y - v1->screen_y) * (v3->screen_x - v2->screen_x) < 0)
+					return;
+			}
+			else
+			{
+				if ((v2->screen_x - v1->screen_x) * (v3->screen_y - v2->screen_y)
+				  - (v2->screen_y - v1->screen_y) * (v3->screen_x - v2->screen_x) > 0)
+					return;
+			}
+			break;
+		case 3:
+			break;
+	}
+#endif
+	sort_vertices(&v1, &v2, &v3);
+	if (v1->screen_y == v2->screen_y)
+		draw_bot_flat(gpu, polygon, v1, v2, v3);
+	else if (v1->screen_y == v2->screen_y)
+		draw_top_flat(gpu, polygon, v1, v2, v3);
+	else
+		draw_not_flat(gpu, polygon, v1, v2, v3);
+}
+
+void gpu_g3d_draw(struct gpu *gpu)
+{
+	if (!gpu->g3d.swap_buffers)
+		return;
+	gpu->g3d.swap_buffers = 0;
+#if 0
+	printf("[GX] vertexes: %" PRIu16 "\n", gpu->g3d.back->vertexes_nb);
+	printf("[GX] polygons: %" PRIu16 "\n", gpu->g3d.back->polygons_nb);
+#endif
+	struct gpu_g3d_buf *tmp = gpu->g3d.back;
+	gpu->g3d.back = gpu->g3d.front;
+	gpu->g3d.front = tmp;
+	gpu->g3d.back->vertexes_nb = 0;
+	gpu->g3d.back->polygons_nb = 0;
+	struct gpu_g3d_buf *buf = gpu->g3d.front;
+	memset(buf, 0, sizeof(buf->data));
+	for (uint16_t i = 0; i < buf->polygons_nb; ++i)
+	{
+		struct polygon *polygon = &buf->polygons[i];
+		draw_triangle(gpu, polygon,
+		              &buf->vertexes[polygon->vertexes[0]],
+		              &buf->vertexes[polygon->vertexes[1]],
+		              &buf->vertexes[polygon->vertexes[2]]);
+		if (polygon->quad)
+		{
+			draw_triangle(gpu, polygon,
+			              &buf->vertexes[polygon->vertexes[0]],
+			              &buf->vertexes[polygon->vertexes[2]],
+			              &buf->vertexes[polygon->vertexes[3]]);
+		}
+	}
 }
 
 static int32_t fp12_mul(int32_t a, int32_t b)
@@ -1377,19 +1690,19 @@ static void mtx_mult(struct matrix *r, const struct matrix *a,
 	for (int y = 0; y < 4; ++y)
 	{
 		for (int x = 0; x < 4; ++x)
-			fr[y + x * 4] = fp12_add(fp12_add(fp12_mul(fa[y + 0x0], fb[0 + x * 4]),
-			                                  fp12_mul(fa[y + 0x4], fb[1 + x * 4])),
-			                         fp12_add(fp12_mul(fa[y + 0x8], fb[2 + x * 4]),
-			                                  fp12_mul(fa[y + 0xC], fb[3 + x * 4])));
+			fr[y + x * 4] = fp12_mul(fa[y + 0x0], fb[0 + x * 4])
+			              + fp12_mul(fa[y + 0x4], fb[1 + x * 4])
+			              + fp12_mul(fa[y + 0x8], fb[2 + x * 4])
+			              + fp12_mul(fa[y + 0xC], fb[3 + x * 4]);
 	}
 }
 
 static void mtx_mult_vec4(struct vec4 *r, struct matrix *m, struct vec4 *v)
 {
-#define MULT_COMP(X) r->X = fp12_add(fp12_add(fp12_mul(v->x, m->x.X), \
-                                              fp12_mul(v->y, m->y.X)), \
-                                     fp12_add(fp12_mul(v->z, m->z.X), \
-                                              fp12_mul(v->w, m->w.X)))
+#define MULT_COMP(X) r->X = fp12_mul(v->x, m->x.X) \
+                          + fp12_mul(v->y, m->y.X) \
+                          + fp12_mul(v->z, m->z.X) \
+                          + fp12_mul(v->w, m->w.X)
 	MULT_COMP(x);
 	MULT_COMP(y);
 	MULT_COMP(z);
@@ -1399,9 +1712,9 @@ static void mtx_mult_vec4(struct vec4 *r, struct matrix *m, struct vec4 *v)
 
 static void mtx_mult_vec3(struct vec3 *r, struct matrix *m, struct vec3 *v)
 {
-#define MULT_COMP(X) r->X = fp12_add(fp12_add(fp12_mul(v->x, m->x.X), \
-                                              fp12_mul(v->y, m->y.X)), \
-                                     fp12_mul(v->z, m->z.X))
+#define MULT_COMP(X) r->X = fp12_mul(v->x, m->x.X) \
+                          + fp12_mul(v->y, m->y.X) \
+                          + fp12_mul(v->z, m->z.X)
 	MULT_COMP(x);
 	MULT_COMP(y);
 	MULT_COMP(z);
@@ -1410,7 +1723,8 @@ static void mtx_mult_vec3(struct vec3 *r, struct matrix *m, struct vec3 *v)
 
 static void mtx_mult_vec2(struct vec2 *r, struct matrix *m, struct vec2 *v)
 {
-#define MULT_COMP(X) r->X = fp12_add(fp12_mul(v->x, m->x.X), fp12_mul(v->y, m->y.X))
+#define MULT_COMP(X) r->X = fp12_mul(v->x, m->x.X) \
+                          + fp12_mul(v->y, m->y.X)
 	MULT_COMP(x);
 	MULT_COMP(y);
 #undef MULT_COMP
@@ -1433,14 +1747,6 @@ static void update_clip_matrix(struct gpu *gpu)
 	mtx_mult(&gpu->g3d.clip_matrix,
 	         &gpu->g3d.proj_matrix,
 	         &gpu->g3d.pos_matrix);
-#if 1
-	printf("proj:\n");
-	mtx_print(&gpu->g3d.proj_matrix);
-	printf("pos:\n");
-	mtx_print(&gpu->g3d.pos_matrix);
-	printf("clip:\n");
-	mtx_print(&gpu->g3d.clip_matrix);
-#endif
 }
 
 static void set_stack_error(struct gpu *gpu)
@@ -1452,7 +1758,7 @@ static void set_stack_error(struct gpu *gpu)
 
 static void cmd_mtx_mode(struct gpu *gpu, uint32_t *params)
 {
-#if 1
+#if 0
 	printf("[GX] MTX_MODE %" PRIu32 "\n", params[0] & 0x3);
 #endif
 	gpu->g3d.matrix_mode = params[0] & 0x3;
@@ -1460,16 +1766,14 @@ static void cmd_mtx_mode(struct gpu *gpu, uint32_t *params)
 
 static void cmd_mtx_push(struct gpu *gpu, uint32_t *params)
 {
-#if 1
+#if 0
 	printf("[GX] MTX_PUSH (mode=%" PRIu8 ")\n", gpu->g3d.matrix_mode);
 #endif
 	(void)params;
 	switch (gpu->g3d.matrix_mode & 0x3)
 	{
 		case 0:
-			memcpy(&gpu->g3d.proj_stack[0],
-			       &gpu->g3d.proj_matrix,
-			       sizeof(struct matrix));
+			gpu->g3d.proj_stack[0] = gpu->g3d.proj_matrix;
 			if (gpu->g3d.proj_stack_pos == 1)
 			{
 #if 1
@@ -1486,12 +1790,8 @@ static void cmd_mtx_push(struct gpu *gpu, uint32_t *params)
 			break;
 		case 1:
 		case 2:
-			memcpy(&gpu->g3d.pos_stack[gpu->g3d.pos_stack_pos & 0x1F],
-			       &gpu->g3d.pos_matrix,
-			       sizeof(struct matrix));
-			memcpy(&gpu->g3d.dir_stack[gpu->g3d.pos_stack_pos & 0x1F],
-			       &gpu->g3d.dir_matrix,
-			       sizeof(struct matrix));
+			gpu->g3d.pos_stack[gpu->g3d.pos_stack_pos & 0x1F] = gpu->g3d.pos_matrix;
+			gpu->g3d.dir_stack[gpu->g3d.pos_stack_pos & 0x1F] = gpu->g3d.dir_matrix;
 			if (gpu->g3d.pos_stack_pos > 30)
 			{
 #if 1
@@ -1507,9 +1807,7 @@ static void cmd_mtx_push(struct gpu *gpu, uint32_t *params)
 			                  | (gpu->g3d.pos_stack_pos << 8));
 			break;
 		case 3:
-			memcpy(&gpu->g3d.tex_stack[0],
-			       &gpu->g3d.tex_matrix,
-			       sizeof(struct matrix));
+			gpu->g3d.tex_stack[0] = gpu->g3d.tex_matrix;
 			if (gpu->g3d.tex_stack_pos == 1)
 			{
 #if 1
@@ -1525,7 +1823,7 @@ static void cmd_mtx_push(struct gpu *gpu, uint32_t *params)
 
 static void cmd_mtx_pop(struct gpu *gpu, uint32_t *params)
 {
-#if 1
+#if 0
 	printf("[GX] MTX_POP 0x%02" PRIx32 " (mode=%" PRIu8 ")\n",
 	       params[0], gpu->g3d.matrix_mode);
 #endif
@@ -1544,9 +1842,7 @@ static void cmd_mtx_pop(struct gpu *gpu, uint32_t *params)
 			{
 				gpu->g3d.proj_stack_pos--;
 			}
-			memcpy(&gpu->g3d.proj_matrix,
-			       &gpu->g3d.proj_stack[gpu->g3d.proj_stack_pos],
-			       sizeof(struct matrix));
+			gpu->g3d.proj_matrix = gpu->g3d.proj_stack[gpu->g3d.proj_stack_pos];
 			update_clip_matrix(gpu);
 			break;
 		case 1:
@@ -1582,12 +1878,8 @@ static void cmd_mtx_pop(struct gpu *gpu, uint32_t *params)
 					gpu->g3d.pos_stack_pos -= n;
 				}
 			}
-			memcpy(&gpu->g3d.pos_matrix,
-			       &gpu->g3d.pos_stack[gpu->g3d.pos_stack_pos],
-			       sizeof(struct matrix));
-			memcpy(&gpu->g3d.dir_matrix,
-			       &gpu->g3d.dir_stack[gpu->g3d.pos_stack_pos],
-			       sizeof(struct matrix));
+			gpu->g3d.pos_matrix = gpu->g3d.pos_stack[gpu->g3d.pos_stack_pos];
+			gpu->g3d.dir_matrix = gpu->g3d.dir_stack[gpu->g3d.pos_stack_pos];
 			update_clip_matrix(gpu);
 			break;
 		case 3:
@@ -1602,16 +1894,14 @@ static void cmd_mtx_pop(struct gpu *gpu, uint32_t *params)
 			{
 				gpu->g3d.tex_stack_pos--;
 			}
-			memcpy(&gpu->g3d.tex_matrix,
-			       &gpu->g3d.tex_stack[gpu->g3d.tex_stack_pos],
-			       sizeof(struct matrix));
+			gpu->g3d.tex_matrix = gpu->g3d.tex_stack[gpu->g3d.tex_stack_pos];
 			break;
 	}
 }
 
 static void cmd_mtx_store(struct gpu *gpu, uint32_t *params)
 {
-#if 1
+#if 0
 	printf("[GX] MTX_STORE 0x%02" PRIx32 " (mode=%" PRIu8 ")\n",
 	       params[0], gpu->g3d.matrix_mode);
 #endif
@@ -1619,9 +1909,7 @@ static void cmd_mtx_store(struct gpu *gpu, uint32_t *params)
 	switch (gpu->g3d.matrix_mode & 0x3)
 	{
 		case 0:
-			memcpy(&gpu->g3d.proj_stack[0],
-			       &gpu->g3d.proj_matrix,
-			       sizeof(struct matrix));
+			gpu->g3d.proj_stack[0] = gpu->g3d.proj_matrix;
 			break;
 		case 1:
 		case 2:
@@ -1633,24 +1921,18 @@ static void cmd_mtx_store(struct gpu *gpu, uint32_t *params)
 				set_stack_error(gpu);
 				break;
 			}
-			memcpy(&gpu->g3d.pos_stack[n],
-			       &gpu->g3d.pos_matrix,
-			       sizeof(struct matrix));
-			memcpy(&gpu->g3d.dir_stack[n],
-			       &gpu->g3d.dir_matrix,
-			       sizeof(struct matrix));
+			gpu->g3d.pos_stack[n] = gpu->g3d.pos_matrix;
+			gpu->g3d.dir_stack[n] = gpu->g3d.dir_matrix;
 			break;
 		case 3:
-			memcpy(&gpu->g3d.tex_stack[0],
-			       &gpu->g3d.tex_matrix,
-			       sizeof(struct matrix));
+			gpu->g3d.tex_stack[0] = gpu->g3d.tex_matrix;
 			break;
 	}
 }
 
 static void cmd_mtx_restore(struct gpu *gpu, uint32_t *params)
 {
-#if 1
+#if 0
 	printf("[GX] MTX_RESTORE 0x%02" PRIx32 " (mode=%" PRIu8 ")\n",
 	       params[0], gpu->g3d.matrix_mode);
 #endif
@@ -1658,9 +1940,7 @@ static void cmd_mtx_restore(struct gpu *gpu, uint32_t *params)
 	switch (gpu->g3d.matrix_mode & 0x3)
 	{
 		case 0:
-			memcpy(&gpu->g3d.proj_matrix,
-			       &gpu->g3d.proj_stack[0],
-			       sizeof(struct matrix));
+			gpu->g3d.proj_matrix = gpu->g3d.proj_stack[0];
 			update_clip_matrix(gpu);
 			break;
 		case 1:
@@ -1673,18 +1953,12 @@ static void cmd_mtx_restore(struct gpu *gpu, uint32_t *params)
 				set_stack_error(gpu);
 				break;
 			}
-			memcpy(&gpu->g3d.pos_matrix,
-			       &gpu->g3d.pos_stack[n],
-			       sizeof(struct matrix));
-			memcpy(&gpu->g3d.dir_matrix,
-			       &gpu->g3d.dir_stack[n],
-			       sizeof(struct matrix));
+			gpu->g3d.pos_matrix = gpu->g3d.pos_stack[n];
+			gpu->g3d.dir_matrix = gpu->g3d.dir_stack[n];
 			update_clip_matrix(gpu);
 			break;
 		case 3:
-			memcpy(&gpu->g3d.tex_matrix,
-			       &gpu->g3d.tex_stack[0],
-			       sizeof(struct matrix));
+			gpu->g3d.tex_matrix = gpu->g3d.tex_stack[0];
 			break;
 	}
 }
@@ -1698,12 +1972,12 @@ static void load_identity(struct matrix *matrix)
 		{0      , 0      , 1 << 12, 0      },
 		{0      , 0      , 0      , 1 << 12},
 	};
-	memcpy(matrix, &identity_matrix, sizeof(struct matrix));
+	*matrix = identity_matrix;
 }
 
 static void cmd_mtx_identity(struct gpu *gpu, uint32_t *params)
 {
-#if 1
+#if 0
 	printf("[GX] MTX_IDENTITY (mode=%" PRIu8 ")\n",
 	       gpu->g3d.matrix_mode);
 #endif
@@ -1751,7 +2025,7 @@ static void load_4x4(struct matrix *matrix, uint32_t *params)
 
 static void cmd_mtx_load_4x4(struct gpu *gpu, uint32_t *params)
 {
-#if 1
+#if 0
 	printf("[GX] MTX_LOAD_4X4 (mode=%" PRIu8 ")\n",
 	       gpu->g3d.matrix_mode);
 #endif
@@ -1798,7 +2072,7 @@ static void load_4x3(struct matrix *matrix, uint32_t *params)
 
 static void cmd_mtx_load_4x3(struct gpu *gpu, uint32_t *params)
 {
-#if 1
+#if 0
 	printf("[GX] MTX_LOAD_4X3 (mode=%" PRIu8 ")\n",
 	       gpu->g3d.matrix_mode);
 #endif
@@ -1826,13 +2100,13 @@ static void cmd_mtx_load_4x3(struct gpu *gpu, uint32_t *params)
 static void mult_4x4(struct matrix *a, struct matrix *b)
 {
 	struct matrix r;
-	mtx_mult(&r, b, a);
-	memcpy(a, &r, sizeof(r));
+	mtx_mult(&r, a, b);
+	*a = r;
 }
 
 static void cmd_mtx_mult_4x4(struct gpu *gpu, uint32_t *paramms)
 {
-#if 1
+#if 0
 	printf("[GX] MTX_MULT_4X4 (mode=%" PRIu8 ")\n",
 	       gpu->g3d.matrix_mode);
 #endif
@@ -1861,7 +2135,7 @@ static void cmd_mtx_mult_4x4(struct gpu *gpu, uint32_t *paramms)
 
 static void cmd_mtx_mult_4x3(struct gpu *gpu, uint32_t *params)
 {
-#if 1
+#if 0
 	printf("[GX] MTX_MULT_4X3 (mode=%" PRIu8 ")\n",
 	       gpu->g3d.matrix_mode);
 #endif
@@ -1910,7 +2184,7 @@ static void load_3x3(struct matrix *matrix, uint32_t *params)
 
 static void cmd_mtx_mult_3x3(struct gpu *gpu, uint32_t *params)
 {
-#if 1
+#if 0
 	printf("[GX] MTX_MULT_3X3 (mode=%" PRIu8 ")\n",
 	       gpu->g3d.matrix_mode);
 #endif
@@ -1955,7 +2229,7 @@ static void mtx_scale(struct matrix *m, uint32_t *params)
 
 static void cmd_mtx_scale(struct gpu *gpu, uint32_t *params)
 {
-#if 1
+#if 0
 	printf("[GX] MTX_SCALE {" I12_FMT ", " I12_FMT ", " I12_FMT "} (mode=%" PRIu8 ")\n",
 	       I12_PRT(params[0]), I12_PRT(params[1]), I12_PRT(params[2]),
 	       gpu->g3d.matrix_mode);
@@ -2001,7 +2275,7 @@ static void mtx_trans(struct matrix *m, uint32_t *params)
 
 static void cmd_mtx_trans(struct gpu *gpu, uint32_t *params)
 {
-#if 1
+#if 0
 	printf("[GX] MTX_TRANS {" I12_FMT ", " I12_FMT ", " I12_FMT "} (mode=%" PRIu8 ")\n",
 	       I12_PRT(params[0]), I12_PRT(params[1]), I12_PRT(params[2]),
 	       gpu->g3d.matrix_mode);
@@ -2013,8 +2287,12 @@ static void cmd_mtx_trans(struct gpu *gpu, uint32_t *params)
 			update_clip_matrix(gpu);
 			break;
 		case 1:
+			mtx_trans(&gpu->g3d.pos_matrix, params);
+			update_clip_matrix(gpu);
+			break;
 		case 2:
 			mtx_trans(&gpu->g3d.pos_matrix, params);
+			mtx_trans(&gpu->g3d.dir_matrix, params);
 			update_clip_matrix(gpu);
 			break;
 		case 3:
@@ -2028,7 +2306,7 @@ static void cmd_color(struct gpu *gpu, uint32_t *params)
 	gpu->g3d.r = TO8((params[0] >>  0) & 0x1F);
 	gpu->g3d.g = TO8((params[0] >>  5) & 0x1F);
 	gpu->g3d.b = TO8((params[0] >> 10) & 0x1F);
-#if 1
+#if 0
 	printf("[GX] COLOR {0x%02" PRIx8 ", 0x%02" PRIx8 ", 0x%02" PRIx8 "\n",
 	       gpu->g3d.r, gpu->g3d.g, gpu->g3d.b);
 #endif
@@ -2045,7 +2323,7 @@ static void cmd_normal(struct gpu *gpu, uint32_t *params)
 	normal.x = get_int10_9((params[0] >>  0) & 0x3FF);
 	normal.y = get_int10_9((params[0] >> 10) & 0x3FF);
 	normal.z = get_int10_9((params[0] >> 20) & 0x3FF);
-#if 1
+#if 0
 	printf("[GX] NORMAL {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
 	       I12_PRT(normal.x), I12_PRT(normal.y), I12_PRT(normal.z));
 #endif
@@ -2062,31 +2340,90 @@ static void cmd_texcoord(struct gpu *gpu, uint32_t *params)
 	struct vec2 texcoord;
 	texcoord.x = get_int16_4((params[0] >>  0) & 0xFFFF);
 	texcoord.y = get_int16_4((params[0] >> 16) & 0xFFFF);
-#if 1
+#if 0
 	printf("[GX] TEXCOORD {" I12_FMT ", " I12_FMT "}\n",
 	       I12_PRT(texcoord.x), I12_PRT(texcoord.y));
 #endif
 	mtx_mult_vec2(&gpu->g3d.texcoord, &gpu->g3d.tex_matrix, &texcoord);
 }
 
+static void push_triangle(struct gpu *gpu, uint16_t v1, uint16_t v2,
+                          uint16_t v3, uint8_t front_swap)
+{
+	if (gpu->g3d.back->polygons_nb == sizeof(gpu->g3d.back->polygons) / sizeof(*gpu->g3d.back->polygons))
+	{
+		printf("[GX] polygons buffer overflow\n");
+		return;
+	}
+#if 0
+	printf("[GX] push triangle %" PRIu16 " {%" PRIu16 ", %" PRIu16 ", %" PRIu16 "}\n",
+	       gpu->g3d.back->polygons_nb, v1, v2, v3);
+#endif
+	struct polygon *polygon = &gpu->g3d.back->polygons[gpu->g3d.back->polygons_nb++];
+	polygon->quad = 0;
+	polygon->attr = gpu->g3d.commit_polygon_attr;
+	polygon->attr |= (uint32_t)front_swap << 31;
+	polygon->vertexes[0] = v1;
+	polygon->vertexes[1] = v2;
+	polygon->vertexes[2] = v3;
+}
+
+static void push_quad(struct gpu *gpu, uint16_t v1, uint16_t v2, uint16_t v3,
+                      uint16_t v4)
+{
+	if (gpu->g3d.back->polygons_nb == sizeof(gpu->g3d.back->polygons) / sizeof(*gpu->g3d.back->polygons))
+	{
+		printf("[GX] polygons buffer overflow\n");
+		return;
+	}
+#if 0
+	printf("[GX] push quad %" PRIu16 " {%" PRIu16 ", %" PRIu16 ", %" PRIu16 ", %" PRIu16 "}\n",
+	       gpu->g3d.back->polygons_nb, v1, v2, v3, v4);
+#endif
+	struct polygon *polygon = &gpu->g3d.back->polygons[gpu->g3d.back->polygons_nb++];
+	polygon->quad = 1;
+	polygon->attr = gpu->g3d.commit_polygon_attr;
+	polygon->vertexes[0] = v1;
+	polygon->vertexes[1] = v2;
+	polygon->vertexes[2] = v3;
+	polygon->vertexes[3] = v4;
+}
+
 static void push_vertex(struct gpu *gpu)
 {
-	struct vertex *v = &gpu->g3d.vertexes[gpu->g3d.vertexes_nb];
+	if (gpu->g3d.back->vertexes_nb == sizeof(gpu->g3d.back->vertexes) / sizeof(*gpu->g3d.back->vertexes))
+	{
+		printf("[GX] vertexes buffer overflow\n");
+		return;
+	}
+	struct vertex *v = &gpu->g3d.back->vertexes[gpu->g3d.back->vertexes_nb++];
 	mtx_mult_vec4(&v->position, &gpu->g3d.clip_matrix, &gpu->g3d.position);
 	v->r = gpu->g3d.r;
 	v->g = gpu->g3d.g;
 	v->b = gpu->g3d.b;
 	v->normal = gpu->g3d.normal;
 	v->texcoord = gpu->g3d.texcoord;
-#if 1
+	/* XXX viewport */
+	if (v->position.w)
+	{
+		v->screen_x = ((int64_t)(v->position.x + v->position.w) * 256 * (1 << 12) / (2 * v->position.w));
+		v->screen_y = ((int64_t)(v->position.y + v->position.w) * 192 * (1 << 12) / (2 * v->position.w));
+	}
+	else
+	{
+		v->screen_x = 0;
+		v->screen_y = 0;
+	}
+#if 0
 	printf("[GX] push vertex {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
 	       I12_PRT(gpu->g3d.position.x),
 	       I12_PRT(gpu->g3d.position.y),
 	       I12_PRT(gpu->g3d.position.z));
-	printf("     position: {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
+	printf("     position: {" I12_FMT ", " I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
 	       I12_PRT(v->position.x),
 	       I12_PRT(v->position.y),
-	       I12_PRT(v->position.z));
+	       I12_PRT(v->position.z),
+	       I12_PRT(v->position.w));
 	printf("     color: {%" PRIu8 ", %" PRIu8 ", %" PRIu8 "}\n",
 	       v->r, v->g, v->b);
 	printf("     normal: {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
@@ -2096,7 +2433,63 @@ static void push_vertex(struct gpu *gpu)
 	printf("     texcoord: {" I12_FMT ", " I12_FMT "}\n",
 	       I12_PRT(v->texcoord.x),
 	       I12_PRT(v->texcoord.y));
+	printf("     screen: {" I12_FMT ", " I12_FMT "}\n",
+	       I12_PRT(v->screen_x),
+	       I12_PRT(v->screen_y));
 #endif
+	switch (gpu->g3d.primitive)
+	{
+		case PRIMITIVE_TRIANGLES:
+			if (gpu->g3d.tmp_vertex < 2)
+			{
+				gpu->g3d.tmp_vertex++;
+				break;
+			}
+			gpu->g3d.tmp_vertex = 0;
+			push_triangle(gpu,
+			              gpu->g3d.back->vertexes_nb - 3,
+			              gpu->g3d.back->vertexes_nb - 2,
+			              gpu->g3d.back->vertexes_nb - 1,
+			              0);
+			break;
+		case PRIMITIVE_QUADS:
+			if (gpu->g3d.tmp_vertex < 3)
+			{
+				gpu->g3d.tmp_vertex++;
+				break;
+			}
+			gpu->g3d.tmp_vertex = 0;
+			push_quad(gpu,
+			              gpu->g3d.back->vertexes_nb - 4,
+			              gpu->g3d.back->vertexes_nb - 3,
+			              gpu->g3d.back->vertexes_nb - 2,
+			              gpu->g3d.back->vertexes_nb - 1);
+			break;
+		case PRIMITIVE_TRIANGLE_STRIP:
+			if (gpu->g3d.tmp_vertex < 2)
+			{
+				gpu->g3d.tmp_vertex++;
+				break;
+			}
+			push_triangle(gpu,
+			              gpu->g3d.back->vertexes_nb - 3,
+			              gpu->g3d.back->vertexes_nb - 2,
+			              gpu->g3d.back->vertexes_nb - 1,
+			              gpu->g3d.tmp_vertex & 1);
+			gpu->g3d.tmp_vertex++;
+			break;
+		case PRIMITIVE_QUAD_STRIP:
+			if (++gpu->g3d.tmp_vertex < 4)
+				break;
+			if (gpu->g3d.tmp_vertex & 1)
+				break;
+			push_quad(gpu,
+			              gpu->g3d.back->vertexes_nb - 4,
+			              gpu->g3d.back->vertexes_nb - 3,
+			              gpu->g3d.back->vertexes_nb - 1,
+			              gpu->g3d.back->vertexes_nb - 2);
+			break;
+	}
 }
 
 static int32_t get_int16_12(uint16_t v)
@@ -2109,7 +2502,7 @@ static void cmd_vtx_16(struct gpu *gpu, uint32_t *params)
 	gpu->g3d.position.x = get_int16_12((params[0] >>  0) & 0xFFFF);
 	gpu->g3d.position.y = get_int16_12((params[0] >> 16) & 0xFFFF);
 	gpu->g3d.position.z = get_int16_12((params[1] >>  0) & 0xFFFF);
-#if 1
+#if 0
 	printf("[GX] VTX_16 {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
 	       I12_PRT(gpu->g3d.position.x),
 	       I12_PRT(gpu->g3d.position.y),
@@ -2128,7 +2521,7 @@ static void cmd_vtx_10(struct gpu *gpu, uint32_t *params)
 	gpu->g3d.position.x = get_int10_6((params[0] >>  0) & 0x3FF);
 	gpu->g3d.position.y = get_int10_6((params[0] >> 10) & 0x3FF);
 	gpu->g3d.position.z = get_int10_6((params[0] >> 20) & 0x3FF);
-#if 1
+#if 0
 	printf("[GX] VTX_10 {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
 	       I12_PRT(gpu->g3d.position.x),
 	       I12_PRT(gpu->g3d.position.y),
@@ -2141,7 +2534,7 @@ static void cmd_vtx_xy(struct gpu *gpu, uint32_t *params)
 {
 	gpu->g3d.position.x = get_int16_12((params[0] >>  0) & 0xFFFF);
 	gpu->g3d.position.y = get_int16_12((params[0] >> 16) & 0xFFFF);
-#if 1
+#if 0
 	printf("[GX] VTX_XY {" I12_FMT ", " I12_FMT "}\n",
 	       I12_PRT(gpu->g3d.position.x), I12_PRT(gpu->g3d.position.y));
 #endif
@@ -2152,7 +2545,7 @@ static void cmd_vtx_xz(struct gpu *gpu, uint32_t *params)
 {
 	gpu->g3d.position.x = get_int16_12((params[0] >>  0) & 0xFFFF);
 	gpu->g3d.position.z = get_int16_12((params[0] >> 16) & 0xFFFF);
-#if 1
+#if 0
 	printf("[GX] VTX_XZ {" I12_FMT ", " I12_FMT "}\n",
 	       I12_PRT(gpu->g3d.position.x), I12_PRT(gpu->g3d.position.z));
 #endif
@@ -2163,26 +2556,72 @@ static void cmd_vtx_yz(struct gpu *gpu, uint32_t *params)
 {
 	gpu->g3d.position.y = get_int16_12((params[0] >>  0) & 0xFFFF);
 	gpu->g3d.position.z = get_int16_12((params[0] >> 16) & 0xFFFF);
-#if 1
+#if 0
 	printf("[GX] VTX_YZ {" I12_FMT ", " I12_FMT "}\n",
 	       I12_PRT(gpu->g3d.position.y), I12_PRT(gpu->g3d.position.z));
 #endif
 	push_vertex(gpu);
 }
 
+static int32_t get_int10_9_12(uint16_t v)
+{
+	return ((int32_t)(int16_t)(v << 6)) / (1 << 6);
+}
+
 static void cmd_vtx_diff(struct gpu *gpu, uint32_t *params)
 {
-#if 1
-	printf("[GX] VTX_DIFF\n");
+	int32_t dx = get_int10_9_12((params[0] >>  0) & 0x3FF);
+	int32_t dy = get_int10_9_12((params[0] >> 10) & 0x3FF);
+	int32_t dz = get_int10_9_12((params[0] >> 20) & 0x3FF);
+#if 0
+	printf("[GX] VTX_DIFF {" I12_FMT ", " I12_FMT ", " I12_FMT "\n",
+	       I12_PRT(dx), I12_PRT(dy), I12_PRT(dz));
 #endif
-	gpu->g3d.position.x += get_int10_9((params[0] >>  0) & 0x3FF);
-	gpu->g3d.position.y += get_int10_9((params[0] >> 10) & 0x3FF);
-	gpu->g3d.position.z += get_int10_9((params[0] >> 20) & 0x3FF);
+	gpu->g3d.position.x += dx;
+	gpu->g3d.position.y += dy;
+	gpu->g3d.position.z += dz;
 	push_vertex(gpu);
+}
+
+static void cmd_polygon_attr(struct gpu *gpu, uint32_t *params)
+{
+#if 0
+	printf("[GX] POLYGON_ATTR 0x%08" PRIx32 "\n", params[0]);
+#endif
+	gpu->g3d.polygon_attr = params[0];
+}
+
+static void cmd_begin_vtxs(struct gpu *gpu, uint32_t *params)
+{
+#if 0
+	printf("[GX] BEGIN_VTXS 0x%08" PRIx32 "\n", params[0]);
+#endif
+	gpu->g3d.primitive = params[0] & 0x3;
+	gpu->g3d.tmp_vertex = 0;
+	gpu->g3d.commit_polygon_attr = gpu->g3d.polygon_attr;
+}
+
+static void cmd_end_vtxs(struct gpu *gpu, uint32_t *params)
+{
+#if 0
+	printf("[GX] END_VTXS\n");
+#endif
+	(void)gpu;
+	(void)params;
+}
+
+static void cmd_swap_buffers(struct gpu *gpu, uint32_t *params)
+{
+#if 0
+	printf("[GX] SWAP_BUFFERS 0x%08" PRIx32 "\n", params[0]);
+#endif
+	gpu->g3d.swap_buffers = 1;
 }
 
 void gpu_gx_cmd(struct gpu *gpu, uint8_t cmd, uint32_t *params)
 {
+	if (gpu->g3d.swap_buffers)
+		return;
 	switch (cmd)
 	{
 		case GX_CMD_MTX_MODE:
@@ -2250,6 +2689,18 @@ void gpu_gx_cmd(struct gpu *gpu, uint8_t cmd, uint32_t *params)
 			break;
 		case GX_CMD_VTX_DIFF:
 			cmd_vtx_diff(gpu, params);
+			break;
+		case GX_CMD_POLYGON_ATTR:
+			cmd_polygon_attr(gpu, params);
+			break;
+		case GX_CMD_BEGIN_VTXS:
+			cmd_begin_vtxs(gpu, params);
+			break;
+		case GX_CMD_END_VTXS:
+			cmd_end_vtxs(gpu, params);
+			break;
+		case GX_CMD_SWAP_BUFFERS:
+			cmd_swap_buffers(gpu, params);
 			break;
 		default:
 			printf("[GX] unhandled gx cmd 0x%" PRIx8 "\n", cmd);

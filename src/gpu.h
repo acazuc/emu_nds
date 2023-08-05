@@ -13,6 +13,11 @@ do \
 	} \
 } while (0)
 
+#define PRIMITIVE_TRIANGLES      0
+#define PRIMITIVE_QUADS          1
+#define PRIMITIVE_TRIANGLE_STRIP 2
+#define PRIMITIVE_QUAD_STRIP     3
+
 struct mem;
 
 struct gpu_eng
@@ -69,6 +74,8 @@ struct vertex
 	struct vec4 position;
 	struct vec3 normal;
 	struct vec2 texcoord;
+	int32_t screen_x;
+	int32_t screen_y;
 	uint8_t r;
 	uint8_t g;
 	uint8_t b;
@@ -76,13 +83,25 @@ struct vertex
 
 struct polygon
 {
-	uint8_t type;
+	uint8_t quad;
+	uint32_t attr;
+	uint16_t vertexes[4];
+};
+
+struct gpu_g3d_buf
+{
+	uint8_t data[256 * 192 * 4];
+	struct vertex vertexes[6144];
+	struct polygon polygons[2048];
+	uint16_t vertexes_nb;
+	uint16_t polygons_nb;
 };
 
 struct gpu_g3d
 {
-	struct vertex vertexes[6144];
-	struct polygon polygons[2048];
+	struct gpu_g3d_buf bufs[2];
+	struct gpu_g3d_buf *front;
+	struct gpu_g3d_buf *back;
 	struct matrix proj_stack[2];
 	struct matrix pos_stack[32];
 	struct matrix dir_stack[32];
@@ -99,10 +118,14 @@ struct gpu_g3d
 	struct vec4 position;
 	struct vec3 normal;
 	struct vec2 texcoord;
+	uint32_t polygon_attr;
+	uint32_t commit_polygon_attr;
 	uint8_t r;
 	uint8_t g;
 	uint8_t b;
-	uint8_t vertexes_nb;
+	uint8_t primitive;
+	uint8_t tmp_vertex;
+	uint8_t swap_buffers;
 };
 
 struct gpu
@@ -118,6 +141,7 @@ void gpu_del(struct gpu *gpu);
 
 void gpu_draw(struct gpu *gpu, uint8_t y);
 void gpu_commit_bgpos(struct gpu *gpu);
+void gpu_g3d_draw(struct gpu *gpu);
 
 void gpu_gx_cmd(struct gpu *gpu, uint8_t cmd, uint32_t *params);
 

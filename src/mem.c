@@ -2670,7 +2670,7 @@ static void commit_gx_cmd(struct mem *mem)
 #endif
 		return;
 	}
-#if 1
+#if 0
 	printf("[GX] execute %s with %u params\n", cmd->def->name, cmd->params_nb);
 #endif
 	gpu_gx_cmd(mem->nds->gpu, cmd->def - &gx_cmd_defs[0], cmd->params);
@@ -2681,7 +2681,7 @@ static void start_gx_cmd(struct mem *mem, const struct gx_cmd_def *def)
 	struct gx_cmd *cmd = &mem->gx_cmd[mem->gx_cmd_nb++];
 	cmd->def = def;
 	cmd->params_nb = 0;
-#if 1
+#if 0
 	printf("[GX] start %s\n", def->name);
 #endif
 	if (!def->params)
@@ -2691,7 +2691,7 @@ static void start_gx_cmd(struct mem *mem, const struct gx_cmd_def *def)
 static void add_gx_cmd_param(struct mem *mem, uint32_t param)
 {
 	struct gx_cmd *cmd = &mem->gx_cmd[mem->gx_cmd_nb - 1];
-#if 1
+#if 0
 	printf("[GX] add param [%" PRIu8 "] = 0x%08" PRIx32 " to %s\n",
 	       cmd->params_nb, param, cmd->def->name);
 #endif
@@ -3476,7 +3476,7 @@ static void set_arm9_reg32(struct mem *mem, uint32_t addr, uint32_t v)
 		case MEM_ARM9_REG_GXFIFO + 0x34:
 		case MEM_ARM9_REG_GXFIFO + 0x38:
 		case MEM_ARM9_REG_GXFIFO + 0x3C:
-#if 1
+#if 0
 			printf("[GX] FIFO write 0x%08" PRIx32 "\n", v);
 #endif
 			if (!mem->gx_cmd_nb)
@@ -3537,7 +3537,7 @@ static void set_arm9_reg32(struct mem *mem, uint32_t addr, uint32_t v)
 		case MEM_ARM9_REG_VEC_TEST:
 		{
 			uint8_t cmd_id = (addr - MEM_ARM9_REG_GXFIFO) / 4;
-#if 1
+#if 0
 			printf("[GX] MMIO [0x%02" PRIx8 "] = 0x%08" PRIx32 "\n",
 			       cmd_id, v);
 #endif
