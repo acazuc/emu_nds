@@ -35,10 +35,81 @@ struct gpu_eng
 	int engb;
 };
 
+struct vec4
+{
+	int32_t x;
+	int32_t y;
+	int32_t z;
+	int32_t w;
+};
+
+struct vec3
+{
+	int32_t x;
+	int32_t y;
+	int32_t z;
+};
+
+struct vec2
+{
+	int32_t x;
+	int32_t y;
+};
+
+struct matrix
+{
+	struct vec4 x;
+	struct vec4 y;
+	struct vec4 z;
+	struct vec4 w;
+};
+
+struct vertex
+{
+	struct vec4 position;
+	struct vec3 normal;
+	struct vec2 texcoord;
+	uint8_t r;
+	uint8_t g;
+	uint8_t b;
+};
+
+struct polygon
+{
+	uint8_t type;
+};
+
+struct gpu_g3d
+{
+	struct vertex vertexes[6144];
+	struct polygon polygons[2048];
+	struct matrix proj_stack[2];
+	struct matrix pos_stack[32];
+	struct matrix dir_stack[32];
+	struct matrix tex_stack[2];
+	struct matrix proj_matrix;
+	struct matrix pos_matrix;
+	struct matrix dir_matrix;
+	struct matrix tex_matrix;
+	struct matrix clip_matrix;
+	uint8_t matrix_mode;
+	uint8_t proj_stack_pos;
+	uint8_t pos_stack_pos;
+	uint8_t tex_stack_pos;
+	struct vec4 position;
+	struct vec3 normal;
+	struct vec2 texcoord;
+	uint8_t r;
+	uint8_t g;
+	uint8_t b;
+	uint8_t vertexes_nb;
+};
+
 struct gpu
 {
 	struct gpu_eng enga;
 	struct gpu_eng engb;
+	struct gpu_g3d g3d;
 	struct mem *mem;
 };
 
@@ -47,5 +118,7 @@ void gpu_del(struct gpu *gpu);
 
 void gpu_draw(struct gpu *gpu, uint8_t y);
 void gpu_commit_bgpos(struct gpu *gpu);
+
+void gpu_gx_cmd(struct gpu *gpu, uint8_t cmd, uint32_t *params);
 
 #endif

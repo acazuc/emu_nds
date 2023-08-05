@@ -28,6 +28,9 @@ do \
 	dst[3] = a; \
 } while (0)
 
+#define I12_FMT "%+6.4f"
+#define I12_PRT(v) (v / (float)(1 << 12))
+
 enum layer_type
 {
 	LAYER_NONE,
@@ -1353,4 +1356,903 @@ void gpu_commit_bgpos(struct gpu *gpu)
 {
 	eng_commit_bgpos(gpu, &gpu->enga);
 	eng_commit_bgpos(gpu, &gpu->engb);
+}
+
+static int32_t fp12_add(int32_t a, int32_t b)
+{
+	return a + b;
+}
+
+static int32_t fp12_mul(int32_t a, int32_t b)
+{
+	return ((int64_t)a * (int64_t)b) / (1 << 12);
+}
+
+static void mtx_mult(struct matrix *r, const struct matrix *a,
+                     const struct matrix *b)
+{
+	int32_t *fr = (int32_t*)r;
+	int32_t *fa = (int32_t*)a;
+	int32_t *fb = (int32_t*)b;
+	for (int y = 0; y < 4; ++y)
+	{
+		for (int x = 0; x < 4; ++x)
+			fr[y + x * 4] = fp12_add(fp12_add(fp12_mul(fa[y + 0x0], fb[0 + x * 4]),
+			                                  fp12_mul(fa[y + 0x4], fb[1 + x * 4])),
+			                         fp12_add(fp12_mul(fa[y + 0x8], fb[2 + x * 4]),
+			                                  fp12_mul(fa[y + 0xC], fb[3 + x * 4])));
+	}
+}
+
+static void mtx_mult_vec4(struct vec4 *r, struct matrix *m, struct vec4 *v)
+{
+#define MULT_COMP(X) r->X = fp12_add(fp12_add(fp12_mul(v->x, m->x.X), \
+                                              fp12_mul(v->y, m->y.X)), \
+                                     fp12_add(fp12_mul(v->z, m->z.X), \
+                                              fp12_mul(v->w, m->w.X)))
+	MULT_COMP(x);
+	MULT_COMP(y);
+	MULT_COMP(z);
+	MULT_COMP(w);
+#undef MULT_COMP
+}
+
+static void mtx_mult_vec3(struct vec3 *r, struct matrix *m, struct vec3 *v)
+{
+#define MULT_COMP(X) r->X = fp12_add(fp12_add(fp12_mul(v->x, m->x.X), \
+                                              fp12_mul(v->y, m->y.X)), \
+                                     fp12_mul(v->z, m->z.X))
+	MULT_COMP(x);
+	MULT_COMP(y);
+	MULT_COMP(z);
+#undef MULT_COMP
+}
+
+static void mtx_mult_vec2(struct vec2 *r, struct matrix *m, struct vec2 *v)
+{
+#define MULT_COMP(X) r->X = fp12_add(fp12_mul(v->x, m->x.X), fp12_mul(v->y, m->y.X))
+	MULT_COMP(x);
+	MULT_COMP(y);
+#undef MULT_COMP
+}
+
+static void mtx_print(const struct matrix *m)
+{
+	printf("{" I12_FMT" , " I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
+	       I12_PRT(m->x.x), I12_PRT(m->y.x), I12_PRT(m->z.x), I12_PRT(m->w.x));
+	printf("{" I12_FMT" , " I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
+	       I12_PRT(m->x.y), I12_PRT(m->y.y), I12_PRT(m->z.y), I12_PRT(m->w.y));
+	printf("{" I12_FMT" , " I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
+	       I12_PRT(m->x.z), I12_PRT(m->y.z), I12_PRT(m->z.z), I12_PRT(m->w.z));
+	printf("{" I12_FMT" , " I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
+	       I12_PRT(m->x.w), I12_PRT(m->y.w), I12_PRT(m->z.w), I12_PRT(m->w.w));
+}
+
+static void update_clip_matrix(struct gpu *gpu)
+{
+	mtx_mult(&gpu->g3d.clip_matrix,
+	         &gpu->g3d.proj_matrix,
+	         &gpu->g3d.pos_matrix);
+#if 1
+	printf("proj:\n");
+	mtx_print(&gpu->g3d.proj_matrix);
+	printf("pos:\n");
+	mtx_print(&gpu->g3d.pos_matrix);
+	printf("clip:\n");
+	mtx_print(&gpu->g3d.clip_matrix);
+#endif
+}
+
+static void set_stack_error(struct gpu *gpu)
+{
+	mem_arm9_set_reg32(gpu->mem, MEM_ARM9_REG_GXSTAT,
+	                   mem_arm9_get_reg32(gpu->mem, MEM_ARM9_REG_GXSTAT)
+	                 | (1 << 15));
+}
+
+static void cmd_mtx_mode(struct gpu *gpu, uint32_t *params)
+{
+#if 1
+	printf("[GX] MTX_MODE %" PRIu32 "\n", params[0] & 0x3);
+#endif
+	gpu->g3d.matrix_mode = params[0] & 0x3;
+}
+
+static void cmd_mtx_push(struct gpu *gpu, uint32_t *params)
+{
+#if 1
+	printf("[GX] MTX_PUSH (mode=%" PRIu8 ")\n", gpu->g3d.matrix_mode);
+#endif
+	(void)params;
+	switch (gpu->g3d.matrix_mode & 0x3)
+	{
+		case 0:
+			memcpy(&gpu->g3d.proj_stack[0],
+			       &gpu->g3d.proj_matrix,
+			       sizeof(struct matrix));
+			if (gpu->g3d.proj_stack_pos == 1)
+			{
+#if 1
+				printf("[GX] MTX_PUSH proj stack overflow\n");
+#endif
+				set_stack_error(gpu);
+				break;
+			}
+			gpu->g3d.proj_stack_pos++;
+			mem_arm9_set_reg32(gpu->mem, MEM_ARM9_REG_GXSTAT,
+			                   (mem_arm9_get_reg32(gpu->mem, MEM_ARM9_REG_GXSTAT)
+			                  & ~(1 << 13))
+			                  | (gpu->g3d.proj_stack_pos << 13));
+			break;
+		case 1:
+		case 2:
+			memcpy(&gpu->g3d.pos_stack[gpu->g3d.pos_stack_pos & 0x1F],
+			       &gpu->g3d.pos_matrix,
+			       sizeof(struct matrix));
+			memcpy(&gpu->g3d.dir_stack[gpu->g3d.pos_stack_pos & 0x1F],
+			       &gpu->g3d.dir_matrix,
+			       sizeof(struct matrix));
+			if (gpu->g3d.pos_stack_pos > 30)
+			{
+#if 1
+				printf("[GX] MTX_PUSH pos stack overflow\n");
+#endif
+				set_stack_error(gpu);
+			}
+			gpu->g3d.pos_stack_pos++;
+			gpu->g3d.pos_stack_pos &= 0x3F;
+			mem_arm9_set_reg32(gpu->mem, MEM_ARM9_REG_GXSTAT,
+			                   (mem_arm9_get_reg32(gpu->mem, MEM_ARM9_REG_GXSTAT)
+			                  & ~(0x1F << 8))
+			                  | (gpu->g3d.pos_stack_pos << 8));
+			break;
+		case 3:
+			memcpy(&gpu->g3d.tex_stack[0],
+			       &gpu->g3d.tex_matrix,
+			       sizeof(struct matrix));
+			if (gpu->g3d.tex_stack_pos == 1)
+			{
+#if 1
+				printf("[GX] MTX_PUSH tex stack overflow\n");
+#endif
+				set_stack_error(gpu);
+				break;
+			}
+			gpu->g3d.tex_stack_pos++;
+			break;
+	}
+}
+
+static void cmd_mtx_pop(struct gpu *gpu, uint32_t *params)
+{
+#if 1
+	printf("[GX] MTX_POP 0x%02" PRIx32 " (mode=%" PRIu8 ")\n",
+	       params[0], gpu->g3d.matrix_mode);
+#endif
+	uint32_t n = params[0] & 0x1F;
+	switch (gpu->g3d.matrix_mode & 0x3)
+	{
+		case 0:
+			if (!gpu->g3d.proj_stack_pos)
+			{
+#if 1
+				printf("[GX] MTX_POP proj stack underflow\n");
+#endif
+				set_stack_error(gpu);
+			}
+			else
+			{
+				gpu->g3d.proj_stack_pos--;
+			}
+			memcpy(&gpu->g3d.proj_matrix,
+			       &gpu->g3d.proj_stack[gpu->g3d.proj_stack_pos],
+			       sizeof(struct matrix));
+			update_clip_matrix(gpu);
+			break;
+		case 1:
+		case 2:
+			if (params[0] & (1 << 5))
+			{
+				n = (~n & 0x1F) + 1;
+#if 1
+				printf("[GX] MTX_POP negative: %" PRIu32 "\n", n);
+#endif
+				gpu->g3d.pos_stack_pos += n;
+				if (gpu->g3d.pos_stack_pos > 30)
+				{
+#if 1
+					printf("[GX] MTX_POP pos stack overflow\n");
+#endif
+					set_stack_error(gpu);
+				}
+				gpu->g3d.pos_stack_pos &= 0x3F;
+			}
+			else
+			{
+				if (n > gpu->g3d.pos_stack_pos)
+				{
+#if 1
+					printf("[GX] MTX_POP pos stack underflow\n");
+#endif
+					set_stack_error(gpu);
+					gpu->g3d.pos_stack_pos = 0;
+				}
+				else
+				{
+					gpu->g3d.pos_stack_pos -= n;
+				}
+			}
+			memcpy(&gpu->g3d.pos_matrix,
+			       &gpu->g3d.pos_stack[gpu->g3d.pos_stack_pos],
+			       sizeof(struct matrix));
+			memcpy(&gpu->g3d.dir_matrix,
+			       &gpu->g3d.dir_stack[gpu->g3d.pos_stack_pos],
+			       sizeof(struct matrix));
+			update_clip_matrix(gpu);
+			break;
+		case 3:
+			if (!gpu->g3d.tex_stack_pos)
+			{
+#if 1
+				printf("[GX] MTX_POP tex stack underflow\n");
+#endif
+				set_stack_error(gpu);
+			}
+			else
+			{
+				gpu->g3d.tex_stack_pos--;
+			}
+			memcpy(&gpu->g3d.tex_matrix,
+			       &gpu->g3d.tex_stack[gpu->g3d.tex_stack_pos],
+			       sizeof(struct matrix));
+			break;
+	}
+}
+
+static void cmd_mtx_store(struct gpu *gpu, uint32_t *params)
+{
+#if 1
+	printf("[GX] MTX_STORE 0x%02" PRIx32 " (mode=%" PRIu8 ")\n",
+	       params[0], gpu->g3d.matrix_mode);
+#endif
+	uint32_t n = params[0] & 0x1F;
+	switch (gpu->g3d.matrix_mode & 0x3)
+	{
+		case 0:
+			memcpy(&gpu->g3d.proj_stack[0],
+			       &gpu->g3d.proj_matrix,
+			       sizeof(struct matrix));
+			break;
+		case 1:
+		case 2:
+			if (n == 0x1F)
+			{
+#if 1
+				printf("[GX] MTX_STORE pos stack 0x1F\n");
+#endif
+				set_stack_error(gpu);
+				break;
+			}
+			memcpy(&gpu->g3d.pos_stack[n],
+			       &gpu->g3d.pos_matrix,
+			       sizeof(struct matrix));
+			memcpy(&gpu->g3d.dir_stack[n],
+			       &gpu->g3d.dir_matrix,
+			       sizeof(struct matrix));
+			break;
+		case 3:
+			memcpy(&gpu->g3d.tex_stack[0],
+			       &gpu->g3d.tex_matrix,
+			       sizeof(struct matrix));
+			break;
+	}
+}
+
+static void cmd_mtx_restore(struct gpu *gpu, uint32_t *params)
+{
+#if 1
+	printf("[GX] MTX_RESTORE 0x%02" PRIx32 " (mode=%" PRIu8 ")\n",
+	       params[0], gpu->g3d.matrix_mode);
+#endif
+	uint32_t n = params[0] & 0x1F;
+	switch (gpu->g3d.matrix_mode & 0x3)
+	{
+		case 0:
+			memcpy(&gpu->g3d.proj_matrix,
+			       &gpu->g3d.proj_stack[0],
+			       sizeof(struct matrix));
+			update_clip_matrix(gpu);
+			break;
+		case 1:
+		case 2:
+			if (n == 0x1F)
+			{
+#if 1
+				printf("[GX] MTX_RESTORE pos stack 0x1F\n");
+#endif
+				set_stack_error(gpu);
+				break;
+			}
+			memcpy(&gpu->g3d.pos_matrix,
+			       &gpu->g3d.pos_stack[n],
+			       sizeof(struct matrix));
+			memcpy(&gpu->g3d.dir_matrix,
+			       &gpu->g3d.dir_stack[n],
+			       sizeof(struct matrix));
+			update_clip_matrix(gpu);
+			break;
+		case 3:
+			memcpy(&gpu->g3d.tex_matrix,
+			       &gpu->g3d.tex_stack[0],
+			       sizeof(struct matrix));
+			break;
+	}
+}
+
+static void load_identity(struct matrix *matrix)
+{
+	static const struct matrix identity_matrix =
+	{
+		{1 << 12, 0      , 0      , 0      },
+		{0      , 1 << 12, 0      , 0      },
+		{0      , 0      , 1 << 12, 0      },
+		{0      , 0      , 0      , 1 << 12},
+	};
+	memcpy(matrix, &identity_matrix, sizeof(struct matrix));
+}
+
+static void cmd_mtx_identity(struct gpu *gpu, uint32_t *params)
+{
+#if 1
+	printf("[GX] MTX_IDENTITY (mode=%" PRIu8 ")\n",
+	       gpu->g3d.matrix_mode);
+#endif
+	(void)params;
+	switch (gpu->g3d.matrix_mode & 0x3)
+	{
+		case 0:
+			load_identity(&gpu->g3d.proj_matrix);
+			update_clip_matrix(gpu);
+			break;
+		case 1:
+			load_identity(&gpu->g3d.pos_matrix);
+			update_clip_matrix(gpu);
+			break;
+		case 2:
+			load_identity(&gpu->g3d.pos_matrix);
+			load_identity(&gpu->g3d.dir_matrix);
+			update_clip_matrix(gpu);
+			break;
+		case 3:
+			load_identity(&gpu->g3d.tex_matrix);
+			break;
+	}
+}
+
+static void load_4x4(struct matrix *matrix, uint32_t *params)
+{
+	matrix->x.x = params[0x0];
+	matrix->x.y = params[0x1];
+	matrix->x.z = params[0x2];
+	matrix->x.w = params[0x3];
+	matrix->y.x = params[0x4];
+	matrix->y.y = params[0x5];
+	matrix->y.z = params[0x6];
+	matrix->y.w = params[0x7];
+	matrix->z.x = params[0x8];
+	matrix->z.y = params[0x9];
+	matrix->z.z = params[0xA];
+	matrix->z.w = params[0xB];
+	matrix->w.x = params[0xC];
+	matrix->w.y = params[0xD];
+	matrix->w.z = params[0xE];
+	matrix->w.w = params[0xF];
+}
+
+static void cmd_mtx_load_4x4(struct gpu *gpu, uint32_t *params)
+{
+#if 1
+	printf("[GX] MTX_LOAD_4X4 (mode=%" PRIu8 ")\n",
+	       gpu->g3d.matrix_mode);
+#endif
+	switch (gpu->g3d.matrix_mode & 0x3)
+	{
+		case 0:
+			load_4x4(&gpu->g3d.proj_matrix, params);
+			update_clip_matrix(gpu);
+			break;
+		case 1:
+			load_4x4(&gpu->g3d.pos_matrix, params);
+			update_clip_matrix(gpu);
+			break;
+		case 2:
+			load_4x4(&gpu->g3d.pos_matrix, params);
+			load_4x4(&gpu->g3d.dir_matrix, params);
+			update_clip_matrix(gpu);
+			break;
+		case 3:
+			load_4x4(&gpu->g3d.tex_matrix, params);
+			break;
+	}
+}
+
+static void load_4x3(struct matrix *matrix, uint32_t *params)
+{
+	matrix->x.x = params[0x0];
+	matrix->x.y = params[0x1];
+	matrix->x.z = params[0x2];
+	matrix->x.w = 0;
+	matrix->y.x = params[0x3];
+	matrix->y.y = params[0x4];
+	matrix->y.z = params[0x5];
+	matrix->y.w = 0;
+	matrix->z.x = params[0x6];
+	matrix->z.y = params[0x7];
+	matrix->z.z = params[0x8];
+	matrix->z.w = 0;
+	matrix->w.x = params[0x9];
+	matrix->w.y = params[0xA];
+	matrix->w.z = params[0xB];
+	matrix->w.w = (1 << 12);
+}
+
+static void cmd_mtx_load_4x3(struct gpu *gpu, uint32_t *params)
+{
+#if 1
+	printf("[GX] MTX_LOAD_4X3 (mode=%" PRIu8 ")\n",
+	       gpu->g3d.matrix_mode);
+#endif
+	switch (gpu->g3d.matrix_mode & 0x3)
+	{
+		case 0:
+			load_4x3(&gpu->g3d.proj_matrix, params);
+			update_clip_matrix(gpu);
+			break;
+		case 1:
+			load_4x3(&gpu->g3d.pos_matrix, params);
+			update_clip_matrix(gpu);
+			break;
+		case 2:
+			load_4x3(&gpu->g3d.pos_matrix, params);
+			load_4x3(&gpu->g3d.dir_matrix, params);
+			update_clip_matrix(gpu);
+			break;
+		case 3:
+			load_4x3(&gpu->g3d.tex_matrix, params);
+			break;
+	}
+}
+
+static void mult_4x4(struct matrix *a, struct matrix *b)
+{
+	struct matrix r;
+	mtx_mult(&r, b, a);
+	memcpy(a, &r, sizeof(r));
+}
+
+static void cmd_mtx_mult_4x4(struct gpu *gpu, uint32_t *paramms)
+{
+#if 1
+	printf("[GX] MTX_MULT_4X4 (mode=%" PRIu8 ")\n",
+	       gpu->g3d.matrix_mode);
+#endif
+	struct matrix matrix;
+	load_4x4(&matrix, paramms);
+	switch (gpu->g3d.matrix_mode & 0x3)
+	{
+		case 0:
+			mult_4x4(&gpu->g3d.proj_matrix, &matrix);
+			update_clip_matrix(gpu);
+			break;
+		case 1:
+			mult_4x4(&gpu->g3d.pos_matrix, &matrix);
+			update_clip_matrix(gpu);
+			break;
+		case 2:
+			mult_4x4(&gpu->g3d.pos_matrix, &matrix);
+			mult_4x4(&gpu->g3d.dir_matrix, &matrix);
+			update_clip_matrix(gpu);
+			break;
+		case 3:
+			mult_4x4(&gpu->g3d.tex_matrix, &matrix);
+			break;
+	}
+}
+
+static void cmd_mtx_mult_4x3(struct gpu *gpu, uint32_t *params)
+{
+#if 1
+	printf("[GX] MTX_MULT_4X3 (mode=%" PRIu8 ")\n",
+	       gpu->g3d.matrix_mode);
+#endif
+	struct matrix matrix;
+	load_4x3(&matrix, params);
+	switch (gpu->g3d.matrix_mode & 0x3)
+	{
+		case 0:
+			mult_4x4(&gpu->g3d.proj_matrix, &matrix);
+			update_clip_matrix(gpu);
+			break;
+		case 1:
+			mult_4x4(&gpu->g3d.pos_matrix, &matrix);
+			update_clip_matrix(gpu);
+			break;
+		case 2:
+			mult_4x4(&gpu->g3d.pos_matrix, &matrix);
+			mult_4x4(&gpu->g3d.dir_matrix, &matrix);
+			update_clip_matrix(gpu);
+			break;
+		case 3:
+			mult_4x4(&gpu->g3d.tex_matrix, &matrix);
+			break;
+	}
+}
+
+static void load_3x3(struct matrix *matrix, uint32_t *params)
+{
+	matrix->x.x = params[0x0];
+	matrix->x.y = params[0x1];
+	matrix->x.z = params[0x2];
+	matrix->x.w = 0;
+	matrix->y.x = params[0x3];
+	matrix->y.y = params[0x4];
+	matrix->y.z = params[0x5];
+	matrix->y.w = 0;
+	matrix->z.x = params[0x6];
+	matrix->z.y = params[0x7];
+	matrix->z.z = params[0x8];
+	matrix->z.w = 0;
+	matrix->w.x = 0;
+	matrix->w.y = 0;
+	matrix->w.z = 0;
+	matrix->w.w = (1 << 12);
+}
+
+static void cmd_mtx_mult_3x3(struct gpu *gpu, uint32_t *params)
+{
+#if 1
+	printf("[GX] MTX_MULT_3X3 (mode=%" PRIu8 ")\n",
+	       gpu->g3d.matrix_mode);
+#endif
+	struct matrix matrix;
+	load_3x3(&matrix, params);
+	switch (gpu->g3d.matrix_mode & 0x3)
+	{
+		case 0:
+			mult_4x4(&gpu->g3d.proj_matrix, &matrix);
+			update_clip_matrix(gpu);
+			break;
+		case 1:
+			mult_4x4(&gpu->g3d.pos_matrix, &matrix);
+			update_clip_matrix(gpu);
+			break;
+		case 2:
+			mult_4x4(&gpu->g3d.pos_matrix, &matrix);
+			mult_4x4(&gpu->g3d.dir_matrix, &matrix);
+			update_clip_matrix(gpu);
+			break;
+		case 3:
+			mult_4x4(&gpu->g3d.tex_matrix, &matrix);
+			break;
+	}
+}
+
+static void mtx_scale(struct matrix *m, uint32_t *params)
+{
+	m->x.x = fp12_mul(m->x.x, (int32_t)params[0]);
+	m->x.y = fp12_mul(m->x.y, (int32_t)params[0]);
+	m->x.z = fp12_mul(m->x.z, (int32_t)params[0]);
+	m->x.w = fp12_mul(m->x.w, (int32_t)params[0]);
+	m->y.x = fp12_mul(m->y.x, (int32_t)params[1]);
+	m->y.y = fp12_mul(m->y.y, (int32_t)params[1]);
+	m->y.z = fp12_mul(m->y.z, (int32_t)params[1]);
+	m->y.w = fp12_mul(m->y.w, (int32_t)params[1]);
+	m->z.x = fp12_mul(m->z.x, (int32_t)params[2]);
+	m->z.y = fp12_mul(m->z.y, (int32_t)params[2]);
+	m->z.z = fp12_mul(m->z.z, (int32_t)params[2]);
+	m->z.w = fp12_mul(m->z.w, (int32_t)params[2]);
+}
+
+static void cmd_mtx_scale(struct gpu *gpu, uint32_t *params)
+{
+#if 1
+	printf("[GX] MTX_SCALE {" I12_FMT ", " I12_FMT ", " I12_FMT "} (mode=%" PRIu8 ")\n",
+	       I12_PRT(params[0]), I12_PRT(params[1]), I12_PRT(params[2]),
+	       gpu->g3d.matrix_mode);
+#endif
+	switch (gpu->g3d.matrix_mode & 0x3)
+	{
+		case 0:
+			mtx_scale(&gpu->g3d.proj_matrix, params);
+			update_clip_matrix(gpu);
+			break;
+		case 1:
+		case 2:
+			mtx_scale(&gpu->g3d.pos_matrix, params);
+			update_clip_matrix(gpu);
+			break;
+		case 3:
+			mtx_scale(&gpu->g3d.tex_matrix, params);
+			break;
+	}
+}
+
+static void mtx_trans(struct matrix *m, uint32_t *params)
+{
+	struct matrix tmp;
+	tmp.x.x = (1 << 12);
+	tmp.x.y = 0;
+	tmp.x.z = 0;
+	tmp.x.w = 0;
+	tmp.y.x = 0;
+	tmp.y.y = (1 << 12);
+	tmp.y.z = 0;
+	tmp.y.w = 0;
+	tmp.z.x = 0;
+	tmp.z.y = 0;
+	tmp.z.z = (1 << 12);
+	tmp.z.w = 0;
+	tmp.w.x = params[0];
+	tmp.w.y = params[1];
+	tmp.w.z = params[2];
+	tmp.w.w = (1 << 12);
+	mult_4x4(m, &tmp);
+}
+
+static void cmd_mtx_trans(struct gpu *gpu, uint32_t *params)
+{
+#if 1
+	printf("[GX] MTX_TRANS {" I12_FMT ", " I12_FMT ", " I12_FMT "} (mode=%" PRIu8 ")\n",
+	       I12_PRT(params[0]), I12_PRT(params[1]), I12_PRT(params[2]),
+	       gpu->g3d.matrix_mode);
+#endif
+	switch (gpu->g3d.matrix_mode & 0x3)
+	{
+		case 0:
+			mtx_trans(&gpu->g3d.proj_matrix, params);
+			update_clip_matrix(gpu);
+			break;
+		case 1:
+		case 2:
+			mtx_trans(&gpu->g3d.pos_matrix, params);
+			update_clip_matrix(gpu);
+			break;
+		case 3:
+			mtx_trans(&gpu->g3d.tex_matrix, params);
+			break;
+	}
+}
+
+static void cmd_color(struct gpu *gpu, uint32_t *params)
+{
+	gpu->g3d.r = TO8((params[0] >>  0) & 0x1F);
+	gpu->g3d.g = TO8((params[0] >>  5) & 0x1F);
+	gpu->g3d.b = TO8((params[0] >> 10) & 0x1F);
+#if 1
+	printf("[GX] COLOR {0x%02" PRIx8 ", 0x%02" PRIx8 ", 0x%02" PRIx8 "\n",
+	       gpu->g3d.r, gpu->g3d.g, gpu->g3d.b);
+#endif
+}
+
+static int32_t get_int10_9(uint16_t v)
+{
+	return ((int32_t)(int16_t)(v << 6)) / (1 << 3);
+}
+
+static void cmd_normal(struct gpu *gpu, uint32_t *params)
+{
+	struct vec3 normal;
+	normal.x = get_int10_9((params[0] >>  0) & 0x3FF);
+	normal.y = get_int10_9((params[0] >> 10) & 0x3FF);
+	normal.z = get_int10_9((params[0] >> 20) & 0x3FF);
+#if 1
+	printf("[GX] NORMAL {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
+	       I12_PRT(normal.x), I12_PRT(normal.y), I12_PRT(normal.z));
+#endif
+	mtx_mult_vec3(&gpu->g3d.normal, &gpu->g3d.dir_matrix, &normal);
+}
+
+static int32_t get_int16_4(uint16_t v)
+{
+	return ((int32_t)(int16_t)v) * (1 << 8);
+}
+
+static void cmd_texcoord(struct gpu *gpu, uint32_t *params)
+{
+	struct vec2 texcoord;
+	texcoord.x = get_int16_4((params[0] >>  0) & 0xFFFF);
+	texcoord.y = get_int16_4((params[0] >> 16) & 0xFFFF);
+#if 1
+	printf("[GX] TEXCOORD {" I12_FMT ", " I12_FMT "}\n",
+	       I12_PRT(texcoord.x), I12_PRT(texcoord.y));
+#endif
+	mtx_mult_vec2(&gpu->g3d.texcoord, &gpu->g3d.tex_matrix, &texcoord);
+}
+
+static void push_vertex(struct gpu *gpu)
+{
+	struct vertex *v = &gpu->g3d.vertexes[gpu->g3d.vertexes_nb];
+	mtx_mult_vec4(&v->position, &gpu->g3d.clip_matrix, &gpu->g3d.position);
+	v->r = gpu->g3d.r;
+	v->g = gpu->g3d.g;
+	v->b = gpu->g3d.b;
+	v->normal = gpu->g3d.normal;
+	v->texcoord = gpu->g3d.texcoord;
+#if 1
+	printf("[GX] push vertex {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
+	       I12_PRT(gpu->g3d.position.x),
+	       I12_PRT(gpu->g3d.position.y),
+	       I12_PRT(gpu->g3d.position.z));
+	printf("     position: {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
+	       I12_PRT(v->position.x),
+	       I12_PRT(v->position.y),
+	       I12_PRT(v->position.z));
+	printf("     color: {%" PRIu8 ", %" PRIu8 ", %" PRIu8 "}\n",
+	       v->r, v->g, v->b);
+	printf("     normal: {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
+	       I12_PRT(v->normal.x),
+	       I12_PRT(v->normal.y),
+	       I12_PRT(v->normal.z));
+	printf("     texcoord: {" I12_FMT ", " I12_FMT "}\n",
+	       I12_PRT(v->texcoord.x),
+	       I12_PRT(v->texcoord.y));
+#endif
+}
+
+static int32_t get_int16_12(uint16_t v)
+{
+	return (int32_t)(int16_t)v;
+}
+
+static void cmd_vtx_16(struct gpu *gpu, uint32_t *params)
+{
+	gpu->g3d.position.x = get_int16_12((params[0] >>  0) & 0xFFFF);
+	gpu->g3d.position.y = get_int16_12((params[0] >> 16) & 0xFFFF);
+	gpu->g3d.position.z = get_int16_12((params[1] >>  0) & 0xFFFF);
+#if 1
+	printf("[GX] VTX_16 {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
+	       I12_PRT(gpu->g3d.position.x),
+	       I12_PRT(gpu->g3d.position.y),
+	       I12_PRT(gpu->g3d.position.z));
+#endif
+	push_vertex(gpu);
+}
+
+static int32_t get_int10_6(uint16_t v)
+{
+	return (int32_t)(int16_t)(v << 6);
+}
+
+static void cmd_vtx_10(struct gpu *gpu, uint32_t *params)
+{
+	gpu->g3d.position.x = get_int10_6((params[0] >>  0) & 0x3FF);
+	gpu->g3d.position.y = get_int10_6((params[0] >> 10) & 0x3FF);
+	gpu->g3d.position.z = get_int10_6((params[0] >> 20) & 0x3FF);
+#if 1
+	printf("[GX] VTX_10 {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
+	       I12_PRT(gpu->g3d.position.x),
+	       I12_PRT(gpu->g3d.position.y),
+	       I12_PRT(gpu->g3d.position.z));
+#endif
+	push_vertex(gpu);
+}
+
+static void cmd_vtx_xy(struct gpu *gpu, uint32_t *params)
+{
+	gpu->g3d.position.x = get_int16_12((params[0] >>  0) & 0xFFFF);
+	gpu->g3d.position.y = get_int16_12((params[0] >> 16) & 0xFFFF);
+#if 1
+	printf("[GX] VTX_XY {" I12_FMT ", " I12_FMT "}\n",
+	       I12_PRT(gpu->g3d.position.x), I12_PRT(gpu->g3d.position.y));
+#endif
+	push_vertex(gpu);
+}
+
+static void cmd_vtx_xz(struct gpu *gpu, uint32_t *params)
+{
+	gpu->g3d.position.x = get_int16_12((params[0] >>  0) & 0xFFFF);
+	gpu->g3d.position.z = get_int16_12((params[0] >> 16) & 0xFFFF);
+#if 1
+	printf("[GX] VTX_XZ {" I12_FMT ", " I12_FMT "}\n",
+	       I12_PRT(gpu->g3d.position.x), I12_PRT(gpu->g3d.position.z));
+#endif
+	push_vertex(gpu);
+}
+
+static void cmd_vtx_yz(struct gpu *gpu, uint32_t *params)
+{
+	gpu->g3d.position.y = get_int16_12((params[0] >>  0) & 0xFFFF);
+	gpu->g3d.position.z = get_int16_12((params[0] >> 16) & 0xFFFF);
+#if 1
+	printf("[GX] VTX_YZ {" I12_FMT ", " I12_FMT "}\n",
+	       I12_PRT(gpu->g3d.position.y), I12_PRT(gpu->g3d.position.z));
+#endif
+	push_vertex(gpu);
+}
+
+static void cmd_vtx_diff(struct gpu *gpu, uint32_t *params)
+{
+#if 1
+	printf("[GX] VTX_DIFF\n");
+#endif
+	gpu->g3d.position.x += get_int10_9((params[0] >>  0) & 0x3FF);
+	gpu->g3d.position.y += get_int10_9((params[0] >> 10) & 0x3FF);
+	gpu->g3d.position.z += get_int10_9((params[0] >> 20) & 0x3FF);
+	push_vertex(gpu);
+}
+
+void gpu_gx_cmd(struct gpu *gpu, uint8_t cmd, uint32_t *params)
+{
+	switch (cmd)
+	{
+		case GX_CMD_MTX_MODE:
+			cmd_mtx_mode(gpu, params);
+			break;
+		case GX_CMD_MTX_PUSH:
+			cmd_mtx_push(gpu, params);
+			break;
+		case GX_CMD_MTX_POP:
+			cmd_mtx_pop(gpu, params);
+			break;
+		case GX_CMD_MTX_STORE:
+			cmd_mtx_store(gpu, params);
+			break;
+		case GX_CMD_MTX_RESTORE:
+			cmd_mtx_restore(gpu, params);
+			break;
+		case GX_CMD_MTX_IDENTITY:
+			cmd_mtx_identity(gpu, params);
+			break;
+		case GX_CMD_MTX_LOAD_4X4:
+			cmd_mtx_load_4x4(gpu, params);
+			break;
+		case GX_CMD_MTX_LOAD_4X3:
+			cmd_mtx_load_4x3(gpu, params);
+			break;
+		case GX_CMD_MTX_MULT_4X4:
+			cmd_mtx_mult_4x4(gpu, params);
+			break;
+		case GX_CMD_MTX_MULT_4X3:
+			cmd_mtx_mult_4x3(gpu, params);
+			break;
+		case GX_CMD_MTX_MULT_3X3:
+			cmd_mtx_mult_3x3(gpu, params);
+			break;
+		case GX_CMD_MTX_SCALE:
+			cmd_mtx_scale(gpu, params);
+			break;
+		case GX_CMD_MTX_TRANS:
+			cmd_mtx_trans(gpu, params);
+			break;
+		case GX_CMD_COLOR:
+			cmd_color(gpu, params);
+			break;
+		case GX_CMD_NORMAL:
+			cmd_normal(gpu, params);
+			break;
+		case GX_CMD_TEXCOORD:
+			cmd_texcoord(gpu, params);
+			break;
+		case GX_CMD_VTX_16:
+			cmd_vtx_16(gpu, params);
+			break;
+		case GX_CMD_VTX_10:
+			cmd_vtx_10(gpu, params);
+			break;
+		case GX_CMD_VTX_XY:
+			cmd_vtx_xy(gpu, params);
+			break;
+		case GX_CMD_VTX_XZ:
+			cmd_vtx_xz(gpu, params);
+			break;
+		case GX_CMD_VTX_YZ:
+			cmd_vtx_yz(gpu, params);
+			break;
+		case GX_CMD_VTX_DIFF:
+			cmd_vtx_diff(gpu, params);
+			break;
+		default:
+			printf("[GX] unhandled gx cmd 0x%" PRIx8 "\n", cmd);
+			break;
+	}
 }

@@ -3,6 +3,7 @@
 #include "nds.h"
 #include "mbc.h"
 #include "apu.h"
+#include "gpu.h"
 
 #include <inttypes.h>
 #include <stdlib.h>
@@ -197,7 +198,7 @@ static void arm##armv##_dma(struct mem *mem, uint8_t id, uint32_t cycles) \
 		uint32_t step; \
 		if (cnt_h & (1 << 10)) \
 		{ \
-			/* printf("[ARM" #armv "] DMA %" PRIu8 " 32 bits from 0x%" PRIx32 " to 0x%" PRIx32 "\n", id, dma->src, dma->dst); */ \
+			printf("[ARM" #armv "] DMA %" PRIu8 " 32 bits from 0x%" PRIx32 " to 0x%" PRIx32 "\n", id, dma->src, dma->dst); \
 			mem_arm##armv##_set32(mem, dma->dst, \
 			                      mem_arm##armv##_get32(mem, dma->src, MEM_DIRECT), \
 			                      MEM_DIRECT); \
@@ -205,7 +206,7 @@ static void arm##armv##_dma(struct mem *mem, uint8_t id, uint32_t cycles) \
 		} \
 		else \
 		{ \
-			/* printf("[ARM" #armv "] DMA %" PRIu8 " 16 bits from 0x%" PRIx32 " to 0x%" PRIx32 "\n", id, dma->src, dma->dst); */ \
+			printf("[ARM" #armv "] DMA %" PRIu8 " 16 bits from 0x%" PRIx32 " to 0x%" PRIx32 "\n", id, dma->src, dma->dst); \
 			mem_arm##armv##_set16(mem, dma->dst, \
 			                      mem_arm##armv##_get16(mem, dma->src, MEM_DIRECT), \
 			                      MEM_DIRECT); \
@@ -321,7 +322,7 @@ static void arm##armv##_dma_control(struct mem *mem, uint8_t id) \
 		if (!(cnt_h & (7 << 11))) \
 			dma->status |= MEM_DMA_ACTIVE; \
 	} \
-	if (0 && (dma->status & MEM_DMA_ENABLE)) \
+	if ((dma->status & MEM_DMA_ENABLE)) \
 		printf("[ARM" #armv "] enable DMA %" PRIu8 " type %" PRId32 " of %08" PRIx32 " words from %08" PRIx32 " to %08" PRIx32 ": %04" PRIx16 "\n", \
 		       id, armv == 7 ? ((cnt_h >> 12) & 3) : ((cnt_h >> 11) & 7), \
 		       dma->len, dma->src, dma->dst, cnt_h); \
@@ -360,7 +361,7 @@ static void arm##armv##_dma_start(struct mem *mem, uint8_t cond) \
 			if (cond == 5) \
 				mem->dscard_dma_count++; \
 		} \
-		/* printf("[ARM" #armv "] start DMA %" PRIu8 " of %08" PRIx32 " words from %08" PRIx32 " to %08" PRIx32 "\n", i, dma->len, dma->src, dma->dst); */ \
+		printf("[ARM" #armv "] start DMA %" PRIu8 " of %08" PRIx32 " words from %08" PRIx32 " to %08" PRIx32 "\n", i, dma->len, dma->src, dma->dst); \
 	} \
 }
 
@@ -2622,8 +2623,9 @@ static void commit_gx_cmd(struct mem *mem)
 		return;
 	}
 #if 1
-	printf("[GX] execute %s\n", cmd->def->name);
+	printf("[GX] execute %s with %u params\n", cmd->def->name, cmd->params_nb);
 #endif
+	gpu_gx_cmd(mem->nds->gpu, cmd->def - &gx_cmd_defs[0], cmd->params);
 }
 
 static void start_gx_cmd(struct mem *mem, const struct gx_cmd_def *def)
@@ -2641,6 +2643,10 @@ static void start_gx_cmd(struct mem *mem, const struct gx_cmd_def *def)
 static void add_gx_cmd_param(struct mem *mem, uint32_t param)
 {
 	struct gx_cmd *cmd = &mem->gx_cmd[mem->gx_cmd_nb - 1];
+#if 1
+	printf("[GX] add param [%" PRIu8 "] = 0x%08" PRIx32 " to %s\n",
+	       cmd->params_nb, param, cmd->def->name);
+#endif
 	cmd->params[cmd->params_nb++] = param;
 	if (cmd->params_nb == cmd->def->params)
 		commit_gx_cmd(mem);
@@ -3218,14 +3224,14 @@ static void set_arm9_reg8(struct mem *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM9_REG_GXSTAT + 2:
 			return;
 		case MEM_ARM9_REG_GXSTAT + 1:
-#if 1
+#if 0
 			printf("[ARM9] GXSTAT[%08" PRIx32 "] set %02" PRIx8 "\n", addr, v);
 #endif
 			if (v & (1 << 7))
 				mem->arm9_regs[addr] &= ~((1 << 7) | (1 << 5) | 0x1F);
 			return;
 		case MEM_ARM9_REG_GXSTAT + 3:
-#if 1
+#if 0
 			printf("[ARM9] GXSTAT[%08" PRIx32 "] set %02" PRIx8 "\n", addr, v);
 #endif
 			mem->arm9_regs[addr] &= 0x3F;
@@ -3433,6 +3439,9 @@ static void set_arm9_reg32(struct mem *mem, uint32_t addr, uint32_t v)
 		case MEM_ARM9_REG_GXFIFO + 0x34:
 		case MEM_ARM9_REG_GXFIFO + 0x38:
 		case MEM_ARM9_REG_GXFIFO + 0x3C:
+#if 1
+			printf("[GX] FIFO write 0x%08" PRIx32 "\n", v);
+#endif
 			if (!mem->gx_cmd_nb)
 			{
 				const struct gx_cmd_def *cmd_def;
@@ -3491,6 +3500,10 @@ static void set_arm9_reg32(struct mem *mem, uint32_t addr, uint32_t v)
 		case MEM_ARM9_REG_VEC_TEST:
 		{
 			uint8_t cmd_id = (addr - MEM_ARM9_REG_GXFIFO) / 4;
+#if 1
+			printf("[GX] MMIO [0x%02" PRIx8 "] = 0x%08" PRIx32 "\n",
+			       cmd_id, v);
+#endif
 			const struct gx_cmd_def *def = &gx_cmd_defs[cmd_id];
 			if (!def->name)
 			{
@@ -3757,7 +3770,7 @@ static uint8_t get_arm9_reg8(struct mem *mem, uint32_t addr)
 		case MEM_ARM9_REG_GXSTAT + 1:
 		case MEM_ARM9_REG_GXSTAT + 2:
 		case MEM_ARM9_REG_GXSTAT + 3:
-#if 1
+#if 0
 			printf("[ARM9] [%08" PRIx32 "] GXSTAT[%08" PRIx32 "] read 0x%02" PRIx8 "\n",
 			       cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr, mem->arm9_regs[addr]);
 #endif
@@ -3890,10 +3903,31 @@ static uint16_t get_arm9_reg16(struct mem *mem, uint32_t addr)
 
 static uint32_t get_arm9_reg32(struct mem *mem, uint32_t addr)
 {
-	return (get_arm9_reg8(mem, addr + 0) << 0)
-	     | (get_arm9_reg8(mem, addr + 1) << 8)
-	     | (get_arm9_reg8(mem, addr + 2) << 16)
-	     | (get_arm9_reg8(mem, addr + 3) << 24);
+	switch (addr)
+	{
+		case MEM_ARM9_REG_CLIPMTX_RESULT:
+		case MEM_ARM9_REG_CLIPMTX_RESULT + 0x04:
+		case MEM_ARM9_REG_CLIPMTX_RESULT + 0x08:
+		case MEM_ARM9_REG_CLIPMTX_RESULT + 0x0C:
+		case MEM_ARM9_REG_CLIPMTX_RESULT + 0x10:
+		case MEM_ARM9_REG_CLIPMTX_RESULT + 0x14:
+		case MEM_ARM9_REG_CLIPMTX_RESULT + 0x18:
+		case MEM_ARM9_REG_CLIPMTX_RESULT + 0x1C:
+		case MEM_ARM9_REG_CLIPMTX_RESULT + 0x20:
+		case MEM_ARM9_REG_CLIPMTX_RESULT + 0x24:
+		case MEM_ARM9_REG_CLIPMTX_RESULT + 0x28:
+		case MEM_ARM9_REG_CLIPMTX_RESULT + 0x2C:
+		case MEM_ARM9_REG_CLIPMTX_RESULT + 0x30:
+		case MEM_ARM9_REG_CLIPMTX_RESULT + 0x34:
+		case MEM_ARM9_REG_CLIPMTX_RESULT + 0x38:
+		case MEM_ARM9_REG_CLIPMTX_RESULT + 0x3C:
+			return *(int32_t*)&((uint8_t*)&mem->nds->gpu->g3d.clip_matrix)[addr - MEM_ARM9_REG_CLIPMTX_RESULT];
+		default:
+			return (get_arm9_reg8(mem, addr + 0) << 0)
+			     | (get_arm9_reg8(mem, addr + 1) << 8)
+			     | (get_arm9_reg8(mem, addr + 2) << 16)
+			     | (get_arm9_reg8(mem, addr + 3) << 24);
+	}
 }
 
 static void arm9_instr_delay(struct mem *mem, const uint8_t *table, enum mem_type type)
