@@ -1517,7 +1517,7 @@ static void draw_bot_flat(struct gpu *gpu, struct polygon *polygon,
 		maxy = gpu->g3d.viewport_bottom * (1 << 12);
 	int32_t starty = miny / (1 << 12);
 	int32_t endy = maxy / (1 << 12);
-	for (int32_t y = starty; y < endy; ++y)
+	for (int32_t y = starty; y <= endy; ++y)
 	{
 		minx = n1;
 		maxx = n2;
@@ -1623,7 +1623,7 @@ static void draw_triangle(struct gpu *gpu, struct polygon *polygon,
 	}
 #endif
 	sort_vertices(&v1, &v2, &v3);
-	if (v1->screen_y == v2->screen_y)
+	if (v2->screen_y == v3->screen_y)
 		draw_bot_flat(gpu, polygon, v1, v2, v3);
 	else if (v1->screen_y == v2->screen_y)
 		draw_top_flat(gpu, polygon, v1, v2, v3);
