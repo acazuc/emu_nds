@@ -1648,8 +1648,8 @@ static void draw_top_flat(struct gpu *gpu, struct polygon *polygon,
 
 	INIT_INTERP(x, screen_x);
 	INIT_INTERP_FRACT(z, position.z);
-	INIT_INTERP_FRACT(s, texcoord.x);
-	INIT_INTERP_FRACT(t, texcoord.y);
+	INIT_INTERP(s, texcoord.x);
+	INIT_INTERP(t, texcoord.y);
 	INIT_INTERP_FRACT(nx, normal.x);
 	INIT_INTERP_FRACT(ny, normal.y);
 	INIT_INTERP_FRACT(nz, normal.z);
@@ -1746,8 +1746,8 @@ static void draw_top_flat(struct gpu *gpu, struct polygon *polygon,
 		{
 			draw_pixel(gpu, polygon, startx, y,
 			           nz1 / (1 << 12),
-			           ns1 / (1 << 12),
-			           nt1 / (1 << 12),
+			           ns1,
+			           nt1,
 			           nnx1 / (1 << 12),
 			           nny2 / (1 << 12),
 			           nnz1 / (1 << 12));
@@ -1761,8 +1761,8 @@ static void draw_top_flat(struct gpu *gpu, struct polygon *polygon,
 #endif
 				draw_pixel(gpu, polygon, x, y,
 				           nz3 / (1 << 12),
-				           ns3 / (1 << 12),
-				           nt3 / (1 << 12),
+				           ns3,
+				           nt3,
 				           nnx3 / (1 << 12),
 				           nny3 / (1 << 12),
 				           nnz3 / (1 << 12));
@@ -1853,8 +1853,8 @@ static void draw_bot_flat(struct gpu *gpu, struct polygon *polygon,
 
 	INIT_INTERP(x, screen_x);
 	INIT_INTERP_FRACT(z, position.z);
-	INIT_INTERP_FRACT(s, texcoord.x);
-	INIT_INTERP_FRACT(t, texcoord.y);
+	INIT_INTERP(s, texcoord.x);
+	INIT_INTERP(t, texcoord.y);
 	INIT_INTERP_FRACT(nx, normal.x);
 	INIT_INTERP_FRACT(ny, normal.y);
 	INIT_INTERP_FRACT(nz, normal.z);
@@ -1952,8 +1952,8 @@ static void draw_bot_flat(struct gpu *gpu, struct polygon *polygon,
 		{
 			draw_pixel(gpu, polygon, startx, y,
 			           nz1 / (1 << 12),
-			           ns1 / (1 << 12),
-			           nt1 / (1 << 12),
+			           ns1,
+			           nt1,
 			           nnx1 / (1 << 12),
 			           nny1 / (1 << 12),
 			           nnz1 / (1 << 12));
@@ -1967,8 +1967,8 @@ static void draw_bot_flat(struct gpu *gpu, struct polygon *polygon,
 #endif
 				draw_pixel(gpu, polygon, x, y,
 				           nz3 / (1 << 12),
-				           ns3 / (1 << 12),
-				           nt3 / (1 << 12),
+				           ns3,
+				           nt3,
 				           nnx3 / (1 << 12),
 				           nny3 / (1 << 12),
 				           nnz3 / (1 << 12));
