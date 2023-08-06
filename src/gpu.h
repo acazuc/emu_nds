@@ -94,8 +94,8 @@ struct gpu_g3d_buf
 {
 	uint8_t data[256 * 192 * 4];
 	int32_t zbuf[256 * 192];
-	struct vertex vertexes[6144];
-	struct polygon polygons[2048];
+	struct vertex vertexes[6144 * 10]; /* XXX don't do this :D */
+	struct polygon polygons[2048 * 10];
 	uint16_t vertexes_nb;
 	uint16_t polygons_nb;
 };

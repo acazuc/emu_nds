@@ -1595,9 +1595,9 @@ static void draw_top_flat(struct gpu *gpu, struct polygon *polygon,
 	printf("     {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
 	       I12_PRT(v1->screen_x), I12_PRT(v1->screen_y), I12_PRT(v1->position.z));
 	printf("     {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
-	       I12_PRT(v2->screen_x), I12_PRT(v2->screen_y), I12_PRT(v1->position.z));
+	       I12_PRT(v2->screen_x), I12_PRT(v2->screen_y), I12_PRT(v2->position.z));
 	printf("     {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
-	       I12_PRT(v3->screen_x), I12_PRT(v3->screen_y), I12_PRT(v1->position.z));
+	       I12_PRT(v3->screen_x), I12_PRT(v3->screen_y), I12_PRT(v3->position.z));
 #endif
 
 #define INTERP_VARS(name) \
@@ -1638,24 +1638,42 @@ static void draw_top_flat(struct gpu *gpu, struct polygon *polygon,
 	step##name##1 = fp12_div(v3->var - v1->var, v3->screen_y - v1->screen_y); \
 	step##name##2 = fp12_div(v3->var - v2->var, v3->screen_y - v2->screen_y); \
 	n##name##1 = v3->var; \
-	n##name##2 = v3->var; \
-	if (step##name##1 < step##name##2) \
-	{ \
-		tmp = step##name##1; \
-		step##name##1 = step##name##2; \
-		step##name##2 = tmp; \
-	}
+	n##name##2 = v3->var;
+
+#define INIT_INTERP_FRACT(name, var) \
+	step##name##1 = fp12_div((v3->var - v1->var) * (1 << 12), v3->screen_y - v1->screen_y); \
+	step##name##2 = fp12_div((v3->var - v2->var) * (1 << 12), v3->screen_y - v2->screen_y); \
+	n##name##1 = v3->var * (1 << 12); \
+	n##name##2 = v3->var * (1 << 12);
 
 	INIT_INTERP(x, screen_x);
-	INIT_INTERP(z, position.z);
-	INIT_INTERP(s, texcoord.x);
-	INIT_INTERP(t, texcoord.y);
-	INIT_INTERP(nx, normal.x);
-	INIT_INTERP(ny, normal.y);
-	INIT_INTERP(nz, normal.z);
+	INIT_INTERP_FRACT(z, position.z);
+	INIT_INTERP_FRACT(s, texcoord.x);
+	INIT_INTERP_FRACT(t, texcoord.y);
+	INIT_INTERP_FRACT(nx, normal.x);
+	INIT_INTERP_FRACT(ny, normal.y);
+	INIT_INTERP_FRACT(nz, normal.z);
 
 #undef INIT_INTERP
+#undef INIT_INTERP_FRACT
 
+	if (stepx1 < stepx2)
+	{
+#define SWAP_INTERP(name) \
+		tmp = step##name##1; \
+		step##name##1 = step##name##2; \
+		step##name##2 = tmp;
+
+		SWAP_INTERP(x);
+		SWAP_INTERP(z);
+		SWAP_INTERP(s);
+		SWAP_INTERP(t);
+		SWAP_INTERP(nx);
+		SWAP_INTERP(ny);
+		SWAP_INTERP(nz);
+
+#undef SWAP_INTERP
+	}
 	miny = v1->screen_y;
 	maxy = v3->screen_y;
 	if (miny < gpu->g3d.viewport_top * (1 << 12))
@@ -1726,15 +1744,28 @@ static void draw_top_flat(struct gpu *gpu, struct polygon *polygon,
 		int32_t endx = maxx / (1 << 12);
 		if (startx == endx)
 		{
-			draw_pixel(gpu, polygon, startx, y, nz1, ns1, nt1,
-			           nnx1, nny2, nnz1);
+			draw_pixel(gpu, polygon, startx, y,
+			           nz1 / (1 << 12),
+			           ns1 / (1 << 12),
+			           nt1 / (1 << 12),
+			           nnx1 / (1 << 12),
+			           nny2 / (1 << 12),
+			           nnz1 / (1 << 12));
 		}
 		else
 		{
 			for (int32_t x = startx; x <= endx; ++x)
 			{
-				draw_pixel(gpu, polygon, x, y, nz3, ns3, nt3,
-				           nnx3, nny3, nnz3);
+#if 0
+				if (x == startx || x == endx) /* wireframe */
+#endif
+				draw_pixel(gpu, polygon, x, y,
+				           nz3 / (1 << 12),
+				           ns3 / (1 << 12),
+				           nt3 / (1 << 12),
+				           nnx3 / (1 << 12),
+				           nny3 / (1 << 12),
+				           nnz3 / (1 << 12));
 				nz3 += stepz3;
 				ns3 += steps3;
 				nt3 += stept3;
@@ -1812,23 +1843,42 @@ static void draw_bot_flat(struct gpu *gpu, struct polygon *polygon,
 	step##name##1 = fp12_div(v2->var - v1->var, v2->screen_y - v1->screen_y); \
 	step##name##2 = fp12_div(v3->var - v1->var, v3->screen_y - v1->screen_y); \
 	n##name##1 = v1->var; \
-	n##name##2 = v1->var; \
-	if (step##name##2 < step##name##1) \
-	{ \
-		tmp = step##name##1; \
-		step##name##1 = step##name##2; \
-		step##name##2 = tmp; \
-	}
+	n##name##2 = v1->var;
+
+#define INIT_INTERP_FRACT(name, var) \
+	step##name##1 = fp12_div((v2->var - v1->var) * (1 << 12), v2->screen_y - v1->screen_y); \
+	step##name##2 = fp12_div((v3->var - v1->var) * (1 << 12), v3->screen_y - v1->screen_y); \
+	n##name##1 = v1->var * (1 << 12); \
+	n##name##2 = v1->var * (1 << 12);
 
 	INIT_INTERP(x, screen_x);
-	INIT_INTERP(z, position.z);
-	INIT_INTERP(s, texcoord.x);
-	INIT_INTERP(t, texcoord.y);
-	INIT_INTERP(nx, normal.x);
-	INIT_INTERP(ny, normal.y);
-	INIT_INTERP(nz, normal.z);
+	INIT_INTERP_FRACT(z, position.z);
+	INIT_INTERP_FRACT(s, texcoord.x);
+	INIT_INTERP_FRACT(t, texcoord.y);
+	INIT_INTERP_FRACT(nx, normal.x);
+	INIT_INTERP_FRACT(ny, normal.y);
+	INIT_INTERP_FRACT(nz, normal.z);
 
 #undef INIT_INTERP
+#undef INIT_INTERP_FRACT
+
+	if (stepx2 < stepx1)
+	{
+#define SWAP_INTERP(name) \
+		tmp = step##name##1; \
+		step##name##1 = step##name##2; \
+		step##name##2 = tmp;
+
+		SWAP_INTERP(x);
+		SWAP_INTERP(z);
+		SWAP_INTERP(s);
+		SWAP_INTERP(t);
+		SWAP_INTERP(nx);
+		SWAP_INTERP(ny);
+		SWAP_INTERP(nz);
+
+#undef SWAP_INTERP
+	}
 
 	miny = v1->screen_y;
 	maxy = v2->screen_y;
@@ -1900,15 +1950,28 @@ static void draw_bot_flat(struct gpu *gpu, struct polygon *polygon,
 		int32_t endx = maxx / (1 << 12);
 		if (startx == endx)
 		{
-			draw_pixel(gpu, polygon, startx, y, nz1, ns1, nt1,
-			           nnx1, nny1, nnz1);
+			draw_pixel(gpu, polygon, startx, y,
+			           nz1 / (1 << 12),
+			           ns1 / (1 << 12),
+			           nt1 / (1 << 12),
+			           nnx1 / (1 << 12),
+			           nny1 / (1 << 12),
+			           nnz1 / (1 << 12));
 		}
 		else
 		{
 			for (int32_t x = startx; x <= endx; ++x)
 			{
-				draw_pixel(gpu, polygon, x, y, nz3, ns3, nt3,
-				           nnx3, nny3, nnz3);
+#if 0
+				if (x == startx || x == endx) /* wireframe */
+#endif
+				draw_pixel(gpu, polygon, x, y,
+				           nz3 / (1 << 12),
+				           ns3 / (1 << 12),
+				           nt3 / (1 << 12),
+				           nnx3 / (1 << 12),
+				           nny3 / (1 << 12),
+				           nnz3 / (1 << 12));
 				nz3 += stepz3;
 				ns3 += steps3;
 				nt3 += stept3;
@@ -1976,12 +2039,12 @@ static void draw_triangle(struct gpu *gpu, struct polygon *polygon,
 {
 #if 0
 	printf("draw triangle:\n");
-	printf("     {" I12_FMT ", " I12_FMT "}\n",
-	       I12_PRT(v1->screen_x), I12_PRT(v1->screen_y));
-	printf("     {" I12_FMT ", " I12_FMT "}\n",
-	       I12_PRT(v2->screen_x), I12_PRT(v2->screen_y));
-	printf("     {" I12_FMT ", " I12_FMT "}\n",
-	       I12_PRT(v3->screen_x), I12_PRT(v3->screen_y));
+	printf("     {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
+	       I12_PRT(v1->screen_x), I12_PRT(v1->screen_y), I12_PRT(v1->position.z));
+	printf("     {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
+	       I12_PRT(v2->screen_x), I12_PRT(v2->screen_y), I12_PRT(v2->position.z));
+	printf("     {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
+	       I12_PRT(v3->screen_x), I12_PRT(v3->screen_y), I12_PRT(v3->position.z));
 #endif
 #if 1
 	if (((polygon->attr >> 16) & 0x1F) < 0x10)
