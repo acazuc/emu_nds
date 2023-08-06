@@ -8,7 +8,7 @@
 #include "libretro.h"
 #include "../nds.h"
 
-#define TOP_BOTTOM 1
+#define TOP_BOTTOM 0
 
 #if TOP_BOTTOM == 1
 

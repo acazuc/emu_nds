@@ -85,12 +85,15 @@ struct polygon
 {
 	uint8_t quad;
 	uint32_t attr;
+	uint32_t texture;
+	uint32_t pltt_base;
 	uint16_t vertexes[4];
 };
 
 struct gpu_g3d_buf
 {
 	uint8_t data[256 * 192 * 4];
+	int32_t zbuf[256 * 192];
 	struct vertex vertexes[6144];
 	struct polygon polygons[2048];
 	uint16_t vertexes_nb;
@@ -130,6 +133,8 @@ struct gpu_g3d
 	uint8_t viewport_right;
 	uint8_t viewport_top;
 	uint8_t viewport_bottom;
+	uint32_t texture;
+	uint32_t pltt_base;
 };
 
 struct gpu
