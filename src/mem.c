@@ -3934,6 +3934,14 @@ static uint8_t get_arm9_reg8(struct mem *mem, uint32_t addr)
 			if (mem->dscard_dma_count) /* nasty hack: fake non-availibility if dma is running */
 				return mem->arm9_regs[addr] & ~(1 << 7);
 			return mem->arm9_regs[addr];
+		case MEM_ARM9_REG_RAM_COUNT:
+			return mem->nds->gpu->g3d.back->polygons_nb;
+		case MEM_ARM9_REG_RAM_COUNT + 1:
+			return mem->nds->gpu->g3d.back->polygons_nb >> 8;
+		case MEM_ARM9_REG_RAM_COUNT + 2:
+			return mem->nds->gpu->g3d.back->vertexes_nb;
+		case MEM_ARM9_REG_RAM_COUNT + 3:
+			return mem->nds->gpu->g3d.back->vertexes_nb >> 8;
 		default:
 			printf("[ARM9] [%08" PRIx32 "] unknown get register %08" PRIx32 "\n",
 			       cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr);
