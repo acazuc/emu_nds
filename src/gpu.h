@@ -72,13 +72,10 @@ struct matrix
 struct vertex
 {
 	struct vec4 position;
-	struct vec3 normal;
+	struct vec3 color;
 	struct vec2 texcoord;
 	int32_t screen_x;
 	int32_t screen_y;
-	uint8_t r;
-	uint8_t g;
-	uint8_t b;
 };
 
 struct polygon
@@ -100,6 +97,13 @@ struct gpu_g3d_buf
 	uint16_t polygons_nb;
 };
 
+struct light
+{
+	struct vec3 dir;
+	struct vec3 halfdir;
+	struct vec3 color;
+};
+
 struct gpu_g3d
 {
 	struct gpu_g3d_buf bufs[2];
@@ -114,18 +118,23 @@ struct gpu_g3d
 	struct matrix dir_matrix;
 	struct matrix tex_matrix;
 	struct matrix clip_matrix;
+	uint8_t shininess[128];
+	struct light lights[4];
+	struct vec3 diffuse;
+	struct vec3 ambient;
+	struct vec3 specular;
+	struct vec3 emission;
+	uint8_t vertex_color;
+	uint8_t specular_table;
 	uint8_t matrix_mode;
 	uint8_t proj_stack_pos;
 	uint8_t pos_stack_pos;
 	uint8_t tex_stack_pos;
 	struct vec4 position;
-	struct vec3 normal;
+	struct vec3 color;
 	struct vec2 texcoord;
 	uint32_t polygon_attr;
 	uint32_t commit_polygon_attr;
-	uint8_t r;
-	uint8_t g;
-	uint8_t b;
 	uint8_t primitive;
 	uint8_t tmp_vertex;
 	uint8_t swap_buffers;
