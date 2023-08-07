@@ -3977,6 +3977,23 @@ static uint32_t get_arm9_reg32(struct mem *mem, uint32_t addr)
 		case MEM_ARM9_REG_CLIPMTX_RESULT + 0x38:
 		case MEM_ARM9_REG_CLIPMTX_RESULT + 0x3C:
 			return *(int32_t*)&((uint8_t*)&mem->nds->gpu->g3d.clip_matrix)[addr - MEM_ARM9_REG_CLIPMTX_RESULT];
+		case MEM_ARM9_REG_VECMTX_RESULT:
+		case MEM_ARM9_REG_VECMTX_RESULT + 0x04:
+		case MEM_ARM9_REG_VECMTX_RESULT + 0x08:
+		case MEM_ARM9_REG_VECMTX_RESULT + 0x0C:
+		case MEM_ARM9_REG_VECMTX_RESULT + 0x10:
+		case MEM_ARM9_REG_VECMTX_RESULT + 0x14:
+		case MEM_ARM9_REG_VECMTX_RESULT + 0x18:
+		case MEM_ARM9_REG_VECMTX_RESULT + 0x1C:
+		case MEM_ARM9_REG_VECMTX_RESULT + 0x20:
+		case MEM_ARM9_REG_VECMTX_RESULT + 0x24:
+		case MEM_ARM9_REG_VECMTX_RESULT + 0x28:
+		case MEM_ARM9_REG_VECMTX_RESULT + 0x2C:
+		case MEM_ARM9_REG_VECMTX_RESULT + 0x30:
+		case MEM_ARM9_REG_VECMTX_RESULT + 0x34:
+		case MEM_ARM9_REG_VECMTX_RESULT + 0x38:
+		case MEM_ARM9_REG_VECMTX_RESULT + 0x3C:
+			return *(int32_t*)&((uint8_t*)&mem->nds->gpu->g3d.dir_matrix)[addr - MEM_ARM9_REG_VECMTX_RESULT];
 		default:
 			return (get_arm9_reg8(mem, addr + 0) << 0)
 			     | (get_arm9_reg8(mem, addr + 1) << 8)
