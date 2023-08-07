@@ -160,6 +160,7 @@ void gpu_del(struct gpu *gpu);
 void gpu_draw(struct gpu *gpu, uint8_t y);
 void gpu_commit_bgpos(struct gpu *gpu);
 void gpu_g3d_draw(struct gpu *gpu);
+void gpu_g3d_swap_buffers(struct gpu *gpu);
 
 void gpu_gx_cmd(struct gpu *gpu, uint8_t cmd, uint32_t *params);
 

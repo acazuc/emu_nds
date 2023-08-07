@@ -2115,6 +2115,26 @@ static void draw_triangle(struct gpu *gpu, struct polygon *polygon,
 
 void gpu_g3d_draw(struct gpu *gpu)
 {
+	struct gpu_g3d_buf *buf = gpu->g3d.front;
+	for (uint16_t i = 0; i < buf->polygons_nb; ++i)
+	{
+		struct polygon *polygon = &buf->polygons[i];
+		draw_triangle(gpu, polygon,
+		              &buf->vertexes[polygon->vertexes[0]],
+		              &buf->vertexes[polygon->vertexes[1]],
+		              &buf->vertexes[polygon->vertexes[2]]);
+		if (polygon->quad)
+		{
+			draw_triangle(gpu, polygon,
+			              &buf->vertexes[polygon->vertexes[0]],
+			              &buf->vertexes[polygon->vertexes[2]],
+			              &buf->vertexes[polygon->vertexes[3]]);
+		}
+	}
+}
+
+void gpu_g3d_swap_buffers(struct gpu *gpu)
+{
 	if (!gpu->g3d.swap_buffers)
 		return;
 	gpu->g3d.swap_buffers = 0;
@@ -2131,21 +2151,6 @@ void gpu_g3d_draw(struct gpu *gpu)
 	memset(buf, 0, sizeof(buf->data));
 	for (size_t i = 0; i < sizeof(buf->zbuf) / sizeof(*buf->zbuf); ++i)
 		buf->zbuf[i] = INT32_MAX;
-	for (uint16_t i = 0; i < buf->polygons_nb; ++i)
-	{
-		struct polygon *polygon = &buf->polygons[i];
-		draw_triangle(gpu, polygon,
-		              &buf->vertexes[polygon->vertexes[0]],
-		              &buf->vertexes[polygon->vertexes[1]],
-		              &buf->vertexes[polygon->vertexes[2]]);
-		if (polygon->quad)
-		{
-			draw_triangle(gpu, polygon,
-			              &buf->vertexes[polygon->vertexes[0]],
-			              &buf->vertexes[polygon->vertexes[2]],
-			              &buf->vertexes[polygon->vertexes[3]]);
-		}
-	}
 }
 
 static void mtx_mult(struct matrix *r, const struct matrix *a,
@@ -2214,7 +2219,7 @@ static void update_clip_matrix(struct gpu *gpu)
 	mtx_mult(&gpu->g3d.clip_matrix,
 	         &gpu->g3d.proj_matrix,
 	         &gpu->g3d.pos_matrix);
-#if 1
+#if 0
 	printf("proj:\n");
 	mtx_print(&gpu->g3d.proj_matrix);
 	printf("pos:\n");

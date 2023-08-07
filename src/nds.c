@@ -192,12 +192,6 @@ static void *gpu_loop(void *arg)
 		pthread_mutex_lock(&nds->gpu_mutex);
 		if (!__atomic_load_n(&nds->nds_g3d, __ATOMIC_SEQ_CST))
 			pthread_cond_wait(&nds->gpu_cond, &nds->gpu_mutex);
-		__atomic_store_n(&nds->gpu_g3d, 0, __ATOMIC_SEQ_CST);
-		pthread_mutex_unlock(&nds->gpu_mutex);
-		gpu_g3d_draw(nds->gpu);
-		pthread_mutex_lock(&nds->gpu_mutex);
-		__atomic_store_n(&nds->gpu_g3d, 1, __ATOMIC_SEQ_CST);
-		pthread_cond_signal(&nds->gpu_cond);
 		pthread_mutex_unlock(&nds->gpu_mutex);
 	}
 	return NULL;
@@ -331,10 +325,10 @@ void nds_frame(struct nds *nds, uint8_t *video_top_buf, uint32_t video_top_pitch
 #ifdef ENABLE_MULTITHREAD
 	pthread_mutex_lock(&nds->gpu_mutex);
 	__atomic_store_n(&nds->nds_y, 0, __ATOMIC_SEQ_CST);
-	__atomic_store_n(&nds->nds_g3d, 0, __ATOMIC_SEQ_CST);
 	pthread_cond_signal(&nds->gpu_cond);
 	pthread_mutex_unlock(&nds->gpu_mutex);
 #endif
+	gpu_g3d_draw(nds->gpu);
 	for (uint8_t y = 0; y < 192; ++y)
 	{
 		mem_arm9_set_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT, (mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) & 0xFFFC) | 0x0);
@@ -374,14 +368,7 @@ void nds_frame(struct nds *nds, uint8_t *video_top_buf, uint32_t video_top_pitch
 #endif
 	}
 
-#ifdef ENABLE_MULTITHREAD
-	pthread_mutex_lock(&nds->gpu_mutex);
-	__atomic_store_n(&nds->nds_g3d, 1, __ATOMIC_SEQ_CST);
-	pthread_cond_signal(&nds->gpu_cond);
-	pthread_mutex_unlock(&nds->gpu_mutex);
-#else
-	gpu_g3d_draw(nds->gpu);
-#endif
+	gpu_g3d_swap_buffers(nds->gpu);
 	if (mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) & (1 << 3))
 		mem_arm9_irq(nds->mem, 1 << 0);
 	if (mem_arm7_get_reg16(nds->mem, MEM_ARM7_REG_DISPSTAT) & (1 << 3))
@@ -416,12 +403,6 @@ void nds_frame(struct nds *nds, uint8_t *video_top_buf, uint32_t video_top_pitch
 
 		nds_cycles(nds, 99 * 12);
 	}
-#ifdef ENABLE_MULTITHREAD
-	pthread_mutex_lock(&nds->gpu_mutex);
-	if (!__atomic_load_n(&nds->gpu_g3d, __ATOMIC_SEQ_CST))
-		pthread_cond_wait(&nds->gpu_cond, &nds->gpu_mutex);
-	pthread_mutex_unlock(&nds->gpu_mutex);
-#endif
 }
 
 void nds_set_arm7_bios(struct nds *nds, const uint8_t *data)

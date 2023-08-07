@@ -49,8 +49,6 @@ typedef struct nds
 	pthread_mutex_t gpu_mutex;
 	int gpu_y;
 	int nds_y;
-	int gpu_g3d;
-	int nds_g3d;
 #endif
 } nds_t;
 
