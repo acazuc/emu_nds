@@ -1377,6 +1377,8 @@ static void draw_pixel(struct gpu *gpu, struct polygon *polygon,
                        int32_t x, int32_t y, int32_t z, int32_t s, int32_t t,
                        int32_t r, int32_t g, int32_t b)
 {
+	if (z < 0)
+		return;
 #if 1
 	if (polygon->attr & (1 << 14))
 	{
@@ -1722,10 +1724,6 @@ static void draw_top_flat(struct gpu *gpu, struct polygon *polygon,
 	 || v3->screen_y == v2->screen_y)
 		return;
 
-	if (v1->position.z <= 0 || v2->position.z <= 0 || v3->position.z <= 0
-	 || v1->position.w <= 0 || v2->position.w <= 0 || v3->position.w <= 0)
-		return;
-
 	if (v1->screen_x > v2->screen_x)
 	{
 		struct vertex *tmp = v1;
@@ -1807,10 +1805,6 @@ static void draw_bot_flat(struct gpu *gpu, struct polygon *polygon,
 
 	if (v2->screen_y == v1->screen_y
 	 || v3->screen_y == v1->screen_y)
-		return;
-
-	if (v1->position.z <= 0 || v2->position.z <= 0 || v3->position.z <= 0
-	 || v1->position.w <= 0 || v2->position.w <= 0 || v3->position.w <= 0)
 		return;
 
 	if (v2->screen_x > v3->screen_x)
@@ -1905,16 +1899,18 @@ static void draw_triangle(struct gpu *gpu, struct polygon *polygon,
 	       I12_PRT(v3->screen_x), I12_PRT(v3->screen_y), I12_PRT(v3->position.z));
 #endif
 #if 1
-	if (((polygon->attr >> 16) & 0x1F) < 0x10)
+	if (((polygon->attr >> 16) & 0x1F) != 0x1F)
 		return;
 #endif
 #if 1
 	switch ((polygon->attr >> 0x4) & 0x3)
 	{
 		case 0: /* modulation */
-		case 1: /* decal */
-		case 2: /* toon */
 			break;
+		case 1: /* decal */
+			return;
+		case 2: /* toon */
+			return;
 		case 3: /* shadow */
 			return;
 	}
