@@ -187,6 +187,9 @@ void mem_timers(struct mem *mem, uint32_t cycles)
 	arm9_timers(mem, cycles);
 }
 
+static void arm7_dma_start(struct mem *mem, uint8_t cond);
+static void arm9_dma_start(struct mem *mem, uint8_t cond);
+
 #define ARM_DMA(armv) \
 static void arm##armv##_dma(struct mem *mem, uint8_t id, uint32_t cycles) \
 { \
@@ -262,6 +265,8 @@ static void arm##armv##_dma(struct mem *mem, uint8_t id, uint32_t cycles) \
 				{ \
 					mem->gxfifo_dma_count--; \
 					update_gxfifo_irq(mem); \
+					if (!mem->gxfifo_dma_count) \
+						arm9_dma_start(mem, 7); \
 				} \
 			} \
 		} \
@@ -272,6 +277,8 @@ static void arm##armv##_dma(struct mem *mem, uint8_t id, uint32_t cycles) \
 			{ \
 				mem->gxfifo_dma_count--; \
 				update_gxfifo_irq(mem); \
+				if (!mem->gxfifo_dma_count) \
+					arm9_dma_start(mem, 7); \
 			} \
 		} \
 		dma->cnt = 0; \
@@ -333,7 +340,8 @@ static void arm##armv##_dma_control(struct mem *mem, uint8_t id) \
 	} \
 	else \
 	{ \
-		if (!(cnt_h & (7 << 11))) \
+		if (!(cnt_h & (7 << 11)) \
+		 || ((cnt_h & (7 << 11)) == (7 << 11) && !mem->gxfifo_dma_count)) \
 		{ \
 			dma->status |= MEM_DMA_ACTIVE; \
 			if (dma->dst == (0x4000000 | MEM_ARM9_REG_GXFIFO)) \
@@ -3961,39 +3969,55 @@ static uint32_t get_arm9_reg32(struct mem *mem, uint32_t addr)
 	switch (addr)
 	{
 		case MEM_ARM9_REG_CLIPMTX_RESULT:
+			return mem->nds->gpu->g3d.clip_matrix.x.x;
 		case MEM_ARM9_REG_CLIPMTX_RESULT + 0x04:
+			return mem->nds->gpu->g3d.clip_matrix.x.y;
 		case MEM_ARM9_REG_CLIPMTX_RESULT + 0x08:
+			return mem->nds->gpu->g3d.clip_matrix.x.z;
 		case MEM_ARM9_REG_CLIPMTX_RESULT + 0x0C:
+			return mem->nds->gpu->g3d.clip_matrix.x.w;
 		case MEM_ARM9_REG_CLIPMTX_RESULT + 0x10:
+			return mem->nds->gpu->g3d.clip_matrix.y.x;
 		case MEM_ARM9_REG_CLIPMTX_RESULT + 0x14:
+			return mem->nds->gpu->g3d.clip_matrix.y.y;
 		case MEM_ARM9_REG_CLIPMTX_RESULT + 0x18:
+			return mem->nds->gpu->g3d.clip_matrix.y.z;
 		case MEM_ARM9_REG_CLIPMTX_RESULT + 0x1C:
+			return mem->nds->gpu->g3d.clip_matrix.y.w;
 		case MEM_ARM9_REG_CLIPMTX_RESULT + 0x20:
+			return mem->nds->gpu->g3d.clip_matrix.z.x;
 		case MEM_ARM9_REG_CLIPMTX_RESULT + 0x24:
+			return mem->nds->gpu->g3d.clip_matrix.z.y;
 		case MEM_ARM9_REG_CLIPMTX_RESULT + 0x28:
+			return mem->nds->gpu->g3d.clip_matrix.z.z;
 		case MEM_ARM9_REG_CLIPMTX_RESULT + 0x2C:
+			return mem->nds->gpu->g3d.clip_matrix.z.w;
 		case MEM_ARM9_REG_CLIPMTX_RESULT + 0x30:
+			return mem->nds->gpu->g3d.clip_matrix.w.x;
 		case MEM_ARM9_REG_CLIPMTX_RESULT + 0x34:
+			return mem->nds->gpu->g3d.clip_matrix.w.y;
 		case MEM_ARM9_REG_CLIPMTX_RESULT + 0x38:
+			return mem->nds->gpu->g3d.clip_matrix.w.z;
 		case MEM_ARM9_REG_CLIPMTX_RESULT + 0x3C:
-			return *(int32_t*)&((uint8_t*)&mem->nds->gpu->g3d.clip_matrix)[addr - MEM_ARM9_REG_CLIPMTX_RESULT];
+			return mem->nds->gpu->g3d.clip_matrix.w.w;
 		case MEM_ARM9_REG_VECMTX_RESULT:
+			return mem->nds->gpu->g3d.dir_matrix.x.x;
 		case MEM_ARM9_REG_VECMTX_RESULT + 0x04:
+			return mem->nds->gpu->g3d.dir_matrix.x.y;
 		case MEM_ARM9_REG_VECMTX_RESULT + 0x08:
+			return mem->nds->gpu->g3d.dir_matrix.x.z;
 		case MEM_ARM9_REG_VECMTX_RESULT + 0x0C:
+			return mem->nds->gpu->g3d.dir_matrix.y.x;
 		case MEM_ARM9_REG_VECMTX_RESULT + 0x10:
+			return mem->nds->gpu->g3d.dir_matrix.y.y;
 		case MEM_ARM9_REG_VECMTX_RESULT + 0x14:
+			return mem->nds->gpu->g3d.dir_matrix.y.z;
 		case MEM_ARM9_REG_VECMTX_RESULT + 0x18:
+			return mem->nds->gpu->g3d.dir_matrix.z.x;
 		case MEM_ARM9_REG_VECMTX_RESULT + 0x1C:
+			return mem->nds->gpu->g3d.dir_matrix.z.y;
 		case MEM_ARM9_REG_VECMTX_RESULT + 0x20:
-		case MEM_ARM9_REG_VECMTX_RESULT + 0x24:
-		case MEM_ARM9_REG_VECMTX_RESULT + 0x28:
-		case MEM_ARM9_REG_VECMTX_RESULT + 0x2C:
-		case MEM_ARM9_REG_VECMTX_RESULT + 0x30:
-		case MEM_ARM9_REG_VECMTX_RESULT + 0x34:
-		case MEM_ARM9_REG_VECMTX_RESULT + 0x38:
-		case MEM_ARM9_REG_VECMTX_RESULT + 0x3C:
-			return *(int32_t*)&((uint8_t*)&mem->nds->gpu->g3d.dir_matrix)[addr - MEM_ARM9_REG_VECMTX_RESULT];
+			return mem->nds->gpu->g3d.dir_matrix.z.z;
 		default:
 			return (get_arm9_reg8(mem, addr + 0) << 0)
 			     | (get_arm9_reg8(mem, addr + 1) << 8)
