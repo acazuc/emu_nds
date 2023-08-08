@@ -1534,6 +1534,7 @@ static void draw_pixel(struct gpu *gpu, struct polygon *polygon,
 		if ((uint32_t)t >= height)
 			t = height - 1;
 	}
+	uint32_t base_addr = (polygon->pltt_base & 0x1FFF) << 4;
 	uint16_t color;
 	switch (texture_type)
 	{
@@ -1542,7 +1543,7 @@ static void draw_pixel(struct gpu *gpu, struct polygon *polygon,
 			uint8_t index = mem_vram_trpi_get8(gpu->mem, offset + width * t + s);
 			if (!((index >> 5) & 3)) /* XXX alpha blending */
 				return;
-			color = mem_vram_texp_get16(gpu->mem, ((polygon->pltt_base & 0x1FFF) << 3) | ((index & 0x1F) * 2));
+			color = mem_vram_texp_get16(gpu->mem, base_addr + ((index & 0x1F) * 2));
 			break;
 		}
 		case 0x2:
@@ -1552,7 +1553,7 @@ static void draw_pixel(struct gpu *gpu, struct polygon *polygon,
 			index &= 0x3;
 			if (!index && polygon->texture & (1 << 29))
 				return;
-			color = mem_vram_texp_get16(gpu->mem, ((polygon->pltt_base & 0x1FFF) << 3) | (index * 2));
+			color = mem_vram_texp_get16(gpu->mem, base_addr + (index * 2));
 			break;
 		}
 		case 0x3:
@@ -1564,7 +1565,7 @@ static void draw_pixel(struct gpu *gpu, struct polygon *polygon,
 				index &= 0xF;
 			if (!index && polygon->texture & (1 << 29))
 				return;
-			color = mem_vram_texp_get16(gpu->mem, ((polygon->pltt_base & 0x1FFF) << 4) | (index * 2));
+			color = mem_vram_texp_get16(gpu->mem, base_addr + (index * 2));
 			break;
 		}
 		case 0x4:
@@ -1572,13 +1573,15 @@ static void draw_pixel(struct gpu *gpu, struct polygon *polygon,
 			uint8_t index = mem_vram_trpi_get8(gpu->mem, offset + width * t + s);
 			if (!index && polygon->texture & (1 << 29))
 				return;
-			color = mem_vram_texp_get16(gpu->mem, ((polygon->pltt_base & 0x1FFF) << 4) | (index * 2));
+			color = mem_vram_texp_get16(gpu->mem, base_addr + (index * 2));
 			break;
 		}
 		case 0x5:
 		{
-			uint32_t addr = offset + (((width * t + s) / 4) & ~3);
+			uint32_t addr = offset + ((width * (t / 4) + (s / 4)) * 4);
 			uint32_t block = mem_vram_trpi_get32(gpu->mem, addr);
+			uint8_t index = (block >> ((8 * (t & 0x3)) + (2 * (s & 0x3)))) & 0x3;
+			color = mem_vram_texp_get16(gpu->mem, base_addr + (index));
 			color = 0xFFFF;
 			/* XXX */
 			break;
@@ -1588,12 +1591,12 @@ static void draw_pixel(struct gpu *gpu, struct polygon *polygon,
 			uint8_t index = mem_vram_trpi_get8(gpu->mem, offset + width * t + s);
 			if (!((index >> 3) & 0x7))
 				return; /* XXX alpha blending */
-			color = mem_vram_texp_get16(gpu->mem, ((polygon->pltt_base & 0x1FFF) << 4) | (index & 0x7));
+			color = mem_vram_texp_get16(gpu->mem, base_addr + ((index & 0x7) * 2));
 			break;
 		}
 		case 0x7:
 		{
-			color = mem_vram_trpi_get8(gpu->mem, offset + (width * t + s) * 2);
+			color = mem_vram_trpi_get16(gpu->mem, offset + (width * t + s) * 2);
 			if (!(color & (1 << 15)))
 				return;
 			break;
@@ -1628,11 +1631,15 @@ static void draw_top_flat(struct gpu *gpu, struct polygon *polygon,
 	int32_t step##name##1; \
 	int32_t step##name##2; \
 	int32_t step##name##3; \
+	int32_t d##name##1; \
+	int32_t d##name##2; \
+	int32_t d##name##3; \
 	int32_t n##name##1; \
 	int32_t n##name##2; \
 	int32_t n##name##3;
 
 	INTERP_VARS(z);
+	INTERP_VARS(w);
 	INTERP_VARS(s);
 	INTERP_VARS(t);
 	INTERP_VARS(r);
@@ -1643,7 +1650,8 @@ static void draw_top_flat(struct gpu *gpu, struct polygon *polygon,
 
 	int32_t stepx1;
 	int32_t stepx2;
-	int32_t tmp;
+	int32_t dx1;
+	int32_t dx2;
 	int32_t nx1;
 	int32_t nx2;
 	int32_t minx;
@@ -1659,19 +1667,24 @@ static void draw_top_flat(struct gpu *gpu, struct polygon *polygon,
 		return;
 
 #define INIT_INTERP(name, var) \
-	step##name##1 = fp12_div(v3->var - v1->var, v3->screen_y - v1->screen_y); \
-	step##name##2 = fp12_div(v3->var - v2->var, v3->screen_y - v2->screen_y); \
+	d##name##1 = v3->var - v1->var; \
+	d##name##2 = v3->var - v2->var; \
+	step##name##1 = fp12_div(d##name##1, v3->screen_y - v1->screen_y); \
+	step##name##2 = fp12_div(d##name##2, v3->screen_y - v2->screen_y); \
 	n##name##1 = v3->var; \
 	n##name##2 = v3->var;
 
 #define INIT_INTERP_FRACT(name, var) \
-	step##name##1 = fp12_div((v3->var - v1->var) * (1 << 12), v3->screen_y - v1->screen_y); \
-	step##name##2 = fp12_div((v3->var - v2->var) * (1 << 12), v3->screen_y - v2->screen_y); \
+	d##name##1 = v3->var - v1->var; \
+	d##name##2 = v3->var - v2->var; \
+	step##name##1 = fp12_div(d##name##1 * (1 << 12), v3->screen_y - v1->screen_y); \
+	step##name##2 = fp12_div(d##name##2 * (1 << 12), v3->screen_y - v2->screen_y); \
 	n##name##1 = v3->var * (1 << 12); \
 	n##name##2 = v3->var * (1 << 12);
 
 	INIT_INTERP(x, screen_x);
 	INIT_INTERP_FRACT(z, position.z);
+	INIT_INTERP_FRACT(w, position.w);
 	INIT_INTERP(s, texcoord.x);
 	INIT_INTERP(t, texcoord.y);
 	INIT_INTERP_FRACT(r, color.x);
@@ -1684,12 +1697,19 @@ static void draw_top_flat(struct gpu *gpu, struct polygon *polygon,
 	if (stepx1 < stepx2)
 	{
 #define SWAP_INTERP(name) \
-		tmp = step##name##1; \
+do \
+{ \
+		int32_t tmp = step##name##1; \
 		step##name##1 = step##name##2; \
-		step##name##2 = tmp;
+		step##name##2 = tmp; \
+		tmp = d##name##1; \
+		d##name##1 = d##name##2; \
+		d##name##2 = tmp; \
+} while (0)
 
 		SWAP_INTERP(x);
 		SWAP_INTERP(z);
+		SWAP_INTERP(w);
 		SWAP_INTERP(s);
 		SWAP_INTERP(t);
 		SWAP_INTERP(r);
@@ -1698,6 +1718,7 @@ static void draw_top_flat(struct gpu *gpu, struct polygon *polygon,
 
 #undef SWAP_INTERP
 	}
+
 	miny = v1->screen_y;
 	maxy = v3->screen_y;
 	if (miny < gpu->g3d.viewport_top * (1 << 12))
@@ -1709,6 +1730,8 @@ static void draw_top_flat(struct gpu *gpu, struct polygon *polygon,
 		nx2 -= fp12_mul(stepx2, diff);
 		nz1 -= fp12_mul(stepz1, diff);
 		nz2 -= fp12_mul(stepz2, diff);
+		nw1 -= fp12_mul(stepw1, diff);
+		nw2 -= fp12_mul(stepw2, diff);
 		ns1 -= fp12_mul(steps1, diff);
 		ns2 -= fp12_mul(steps2, diff);
 		nt1 -= fp12_mul(stept1, diff);
@@ -1728,6 +1751,7 @@ static void draw_top_flat(struct gpu *gpu, struct polygon *polygon,
 		minx = nx1;
 		maxx = nx2;
 		nz3 = nz1;
+		nw3 = nw1;
 		ns3 = ns1;
 		nt3 = nt1;
 		nr3 = nr1;
@@ -1736,6 +1760,7 @@ static void draw_top_flat(struct gpu *gpu, struct polygon *polygon,
 		if (minx == maxx)
 		{
 			stepz3 = 0;
+			stepw3 = 0;
 			steps3 = 0;
 			stept3 = 0;
 			stepr3 = 0;
@@ -1744,17 +1769,27 @@ static void draw_top_flat(struct gpu *gpu, struct polygon *polygon,
 		}
 		else
 		{
-			stepz3 = fp12_div(nz2 - nz1, maxx - minx);
-			steps3 = fp12_div(ns2 - ns1, maxx - minx);
-			stept3 = fp12_div(nt2 - nt1, maxx - minx);
-			stepr3 = fp12_div(nr2 - nr1, maxx - minx);
-			stepg3 = fp12_div(ng2 - ng1, maxx - minx);
-			stepb3 = fp12_div(nb2 - nb1, maxx - minx);
+			int32_t dem = maxx - minx;
+			dz3 = nz2 - nz1;
+			dw3 = nw2 - nw1;
+			ds3 = ns2 - ns1;
+			dt3 = nt2 - nt1;
+			dr3 = nr2 - nr1;
+			dg3 = ng2 - ng1;
+			db3 = nb2 - nb1;
+			stepz3 = fp12_div(dz3, dem);
+			stepw3 = fp12_div(dw3, dem);
+			steps3 = fp12_div(ds3, dem);
+			stept3 = fp12_div(dt3, dem);
+			stepr3 = fp12_div(dr3, dem);
+			stepg3 = fp12_div(dg3, dem);
+			stepb3 = fp12_div(db3, dem);
 		}
 		if (minx < gpu->g3d.viewport_left * (1 << 12))
 		{
 			int64_t diff = ((int64_t)gpu->g3d.viewport_left * (1 << 12)) - minx;
 			nz3 += fp12_mul(stepz3, diff);
+			nw3 += fp12_mul(stepw3, diff);
 			ns3 += fp12_mul(steps3, diff);
 			nt3 += fp12_mul(stept3, diff);
 			nr3 += fp12_mul(stepr3, diff);
@@ -1769,7 +1804,7 @@ static void draw_top_flat(struct gpu *gpu, struct polygon *polygon,
 		if (startx == endx)
 		{
 			draw_pixel(gpu, polygon, startx, y,
-			           nz1 / (1 << 12),
+			           nz1,
 			           ns1,
 			           nt1,
 			           nr1 / (1 << 12),
@@ -1784,13 +1819,14 @@ static void draw_top_flat(struct gpu *gpu, struct polygon *polygon,
 				if (x == startx || x == endx) /* wireframe */
 #endif
 				draw_pixel(gpu, polygon, x, y,
-				           nz3 / (1 << 12),
+				           nz3,
 				           ns3,
 				           nt3,
 				           nr3 / (1 << 12),
 				           ng3 / (1 << 12),
 				           nb3 / (1 << 12));
 				nz3 += stepz3;
+				nw3 += stepw3;
 				ns3 += steps3;
 				nt3 += stept3;
 				nr3 += stepr3;
@@ -1802,6 +1838,8 @@ static void draw_top_flat(struct gpu *gpu, struct polygon *polygon,
 		nx2 -= stepx2;
 		nz1 -= stepz1;
 		nz2 -= stepz2;
+		nw1 -= stepw1;
+		nw2 -= stepw2;
 		ns1 -= steps1;
 		ns2 -= steps2;
 		nt1 -= stept1;
@@ -1833,11 +1871,15 @@ static void draw_bot_flat(struct gpu *gpu, struct polygon *polygon,
 	int32_t step##name##1; \
 	int32_t step##name##2; \
 	int32_t step##name##3; \
+	int32_t d##name##1; \
+	int32_t d##name##2; \
+	int32_t d##name##3; \
 	int32_t n##name##1; \
 	int32_t n##name##2; \
 	int32_t n##name##3;
 
 	INTERP_VARS(z);
+	INTERP_VARS(w);
 	INTERP_VARS(s);
 	INTERP_VARS(t);
 	INTERP_VARS(r);
@@ -1848,7 +1890,8 @@ static void draw_bot_flat(struct gpu *gpu, struct polygon *polygon,
 
 	int32_t stepx1;
 	int32_t stepx2;
-	int32_t tmp;
+	int32_t dx1;
+	int32_t dx2;
 	int32_t nx1;
 	int32_t nx2;
 	int32_t minx;
@@ -1864,19 +1907,24 @@ static void draw_bot_flat(struct gpu *gpu, struct polygon *polygon,
 		return;
 
 #define INIT_INTERP(name, var) \
-	step##name##1 = fp12_div(v2->var - v1->var, v2->screen_y - v1->screen_y); \
-	step##name##2 = fp12_div(v3->var - v1->var, v3->screen_y - v1->screen_y); \
+	d##name##1 = v2->var - v1->var; \
+	d##name##2 = v3->var - v1->var; \
+	step##name##1 = fp12_div(d##name##1, v2->screen_y - v1->screen_y); \
+	step##name##2 = fp12_div(d##name##2, v3->screen_y - v1->screen_y); \
 	n##name##1 = v1->var; \
 	n##name##2 = v1->var;
 
 #define INIT_INTERP_FRACT(name, var) \
-	step##name##1 = fp12_div((v2->var - v1->var) * (1 << 12), v2->screen_y - v1->screen_y); \
-	step##name##2 = fp12_div((v3->var - v1->var) * (1 << 12), v3->screen_y - v1->screen_y); \
+	d##name##1 = v2->var - v1->var; \
+	d##name##2 = v3->var - v1->var; \
+	step##name##1 = fp12_div(d##name##1 * (1 << 12), v2->screen_y - v1->screen_y); \
+	step##name##2 = fp12_div(d##name##2 * (1 << 12), v3->screen_y - v1->screen_y); \
 	n##name##1 = v1->var * (1 << 12); \
 	n##name##2 = v1->var * (1 << 12);
 
 	INIT_INTERP(x, screen_x);
 	INIT_INTERP_FRACT(z, position.z);
+	INIT_INTERP_FRACT(w, position.w);
 	INIT_INTERP(s, texcoord.x);
 	INIT_INTERP(t, texcoord.y);
 	INIT_INTERP_FRACT(r, color.x);
@@ -1889,12 +1937,19 @@ static void draw_bot_flat(struct gpu *gpu, struct polygon *polygon,
 	if (stepx2 < stepx1)
 	{
 #define SWAP_INTERP(name) \
-		tmp = step##name##1; \
+do \
+{ \
+		int32_t tmp = step##name##1; \
 		step##name##1 = step##name##2; \
-		step##name##2 = tmp;
+		step##name##2 = tmp; \
+		tmp = d##name##1; \
+		d##name##1 = d##name##2; \
+		d##name##2 = tmp; \
+} while (0)
 
 		SWAP_INTERP(x);
 		SWAP_INTERP(z);
+		SWAP_INTERP(w);
 		SWAP_INTERP(s);
 		SWAP_INTERP(t);
 		SWAP_INTERP(r);
@@ -1913,6 +1968,8 @@ static void draw_bot_flat(struct gpu *gpu, struct polygon *polygon,
 		nx2 += fp12_mul(stepx2, diff);
 		nz1 += fp12_mul(stepz1, diff);
 		nz2 += fp12_mul(stepz2, diff);
+		nw1 += fp12_mul(stepw1, diff);
+		nw2 += fp12_mul(stepw2, diff);
 		ns1 += fp12_mul(steps1, diff);
 		ns2 += fp12_mul(steps2, diff);
 		nt1 += fp12_mul(stept1, diff);
@@ -1934,6 +1991,7 @@ static void draw_bot_flat(struct gpu *gpu, struct polygon *polygon,
 		minx = nx1;
 		maxx = nx2;
 		nz3 = nz1;
+		nw3 = nw1;
 		ns3 = ns1;
 		nt3 = nt1;
 		nr3 = nr1;
@@ -1941,7 +1999,15 @@ static void draw_bot_flat(struct gpu *gpu, struct polygon *polygon,
 		nb3 = nb1;
 		if (minx == maxx)
 		{
+			dz3 = 0;
+			dw3 = 0;
+			ds3 = 0;
+			dt3 = 0;
+			dr3 = 0;
+			dg3 = 0;
+			db3 = 0;
 			stepz3 = 0;
+			stepw3 = 0;
 			steps3 = 0;
 			stept3 = 0;
 			stepr3 = 0;
@@ -1950,17 +2016,27 @@ static void draw_bot_flat(struct gpu *gpu, struct polygon *polygon,
 		}
 		else
 		{
-			stepz3 = fp12_div(nz2 - nz1, maxx - minx);
-			steps3 = fp12_div(ns2 - ns1, maxx - minx);
-			stept3 = fp12_div(nt2 - nt1, maxx - minx);
-			stepr3 = fp12_div(nr2 - nr1, maxx - minx);
-			stepg3 = fp12_div(ng2 - ng1, maxx - minx);
-			stepb3 = fp12_div(nb2 - nb1, maxx - minx);
+			int32_t dem = maxx - minx;
+			dz3 = nz2 - nz1;
+			dw3 = nw2 - nw1;
+			ds3 = ns2 - ns1;
+			dt3 = nt2 - nt1;
+			dr3 = nr2 - nr1;
+			dg3 = ng2 - ng1;
+			db3 = nb2 - ng1;
+			stepz3 = fp12_div(dz3, dem);
+			stepw3 = fp12_div(dw3, dem);
+			steps3 = fp12_div(ds3, dem);
+			stept3 = fp12_div(dt3, dem);
+			stepr3 = fp12_div(dr3, dem);
+			stepg3 = fp12_div(dg3, dem);
+			stepb3 = fp12_div(db3, dem);
 		}
 		if (minx < gpu->g3d.viewport_left * (1 << 12))
 		{
 			int64_t diff = ((int64_t)gpu->g3d.viewport_left * (1 << 12)) - minx;
 			nz3 += fp12_mul(stepz3, diff);
+			nw3 += fp12_mul(stepw3, diff);
 			ns3 += fp12_mul(steps3, diff);
 			nt3 += fp12_mul(stept3, diff);
 			nr3 += fp12_mul(stepr3, diff);
@@ -1975,7 +2051,7 @@ static void draw_bot_flat(struct gpu *gpu, struct polygon *polygon,
 		if (startx == endx)
 		{
 			draw_pixel(gpu, polygon, startx, y,
-			           nz1 / (1 << 12),
+			           nz1,
 			           ns1,
 			           nt1,
 			           nr1 / (1 << 12),
@@ -1990,7 +2066,7 @@ static void draw_bot_flat(struct gpu *gpu, struct polygon *polygon,
 				if (x == startx || x == endx) /* wireframe */
 #endif
 				draw_pixel(gpu, polygon, x, y,
-				           nz3 / (1 << 12),
+				           nz3,
 				           ns3,
 				           nt3,
 				           nr3 / (1 << 12),
@@ -2008,6 +2084,8 @@ static void draw_bot_flat(struct gpu *gpu, struct polygon *polygon,
 		nx2 += stepx2;
 		nz1 += stepz1;
 		nz2 += stepz2;
+		nw1 += stepw1;
+		nw2 += stepw2;
 		ns1 += steps1;
 		ns2 += steps2;
 		nt1 += stept1;
