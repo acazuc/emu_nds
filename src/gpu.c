@@ -2127,7 +2127,7 @@ static void cmd_mtx_push(struct gpu *gpu, uint32_t *params)
 			if (gpu->g3d.pos_stack_pos > 30)
 			{
 #if 1
-				printf("[GX] MTX_PUSH pos stack overflow\n");
+				printf("[GX] MTX_PUSH pos stack overflow: 0x%" PRIx32 "\n", gpu->g3d.pos_stack_pos);
 #endif
 				set_stack_error(gpu);
 			}
@@ -2136,7 +2136,7 @@ static void cmd_mtx_push(struct gpu *gpu, uint32_t *params)
 			mem_arm9_set_reg32(gpu->mem, MEM_ARM9_REG_GXSTAT,
 			                   (mem_arm9_get_reg32(gpu->mem, MEM_ARM9_REG_GXSTAT)
 			                  & ~(0x1F << 8))
-			                  | (gpu->g3d.pos_stack_pos << 8));
+			                  | ((gpu->g3d.pos_stack_pos & 0x1F) << 8));
 			break;
 		case 3:
 			gpu->g3d.tex_stack[0] = gpu->g3d.tex_matrix;
@@ -2159,7 +2159,7 @@ static void cmd_mtx_pop(struct gpu *gpu, uint32_t *params)
 	printf("[GX] MTX_POP 0x%02" PRIx32 " (mode=%" PRIu8 ")\n",
 	       params[0], gpu->g3d.matrix_mode);
 #endif
-	uint32_t n = params[0] & 0x1F;
+	int32_t n = (int32_t)((params[0] & 0x3F) << 26) >> 26;
 	switch (gpu->g3d.matrix_mode & 0x3)
 	{
 		case 0:
@@ -2179,13 +2179,12 @@ static void cmd_mtx_pop(struct gpu *gpu, uint32_t *params)
 			break;
 		case 1:
 		case 2:
-			if (params[0] & (1 << 5))
+			if (n < 0)
 			{
-				n = (~n & 0x1F) + 1;
 #if 1
 				printf("[GX] MTX_POP negative: %" PRIu32 "\n", n);
 #endif
-				gpu->g3d.pos_stack_pos += n;
+				gpu->g3d.pos_stack_pos -= n;
 				if (gpu->g3d.pos_stack_pos > 30)
 				{
 #if 1
@@ -2251,7 +2250,6 @@ static void cmd_mtx_store(struct gpu *gpu, uint32_t *params)
 				printf("[GX] MTX_STORE pos stack 0x1F\n");
 #endif
 				set_stack_error(gpu);
-				break;
 			}
 			gpu->g3d.pos_stack[n] = gpu->g3d.pos_matrix;
 			gpu->g3d.dir_stack[n] = gpu->g3d.dir_matrix;
@@ -2283,7 +2281,6 @@ static void cmd_mtx_restore(struct gpu *gpu, uint32_t *params)
 				printf("[GX] MTX_RESTORE pos stack 0x1F\n");
 #endif
 				set_stack_error(gpu);
-				break;
 			}
 			gpu->g3d.pos_matrix = gpu->g3d.pos_stack[n];
 			gpu->g3d.dir_matrix = gpu->g3d.dir_stack[n];
