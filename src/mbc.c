@@ -33,6 +33,8 @@ struct mbc *mbc_new(struct nds *nds, const void *data, size_t size)
 	{
 		case 0x50434D41:
 		case 0x50485041:
+		case 0x50495141:
+		case 0x50475241:
 			mbc->backup_type = MBC_FLASH_256K;
 			break;
 		case 0x50395941:
@@ -41,10 +43,11 @@ struct mbc *mbc_new(struct nds *nds, const void *data, size_t size)
 			break;
 		case 0x50443241:
 		case 0x50543841:
+		case 0x504D5241:
 			mbc->backup_type = MBC_EEPROM_8K;
 			break;
 		case 0x45415041:
-		case 0x50455a41:
+		case 0x50455A41:
 			mbc->backup_type = MBC_FLASH_512K;
 			break;
 		default:
