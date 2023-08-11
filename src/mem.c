@@ -325,6 +325,21 @@ static void arm##armv##_dma_control(struct mem *mem, uint8_t id) \
 	struct dma *dma = &mem->arm##armv##_dma[id]; \
 	dma->src = mem_arm##armv##_get_reg32(mem, MEM_ARM##armv##_REG_DMA0SAD + 0xC * id); \
 	dma->dst = mem_arm##armv##_get_reg32(mem, MEM_ARM##armv##_REG_DMA0DAD + 0xC * id); \
+	if (armv == 7) \
+	{ \
+		dma->src &= 0x07FFFFFE; \
+		dma->dst &= 0x07FFFFFE; \
+	} \
+	else \
+	{ \
+		if (dma->src & 0xF0000000) \
+		{ \
+			printf("[%08" PRIx32 "] start\n", cpu_get_reg(mem->nds->arm9, CPU_REG_PC)); \
+			/*mem->nds->arm9->debug = CPU_DEBUG_ALL_ML;*/ \
+		} \
+		dma->src &= 0x0FFFFFFE; \
+		dma->dst &= 0x0FFFFFFE; \
+	} \
 	dma->cnt = 0; \
 	arm##armv##_load_dma_length(mem, id); \
 	uint16_t cnt_h = mem_arm##armv##_get_reg16(mem, MEM_ARM##armv##_REG_DMA0CNT_H + 0xC * id); \
@@ -2801,14 +2816,6 @@ static void set_arm9_reg8(struct mem *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM9_REG_DMA2CNT_L:
 		case MEM_ARM9_REG_DMA2CNT_L + 1:
 		case MEM_ARM9_REG_DMA2CNT_H:
-		case MEM_ARM9_REG_DMA3SAD:
-		case MEM_ARM9_REG_DMA3SAD + 1:
-		case MEM_ARM9_REG_DMA3SAD + 2:
-		case MEM_ARM9_REG_DMA3SAD + 3:
-		case MEM_ARM9_REG_DMA3DAD:
-		case MEM_ARM9_REG_DMA3DAD + 1:
-		case MEM_ARM9_REG_DMA3DAD + 2:
-		case MEM_ARM9_REG_DMA3DAD + 3:
 		case MEM_ARM9_REG_DMA3CNT_L:
 		case MEM_ARM9_REG_DMA3CNT_L  +1:
 		case MEM_ARM9_REG_DMA3CNT_H:
@@ -3043,6 +3050,26 @@ static void set_arm9_reg8(struct mem *mem, uint32_t addr, uint8_t v)
 #if 0
 			printf("[ARM9] AUXSPICNT[%08" PRIx32 "] = %02" PRIx8 "\n",
 			       addr, v);
+#endif
+			mem->arm9_regs[addr] = v;
+			return;
+		case MEM_ARM9_REG_DMA3SAD:
+		case MEM_ARM9_REG_DMA3SAD + 1:
+		case MEM_ARM9_REG_DMA3SAD + 2:
+		case MEM_ARM9_REG_DMA3SAD + 3:
+#if 0
+			printf("[ARM9] [%08" PRIx32 "] DMA3SAD[%08" PRIx32 "] = %02" PRIx8 "\n",
+			       cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr, v);
+#endif
+			mem->arm9_regs[addr] = v;
+			return;
+		case MEM_ARM9_REG_DMA3DAD:
+		case MEM_ARM9_REG_DMA3DAD + 1:
+		case MEM_ARM9_REG_DMA3DAD + 2:
+		case MEM_ARM9_REG_DMA3DAD + 3:
+#if 0
+			printf("[ARM9] [%08" PRIx32 "] DMA3DAD[%08" PRIx32 "] = %02" PRIx8 "\n",
+			       cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr, v);
 #endif
 			mem->arm9_regs[addr] = v;
 			return;
@@ -4111,7 +4138,7 @@ static void *get_vram_texp_ptr(struct mem *mem, uint32_t addr)
 	return &mem->vram[base + (addr & 0x3FFF)];
 }
 
-static void *get_arm9_vram_ptr(struct mem *mem, uint32_t addr)
+void *get_arm9_vram_ptr(struct mem *mem, uint32_t addr)
 {
 	switch ((addr >> 20) & 0xF)
 	{
@@ -4184,7 +4211,8 @@ static void *get_arm9_vram_ptr(struct mem *mem, uint32_t addr)
 #define MEM_ARM9_GET(size) \
 uint##size##_t mem_arm9_get##size(struct mem *mem, uint32_t addr, enum mem_type type) \
 { \
-	/* printf("[%08" PRIx32 "] ARM9 get" #size " addr: %08" PRIx32 "\n", cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr); */ \
+	if (addr < 0x10) \
+		printf("[%08" PRIx32 "] ARM9 get" #size " addr: %08" PRIx32 "\n", cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr); \
 	if (size == 16) \
 		addr &= ~1; \
 	if (size == 32) \
@@ -4331,7 +4359,8 @@ MEM_ARM9_GET(32);
 #define MEM_ARM9_SET(size) \
 void mem_arm9_set##size(struct mem *mem, uint32_t addr, uint##size##_t v, enum mem_type type) \
 { \
-	/* printf("[%08" PRIx32 "] ARM9 set" #size " addr: %08" PRIx32 "\n", cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr); */ \
+	if (addr < 0x10) \
+		printf("[%08" PRIx32 "] ARM9 set" #size " addr: %08" PRIx32 "\n", cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr); \
 	if (size == 16) \
 		addr &= ~1; \
 	if (size == 32) \

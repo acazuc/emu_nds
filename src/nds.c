@@ -189,10 +189,10 @@ static void *gpu_loop(void *arg)
 			while (__atomic_load_n(&nds->nds_y, __ATOMIC_SEQ_CST) < nds->gpu_y)
 				;
 		}
-		pthread_mutex_lock(&nds->gpu_mutex);
-		if (!__atomic_load_n(&nds->nds_g3d, __ATOMIC_SEQ_CST))
-			pthread_cond_wait(&nds->gpu_cond, &nds->gpu_mutex);
-		pthread_mutex_unlock(&nds->gpu_mutex);
+		while (!__atomic_load_n(&nds->nds_g3d, __ATOMIC_SEQ_CST))
+			;
+		gpu_g3d_draw(nds->gpu);
+		__atomic_store_n(&nds->gpu_g3d, 1, __ATOMIC_SEQ_CST);
 	}
 	return NULL;
 }
@@ -298,6 +298,7 @@ void nds_frame(struct nds *nds, uint8_t *video_top_buf, uint32_t video_top_pitch
 #if 0
 	printf("touch: %d @ %dx%d\n", touch, touch_x, touch_y);
 #endif
+	nds->gpu->capture = mem_arm9_get_reg32(nds->mem, MEM_ARM9_REG_DISPCAPCNT) & (1 << 31);
 	uint32_t powcnt1 = mem_arm9_get_reg32(nds->mem, MEM_ARM9_REG_POWCNT1);
 	if (powcnt1 & (1 << 15))
 	{
@@ -324,11 +325,13 @@ void nds_frame(struct nds *nds, uint8_t *video_top_buf, uint32_t video_top_pitch
 	gpu_commit_bgpos(nds->gpu);
 #ifdef ENABLE_MULTITHREAD
 	pthread_mutex_lock(&nds->gpu_mutex);
+	__atomic_store_n(&nds->nds_g3d, 0, __ATOMIC_SEQ_CST);
 	__atomic_store_n(&nds->nds_y, 0, __ATOMIC_SEQ_CST);
 	pthread_cond_signal(&nds->gpu_cond);
 	pthread_mutex_unlock(&nds->gpu_mutex);
-#endif
+#else
 	gpu_g3d_draw(nds->gpu);
+#endif
 	for (uint8_t y = 0; y < 192; ++y)
 	{
 		mem_arm9_set_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT, (mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) & 0xFFFC) | 0x0);
@@ -368,6 +371,8 @@ void nds_frame(struct nds *nds, uint8_t *video_top_buf, uint32_t video_top_pitch
 #endif
 	}
 
+	mem_arm9_set_reg32(nds->mem, MEM_ARM9_REG_DISPCAPCNT,
+	                   mem_arm9_get_reg32(nds->mem, MEM_ARM9_REG_DISPCAPCNT) & ~(1 << 31));
 	gpu_g3d_swap_buffers(nds->gpu);
 	if (mem_arm9_get_reg16(nds->mem, MEM_ARM9_REG_DISPSTAT) & (1 << 3))
 		mem_arm9_irq(nds->mem, 1 << 0);
@@ -402,7 +407,19 @@ void nds_frame(struct nds *nds, uint8_t *video_top_buf, uint32_t video_top_pitch
 			mem_arm7_irq(nds->mem, 1 << 1);
 
 		nds_cycles(nds, 99 * 12);
+#ifdef ENABLE_MULTITHREAD
+		if (y == 216)
+		{
+			__atomic_store_n(&nds->gpu_g3d, 0, __ATOMIC_SEQ_CST);
+			__atomic_store_n(&nds->nds_g3d, 1, __ATOMIC_SEQ_CST);
+		}
+#endif
 	}
+
+#ifdef ENABLE_MULTITHREAD
+	while (!__atomic_load_n(&nds->gpu_g3d, __ATOMIC_SEQ_CST))
+		;
+#endif
 }
 
 void nds_set_arm7_bios(struct nds *nds, const uint8_t *data)

@@ -152,6 +152,7 @@ struct gpu
 	struct gpu_eng engb;
 	struct gpu_g3d g3d;
 	struct mem *mem;
+	int capture;
 };
 
 struct gpu *gpu_new(struct mem *mem);
