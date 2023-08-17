@@ -192,6 +192,28 @@ void apu_cycles(struct apu *apu, uint32_t cycles)
 					break;
 				}
 				case 3:
+					if (i >= 8 && i <= 13)
+					{
+						channel->pos = (channel->pos + 1) % 8;
+						if (channel->pos < ((cnt >> 24) & 0x7))
+							channel->sample = INT16_MIN;
+						else
+							channel->sample = INT16_MAX;
+					}
+					else if (i >= 14)
+					{
+						uint8_t carry = channel->pos & 0x1;
+						channel->pos >>= 1;
+						if (carry)
+						{
+							channel->pos ^= 0x6000;
+							channel->sample = INT16_MIN;
+						}
+						else
+						{
+							channel->sample = INT16_MAX;
+						}
+					}
 					break;
 			}
 			if (channel->pos >= channel->len + channel->pnt)
@@ -206,6 +228,11 @@ void apu_cycles(struct apu *apu, uint32_t cycles)
 						break;
 					case 1:
 						channel->pos = channel->pnt;
+						if (((cnt >> 29) & 0x3) == 0x2)
+						{
+							channel->adpcm_idx = channel->adpcm_init_idx;
+							channel->sample = channel->adpcm_init_sample;
+						}
 						break;
 				}
 			}
@@ -220,16 +247,30 @@ void apu_start_channel(struct apu *apu, uint8_t id)
 	channel->tmr = mem_arm7_get_reg16(apu->mem, MEM_ARM7_REG_SOUNDXTMR(id));
 	channel->sad = mem_arm7_get_reg32(apu->mem, MEM_ARM7_REG_SOUNDXSAD(id));
 	channel->len = (mem_arm7_get_reg32(apu->mem, MEM_ARM7_REG_SOUNDXLEN(id)) & 0x3FFFFF) * 8;
-	channel->pos = 0;
 	channel->clock = channel->tmr;
-	if ((mem_arm7_get_reg32(apu->mem, MEM_ARM7_REG_SOUNDXCNT(id) >> 29) & 0x3) == 0x2)
+	switch (mem_arm7_get_reg32(apu->mem, MEM_ARM7_REG_SOUNDXCNT(id) >> 29) & 0x3)
 	{
-		uint32_t adpcm_hdr = mem_arm7_get32(apu->mem, channel->sad, MEM_DIRECT);
-		channel->sample = (int16_t)(uint16_t)(adpcm_hdr & 0xFFFF);
-		channel->adpcm_idx = (adpcm_hdr >> 16) & 0x7F;
-		if (channel->adpcm_idx > 88)
-			channel->adpcm_idx = 88;
-		channel->pos += 8;
+		case 0x0:
+		case 0x1:
+			channel->sample = 0;
+			channel->pos = 0;
+			break;
+		case 0x2:
+		{
+			uint32_t adpcm_hdr = mem_arm7_get32(apu->mem, channel->sad, MEM_DIRECT);
+			channel->sample = (int16_t)(uint16_t)(adpcm_hdr & 0xFFFF);
+			channel->adpcm_idx = (adpcm_hdr >> 16) & 0x7F;
+			if (channel->adpcm_idx > 88)
+				channel->adpcm_idx = 88;
+			channel->pos = 8;
+			channel->adpcm_init_sample = channel->sample;
+			channel->adpcm_init_idx = channel->adpcm_idx;
+			break;
+		}
+		case 0x3:
+			channel->sample = 0;
+			channel->pos = 0x7FFF;
+			break;
 	}
 #if 0
 	printf("APU start %u: CNT=%08" PRIx32 " SAD=%08" PRIx32 " TMR=%04" PRIx16 " PNT=%04" PRIx16 " LEN=%08" PRIx32 "\n",

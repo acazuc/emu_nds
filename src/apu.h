@@ -15,7 +15,9 @@ struct apu_channel
 	uint32_t len;
 	uint32_t pos; /* in 4 bits units, for adpcm simplicity */
 	uint32_t clock;
+	int16_t adpcm_init_sample;
 	int16_t sample;
+	uint8_t adpcm_init_idx;
 	uint8_t adpcm_idx;
 };
 
