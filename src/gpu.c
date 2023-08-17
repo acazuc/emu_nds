@@ -117,9 +117,14 @@ static inline uint32_t eng_get_reg32(struct gpu *gpu, struct gpu_eng *eng, uint3
 static void draw_background_3d(struct gpu *gpu, struct gpu_eng *eng,
                                uint8_t y, uint8_t bg, uint8_t *data)
 {
-	(void)eng;
-	(void)bg;
-	memcpy(data, &gpu->g3d.front->data[(191 - y) * 256 * 4], 256 * 4);
+	uint16_t bghofs = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BG0HOFS + bg * 4) & 0x1FF;
+	for (uint32_t x = 0; x < 256; ++x)
+	{
+		uint32_t xx = (bghofs + x) % 512;
+		if (xx >= 256)
+			continue;
+		*(uint32_t*)&data[x * 4] = *(uint32_t*)&gpu->g3d.front->data[((191 - y) * 256 + xx) * 4];
+	}
 }
 
 static void draw_background_text(struct gpu *gpu, struct gpu_eng *eng,
@@ -221,7 +226,7 @@ static void draw_background_text(struct gpu *gpu, struct gpu_eng *eng,
 			paladdr |= ((map >> 8) & 0xF0);
 			val = mem_get_bg_palette(gpu->mem, eng->pal_base + paladdr * 2);
 		}
-		SETRGB5(&data[x * 4], val, 0xFF);
+		SETRGB5(&data[x * 4], val, 0x1F);
 	}
 }
 
@@ -284,7 +289,7 @@ static void draw_background_affine(struct gpu *gpu, struct gpu_eng *eng,
 		if (!paladdr)
 			continue;
 		uint16_t val = mem_get_bg_palette(gpu->mem, eng->pal_base + paladdr * 2);
-		SETRGB5(&data[x * 4], val, 0xFF);
+		SETRGB5(&data[x * 4], val, 0x1F);
 	}
 }
 
@@ -333,7 +338,7 @@ static void draw_background_ext_direct(struct gpu *gpu, struct gpu_eng *eng,
 		uint16_t val = eng->get_vram_bg16(gpu->mem, addr);
 		if (!(val & (1 << 15)))
 			continue;
-		SETRGB5(&data[x * 4], val, 0xFF);
+		SETRGB5(&data[x * 4], val, 0x1F);
 	}
 }
 
@@ -383,7 +388,7 @@ static void draw_background_ext_paletted(struct gpu *gpu, struct gpu_eng *eng,
 		if (!val)
 			continue;
 		uint16_t col = mem_get_bg_palette(gpu->mem, eng->pal_base + val * 2);
-		SETRGB5(&data[x * 4], col, 0xFF);
+		SETRGB5(&data[x * 4], col, 0x1F);
 	}
 }
 
@@ -465,7 +470,7 @@ static void draw_background_ext_tiled(struct gpu *gpu, struct gpu_eng *eng,
 		{
 			val = mem_get_bg_palette(gpu->mem, eng->pal_base | (paladdr * 2));
 		}
-		SETRGB5(&data[x * 4], val, 0xFF);
+		SETRGB5(&data[x * 4], val, 0x1F);
 	}
 }
 
@@ -534,7 +539,7 @@ static void draw_background_large(struct gpu *gpu, struct gpu_eng *eng,
 		if (!val)
 			continue;
 		uint16_t col = mem_get_bg_palette(gpu->mem, eng->pal_base + val * 2);
-		SETRGB5(&data[x * 4], col, 0xFF);
+		SETRGB5(&data[x * 4], col, 0x1F);
 	}
 }
 
@@ -995,6 +1000,9 @@ static void compose(struct gpu *gpu, struct gpu_eng *eng, struct line_buff *line
 	uint32_t dispcnt = eng_get_reg32(gpu, eng, MEM_ARM9_REG_DISPCNT);
 	uint32_t has_window = dispcnt & (7 << 13);
 	uint16_t bldcnt = eng_get_reg16(gpu, eng, MEM_ARM9_REG_BLDCNT);
+#if 0
+	printf("[ENG%c] BLDCNT=%04" PRIx16 "\n", eng->engb ? 'B' : 'A', bldcnt);
+#endif
 	uint8_t top_mask = (bldcnt >> 0) & 0x3F;
 	uint8_t bot_mask = (bldcnt >> 8) & 0x3F;
 	uint8_t blending = (bldcnt >> 6) & 3;
@@ -1033,8 +1041,15 @@ static void compose(struct gpu *gpu, struct gpu_eng *eng, struct line_buff *line
 				if ((obj & 0x80) && ((obj >> 1) & 3) <= priority)
 					layer = LAYER_OBJ;
 			}
-			*(uint32_t*)dst = *(uint32_t*)layer_data(line, layer, bd_color, x * 4, 0xFF);
-			continue;
+			if (layer != LAYER_BG0 || eng->engb || !(dispcnt & (1 << 3)))
+			{
+				*(uint32_t*)dst = *(uint32_t*)layer_data(line, layer, bd_color, x * 4, 0xFF);
+				continue;
+			}
+			else
+			{
+				pixel_blend = 1;
+			}
 		}
 		enum layer_type top_layer = LAYER_BD;
 		enum layer_type bot_layer = LAYER_BD;
@@ -1085,8 +1100,15 @@ static void compose(struct gpu *gpu, struct gpu_eng *eng, struct line_buff *line
 				}
 			}
 		}
-		const uint8_t *top_layer_data = layer_data(line, top_layer, bd_color, x * 4, top_mask | alpha_obj_mask);
-		const uint8_t *bot_layer_data = layer_data(line, bot_layer, bd_color, x * 4, bot_mask);
+		if (!eng->engb && top_layer == LAYER_BG0 && (dispcnt & (1 << 3)))
+		{
+			top_mask = 0xFF;
+			pixel_blend = 1;
+		}
+		const uint8_t *top_layer_data = layer_data(line, top_layer, bd_color,
+		                                           x * 4, top_mask | alpha_obj_mask);
+		const uint8_t *bot_layer_data = layer_data(line, bot_layer, bd_color,
+		                                           x * 4, bot_mask);
 		if (alpha_obj_mask && bot_layer_data)
 			pixel_blend = 1;
 		switch (pixel_blend)
@@ -1098,12 +1120,27 @@ static void compose(struct gpu *gpu, struct gpu_eng *eng, struct line_buff *line
 			case 1:
 				if (top_layer_data && bot_layer_data)
 				{
-					for (size_t i = 0; i < 3; ++i)
+					if (top_layer == LAYER_BG0
+					 && !eng->engb
+					 && (dispcnt & (1 << 3)))
 					{
-						uint16_t res = (top_layer_data[i] * eva + bot_layer_data[i] * evb) >> 4;
-						if (res > 0xFF)
-							res = 0xFF;
-						dst[i] = res;
+						uint8_t a = top_layer_data[3] / 2;
+						for (size_t i = 0; i < 3; ++i)
+						{
+							dst[i] = (top_layer_data[i] * a
+							        + bot_layer_data[i] * (16 - a)) >> 4;
+						}
+					}
+					else
+					{
+						for (size_t i = 0; i < 3; ++i)
+						{
+							uint16_t res = (top_layer_data[i] * eva
+							              + bot_layer_data[i] * evb) >> 4;
+							if (res > 0xFF)
+								res = 0xFF;
+							dst[i] = res;
+						}
 					}
 				}
 				else
@@ -1547,13 +1584,25 @@ static void draw_pixel(struct gpu *gpu, struct polygon *polygon,
 	gpu->g3d.front->zbuf[256 * y + x] = z;
 	return;
 #endif
+	uint32_t disp3dcnt = mem_arm9_get_reg32(gpu->mem, MEM_ARM9_REG_DISP3DCNT);
+	uint16_t alpha;
+	if ((disp3dcnt & (1 << 3)) && dst[3])
+	{
+		alpha = (polygon->attr >> 16) & 0x1F;
+		if (!alpha) /* wireframe has solid wires */
+			alpha = 0x1F;
+	}
+	else
+	{
+		alpha = 0x1F;
+	}
 	uint8_t texture_type = (polygon->texture >> 26) & 0x7;
 	if (!texture_type)
 	{
 		dst[0] = b * 255 / (1 << 12);
 		dst[1] = g * 255 / (1 << 12);
 		dst[2] = r * 255 / (1 << 12);
-		dst[3] = 0xFF;
+		dst[3] = alpha;
 		gpu->g3d.front->zbuf[256 * y + x] = z;
 		return;
 	}
@@ -1628,24 +1677,26 @@ static void draw_pixel(struct gpu *gpu, struct polygon *polygon,
 	}
 	uint32_t base_addr = (polygon->pltt_base & 0x1FFF) << 4;
 	uint16_t color;
+	uint8_t ta;
 	switch (texture_type)
 	{
 		case 0x1:
 		{
 			uint8_t index = mem_vram_trpi_get8(gpu->mem, offset + width * t + s);
-			if (((index >> 5) & 0x3) != 3) /* XXX alpha blending */
-				return;
+			ta = (index >> 5) & 0x7;
+			ta = (ta * 4) | (ta / 2);
 			color = mem_vram_texp_get16(gpu->mem, base_addr + ((index & 0x1F) * 2));
 			break;
 		}
 		case 0x2:
 		{
 			uint8_t index = mem_vram_trpi_get8(gpu->mem, offset + (width * t + s) / 4);
-			index >>= 2 * (s & 3);
+			index >>= 2 * (s & 0x3);
 			index &= 0x3;
 			if (!index && polygon->texture & (1 << 29))
 				return;
 			color = mem_vram_texp_get16(gpu->mem, base_addr / 2 + (index * 2));
+			ta = 0x1F;
 			break;
 		}
 		case 0x3:
@@ -1658,6 +1709,7 @@ static void draw_pixel(struct gpu *gpu, struct polygon *polygon,
 			if (!index && polygon->texture & (1 << 29))
 				return;
 			color = mem_vram_texp_get16(gpu->mem, base_addr + (index * 2));
+			ta = 0x1F;
 			break;
 		}
 		case 0x4:
@@ -1666,6 +1718,7 @@ static void draw_pixel(struct gpu *gpu, struct polygon *polygon,
 			if (!index && polygon->texture & (1 << 29))
 				return;
 			color = mem_vram_texp_get16(gpu->mem, base_addr + (index * 2));
+			ta = 0x1F;
 			break;
 		}
 		case 0x5:
@@ -1765,13 +1818,13 @@ static void draw_pixel(struct gpu *gpu, struct polygon *polygon,
 					}
 					break;
 			}
+			ta = 0x1F;
 			break;
 		}
 		case 0x6:
 		{
 			uint8_t index = mem_vram_trpi_get8(gpu->mem, offset + width * t + s);
-			if (((index >> 3) & 0x1F) != 0x1F)
-				return; /* XXX alpha blending */
+			ta = (index >> 3) & 0x1F;
 			color = mem_vram_texp_get16(gpu->mem, base_addr + ((index & 0x7) * 2));
 			break;
 		}
@@ -1780,17 +1833,77 @@ static void draw_pixel(struct gpu *gpu, struct polygon *polygon,
 			color = mem_vram_trpi_get16(gpu->mem, offset + (width * t + s) * 2);
 			if (!(color & (1 << 15)))
 				return;
+			ta = 0x1F;
 			break;
 		}
 	}
-#if 1
-	dst[0] = TO8((r * ((color >> 0xA) & 0x1F)) / (1 << 12));
-	dst[1] = TO8((g * ((color >> 0x5) & 0x1F)) / (1 << 12));
-	dst[2] = TO8((b * ((color >> 0x0) & 0x1F)) / (1 << 12));
-	dst[3] = 0xFF;
-#else
-	SETRGB5(dst, color, 0xFF);
-#endif
+	if (disp3dcnt & (1 << 2))
+	{
+		if (alpha <= mem_arm9_get_reg32(gpu->mem, MEM_ARM9_REG_ALPHA_TEST_REF))
+			return;
+	}
+	uint8_t cr = (r * 63) / (1 << 12);
+	uint8_t cg = (g * 63) / (1 << 12);
+	uint8_t cb = (b * 63) / (1 << 12);
+	uint8_t ca = alpha;
+	switch ((polygon->attr >> 4) & 0x3)
+	{
+		case 0x0:
+			cr = ((cr + 1) * (((color >> 0xA) & 0x1F) + 1) - 1) / 64;
+			cg = ((cg + 1) * (((color >> 0x5) & 0x1F) + 1) - 1) / 64;
+			cb = ((cb + 1) * (((color >> 0x0) & 0x1F) + 1) - 1) / 64;
+			ca = ((ca + 1) * (ta + 1) - 1) / 64;
+			break;
+		case 0x1:
+			if (ta == 0x1F)
+			{
+				cr = (color >> 0xA) & 0x1F;
+				cg = (color >> 0x5) & 0x1F;
+				cb = (color >> 0x0) & 0x1F;
+			}
+			else if (ta)
+			{
+				cr = (((color >> 0xA) & 0x1F) * ta + cr * (63 - ta)) / 64;
+				cg = (((color >> 0x5) & 0x1F) * ta + cg * (63 - ta)) / 64;
+				cb = (((color >> 0x0) & 0x1F) * ta + cb * (63 - ta)) / 64;
+			}
+			break;
+		case 0x2:
+		{
+			uint8_t rv = gpu->g3d.toon[(color >> 0xA) & 0x1F];
+			uint8_t rs = (rv >> 0xA) & 0x1F;
+			uint8_t gs = (rv >> 0x5) & 0x1F;
+			uint8_t bs = (rv >> 0x0) & 0x1F;
+			cr = ((cr + 1) * (rs + 1) - 1) / 64;
+			cg = ((cg + 1) * (gs + 1) - 1) / 64;
+			cb = ((cb + 1) * (bs + 1) - 1) / 64;
+			ca = ((ca + 1) * (ta + 1) - 1) / 64;
+			if (disp3dcnt & (1 << 1))
+			{
+				cr += rs;
+				cg += gs;
+				cb += bs;
+			}
+			break;
+		}
+		case 0x3: /* shadow */
+			return;
+	}
+	if (alpha == 0x1F)
+	{
+		dst[0] = TO8(cr);
+		dst[1] = TO8(cg);
+		dst[2] = TO8(cb);
+		dst[3] = ca;
+	}
+	else
+	{
+		dst[0] = (cr * (alpha + 1) + dst[0] * (31 - alpha)) / 32;
+		dst[1] = (cg * (alpha + 1) + dst[1] * (31 - alpha)) / 32;
+		dst[2] = (cb * (alpha + 1) + dst[2] * (31 - alpha)) / 32;
+		if (ca > dst[3])
+			dst[3] = ca;
+	}
 	gpu->g3d.front->zbuf[256 * y + x] = z;
 }
 
@@ -1826,8 +1939,13 @@ static void draw_line(struct gpu *gpu, struct polygon *polygon,
 	}
 	if (v0[0] == v1[0])
 	{
-		return; /* XXX */
-		//draw_pixel(gpu, polygon, x0, y, z0, s0, t0, r0, g0, b0);
+		draw_pixel(gpu, polygon, v0[0], y, v0);
+		return;
+	}
+	if (!((polygon->attr >> 16) & 0x1F))
+	{
+		draw_pixel(gpu, polygon, v0[0], y, v0);
+		draw_pixel(gpu, polygon, v1[0], y, v1);
 		return;
 	}
 	int32_t d[8];
@@ -2906,7 +3024,7 @@ static void push_vertex(struct gpu *gpu)
 	printf("     position: {" I12_FMT ", " I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
 	       I12_PRT(v->position.x),
 	       I12_PRT(v->position.y),
-	       I12_PRT(v->position.z),
+	       I12_PRT(v->position.z) / (1 << 12),
 	       I12_PRT(v->position.w));
 	printf("     color: {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
 	       I12_PRT(v->color.x),

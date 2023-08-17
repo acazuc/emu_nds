@@ -3023,6 +3023,10 @@ static void set_arm9_reg8(struct mem *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM9_REG_DISPCAPCNT + 1:
 		case MEM_ARM9_REG_DISPCAPCNT + 2:
 		case MEM_ARM9_REG_DISPCAPCNT + 3:
+		case MEM_ARM9_REG_ALPHA_TEST_REF:
+		case MEM_ARM9_REG_ALPHA_TEST_REF + 1:
+		case MEM_ARM9_REG_ALPHA_TEST_REF + 2:
+		case MEM_ARM9_REG_ALPHA_TEST_REF + 3:
 			mem->arm9_regs[addr] = v;
 			return;
 		case MEM_ARM9_REG_DISPSTAT:
@@ -3249,6 +3253,9 @@ static void set_arm9_reg8(struct mem *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM9_REG_DIV_DENOM + 5:
 		case MEM_ARM9_REG_DIV_DENOM + 6:
 		case MEM_ARM9_REG_DIV_DENOM + 7:
+#if 0
+			printf("[ARM9] DIV[%08" PRIx32 "] = %02" PRIx8 "\n", addr, v);
+#endif
 			mem->arm9_regs[addr] = v;
 			run_div(mem);
 			return;
@@ -3278,6 +3285,9 @@ static void set_arm9_reg8(struct mem *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM9_REG_SQRT_PARAM + 5:
 		case MEM_ARM9_REG_SQRT_PARAM + 6:
 		case MEM_ARM9_REG_SQRT_PARAM + 7:
+#if 0
+			printf("[ARM9] SQRT[%08" PRIx32 "] = %02" PRIx8 "\n", addr, v);
+#endif
 			mem->arm9_regs[addr] = v;
 			run_sqrt(mem);
 			return;
@@ -3320,6 +3330,72 @@ static void set_arm9_reg8(struct mem *mem, uint32_t addr, uint8_t v)
 			mem->arm9_regs[addr] &= 0x3F;
 			mem->arm9_regs[addr] |= v & 0xC0;
 			update_gxfifo_irq(mem);
+			return;
+		case MEM_ARM9_REG_TOON_TABLE:
+		case MEM_ARM9_REG_TOON_TABLE + 1:
+		case MEM_ARM9_REG_TOON_TABLE + 2:
+		case MEM_ARM9_REG_TOON_TABLE + 3:
+		case MEM_ARM9_REG_TOON_TABLE + 4:
+		case MEM_ARM9_REG_TOON_TABLE + 5:
+		case MEM_ARM9_REG_TOON_TABLE + 6:
+		case MEM_ARM9_REG_TOON_TABLE + 7:
+		case MEM_ARM9_REG_TOON_TABLE + 8:
+		case MEM_ARM9_REG_TOON_TABLE + 9:
+		case MEM_ARM9_REG_TOON_TABLE + 10:
+		case MEM_ARM9_REG_TOON_TABLE + 11:
+		case MEM_ARM9_REG_TOON_TABLE + 12:
+		case MEM_ARM9_REG_TOON_TABLE + 13:
+		case MEM_ARM9_REG_TOON_TABLE + 14:
+		case MEM_ARM9_REG_TOON_TABLE + 15:
+		case MEM_ARM9_REG_TOON_TABLE + 16:
+		case MEM_ARM9_REG_TOON_TABLE + 17:
+		case MEM_ARM9_REG_TOON_TABLE + 18:
+		case MEM_ARM9_REG_TOON_TABLE + 19:
+		case MEM_ARM9_REG_TOON_TABLE + 20:
+		case MEM_ARM9_REG_TOON_TABLE + 21:
+		case MEM_ARM9_REG_TOON_TABLE + 22:
+		case MEM_ARM9_REG_TOON_TABLE + 23:
+		case MEM_ARM9_REG_TOON_TABLE + 24:
+		case MEM_ARM9_REG_TOON_TABLE + 25:
+		case MEM_ARM9_REG_TOON_TABLE + 26:
+		case MEM_ARM9_REG_TOON_TABLE + 27:
+		case MEM_ARM9_REG_TOON_TABLE + 28:
+		case MEM_ARM9_REG_TOON_TABLE + 29:
+		case MEM_ARM9_REG_TOON_TABLE + 30:
+		case MEM_ARM9_REG_TOON_TABLE + 31:
+		case MEM_ARM9_REG_TOON_TABLE + 32:
+		case MEM_ARM9_REG_TOON_TABLE + 33:
+		case MEM_ARM9_REG_TOON_TABLE + 34:
+		case MEM_ARM9_REG_TOON_TABLE + 35:
+		case MEM_ARM9_REG_TOON_TABLE + 36:
+		case MEM_ARM9_REG_TOON_TABLE + 37:
+		case MEM_ARM9_REG_TOON_TABLE + 38:
+		case MEM_ARM9_REG_TOON_TABLE + 39:
+		case MEM_ARM9_REG_TOON_TABLE + 40:
+		case MEM_ARM9_REG_TOON_TABLE + 41:
+		case MEM_ARM9_REG_TOON_TABLE + 42:
+		case MEM_ARM9_REG_TOON_TABLE + 43:
+		case MEM_ARM9_REG_TOON_TABLE + 44:
+		case MEM_ARM9_REG_TOON_TABLE + 45:
+		case MEM_ARM9_REG_TOON_TABLE + 46:
+		case MEM_ARM9_REG_TOON_TABLE + 47:
+		case MEM_ARM9_REG_TOON_TABLE + 48:
+		case MEM_ARM9_REG_TOON_TABLE + 49:
+		case MEM_ARM9_REG_TOON_TABLE + 50:
+		case MEM_ARM9_REG_TOON_TABLE + 51:
+		case MEM_ARM9_REG_TOON_TABLE + 52:
+		case MEM_ARM9_REG_TOON_TABLE + 53:
+		case MEM_ARM9_REG_TOON_TABLE + 54:
+		case MEM_ARM9_REG_TOON_TABLE + 55:
+		case MEM_ARM9_REG_TOON_TABLE + 56:
+		case MEM_ARM9_REG_TOON_TABLE + 57:
+		case MEM_ARM9_REG_TOON_TABLE + 58:
+		case MEM_ARM9_REG_TOON_TABLE + 59:
+		case MEM_ARM9_REG_TOON_TABLE + 60:
+		case MEM_ARM9_REG_TOON_TABLE + 61:
+		case MEM_ARM9_REG_TOON_TABLE + 62:
+		case MEM_ARM9_REG_TOON_TABLE + 63:
+			((uint8_t*)&mem->nds->gpu->g3d.toon)[addr - MEM_ARM9_REG_TOON_TABLE] = v;
 			return;
 		case 0x58: /* silent these. they are memset(0) */
 		case 0x59:
