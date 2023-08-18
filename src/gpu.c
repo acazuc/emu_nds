@@ -1782,7 +1782,7 @@ static void draw_pixel(struct gpu *gpu, struct polygon *polygon,
 	int32_t r = v[5];
 	int32_t g = v[6];
 	int32_t b = v[7];
-	if (w < 0 || z < 0)
+	if (w < 0)
 		return;
 #if 1
 	if (polygon->attr & (1 << 14))
@@ -1798,8 +1798,8 @@ static void draw_pixel(struct gpu *gpu, struct polygon *polygon,
 #endif
 	uint8_t *dst = &gpu->g3d.front->data[(256 * y + x) * 4];
 #if 0
-	printf("pixel {%" PRId32 ", %" PRId32 ", " I12_FMT "}\n",
-	       x, y, I12_PRT(z));
+	printf("pixel {%" PRId32 ", %" PRId32 ", " I12_FMT "}: {" I12_FMT ", " I12_FMT "}\n",
+	       x, y, I12_PRT(z), I12_PRT(s), I12_PRT(t));
 #endif
 #if 0
 	dst[0] = (z - (1 << 11)) / (1 << 1);
@@ -2029,9 +2029,6 @@ static void draw_span(struct gpu *gpu, struct polygon *polygon,
 	if (vl0->position.w <= 0 || vl1->position.w <= 0
 	 || vr0->position.w <= 0 || vr1->position.w <= 0)
 		return;
-	if (vl0->position.z <= 0 || vl1->position.z <= 0
-	 || vr0->position.z <= 0 || vr1->position.z <= 0)
-		return;
 
 	int32_t miny = y0;
 	int32_t maxy = y1;
@@ -2182,12 +2179,12 @@ static void draw_triangle(struct gpu *gpu, struct polygon *polygon,
 {
 #if 0
 	printf("draw triangle:\n");
-	printf("     {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
-	       I12_PRT(v1->screen_x), I12_PRT(v1->screen_y), I12_PRT(v1->position.z));
-	printf("     {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
-	       I12_PRT(v2->screen_x), I12_PRT(v2->screen_y), I12_PRT(v2->position.z));
-	printf("     {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
-	       I12_PRT(v3->screen_x), I12_PRT(v3->screen_y), I12_PRT(v3->position.z));
+	printf("     {%" PRId32 ", %" PRId32 ", " I12_FMT "}\n",
+	       v1->screen_x, v1->screen_y, I12_PRT(v1->position.z));
+	printf("     {%" PRId32 ", %" PRId32 ", " I12_FMT "}\n",
+	       v2->screen_x, v2->screen_y, I12_PRT(v2->position.z));
+	printf("     {%" PRId32 ", %" PRId32 ", " I12_FMT "}\n",
+	       v3->screen_x, v3->screen_y, I12_PRT(v3->position.z));
 #endif
 	if (polygon->attr & (1 << 12))
 	{
@@ -3102,7 +3099,7 @@ static void push_vertex(struct gpu *gpu)
 	printf("     position: {" I12_FMT ", " I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
 	       I12_PRT(v->position.x),
 	       I12_PRT(v->position.y),
-	       I12_PRT(v->position.z) / (1 << 12),
+	       I12_PRT(v->position.z),
 	       I12_PRT(v->position.w));
 	printf("     color: {0x%02" PRIx8 ", 0x%02" PRIx8 ", 0x%02" PRIx8 "}\n",
 	       v->color.x,
