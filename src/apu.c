@@ -188,6 +188,11 @@ void apu_cycles(struct apu *apu, uint32_t cycles)
 						channel->adpcm_idx = 88;
 					else
 						channel->adpcm_idx = tmp;
+					if (channel->pos == channel->len)
+					{
+						channel->adpcm_init_idx = channel->adpcm_idx;
+						channel->adpcm_init_sample = channel->sample;
+					}
 					channel->pos += 1;
 					break;
 				}
@@ -214,7 +219,7 @@ void apu_cycles(struct apu *apu, uint32_t cycles)
 							channel->sample = INT16_MAX;
 						}
 					}
-					break;
+					continue; /* no timeout */
 			}
 			if (channel->pos >= channel->len + channel->pnt)
 			{
@@ -263,8 +268,6 @@ void apu_start_channel(struct apu *apu, uint8_t id)
 			if (channel->adpcm_idx > 88)
 				channel->adpcm_idx = 88;
 			channel->pos = 8;
-			channel->adpcm_init_sample = channel->sample;
-			channel->adpcm_init_idx = channel->adpcm_idx;
 			break;
 		}
 		case 0x3:
