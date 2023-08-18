@@ -3419,10 +3419,10 @@ static void cmd_viewport(struct gpu *gpu, uint32_t *params)
 #endif
 	gpu->g3d.viewport_left   = (params[0] >>  0) & 0xFF;
 	gpu->g3d.viewport_top    = (params[0] >>  8) & 0xFF;
-	if (gpu->g3d.viewport_top > 191)
-		gpu->g3d.viewport_top = 191;
 	gpu->g3d.viewport_right  = (params[0] >> 16) & 0xFF;
 	gpu->g3d.viewport_bottom = (params[0] >> 24) & 0xFF;
+	if (gpu->g3d.viewport_top > 191)
+		gpu->g3d.viewport_top = 191;
 	if (gpu->g3d.viewport_bottom > 191)
 		gpu->g3d.viewport_bottom = 191;
 	if (gpu->g3d.viewport_right < gpu->g3d.viewport_left)
