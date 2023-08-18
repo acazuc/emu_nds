@@ -106,6 +106,7 @@ struct gpu_g3d
 	uint8_t shininess[128];
 	struct light lights[4];
 	uint16_t toon[32];
+	uint8_t fog[32];
 	struct vec3 diffuse;
 	struct vec3 ambient;
 	struct vec3 specular;

@@ -1115,13 +1115,18 @@ static void compose(struct gpu *gpu, struct gpu_eng *eng, struct line_buff *line
 				}
 			}
 		}
+		uint8_t tmp_top_mask;
 		if (!eng->engb && top_layer == LAYER_BG0 && (dispcnt & (1 << 3)))
 		{
-			top_mask = 0xFF;
+			tmp_top_mask = 0xFF;
 			pixel_blend = 1;
 		}
+		else
+		{
+			tmp_top_mask = top_mask;
+		}
 		const uint8_t *top_layer_data = layer_data(line, top_layer, bd_color,
-		                                           x * 4, top_mask | alpha_obj_mask);
+		                                           x * 4, tmp_top_mask | alpha_obj_mask);
 		const uint8_t *bot_layer_data = layer_data(line, bot_layer, bd_color,
 		                                           x * 4, bot_mask);
 		if (alpha_obj_mask && bot_layer_data)
@@ -1800,7 +1805,7 @@ static void draw_pixel(struct gpu *gpu, struct polygon *polygon,
 	dst[0] = (z - (1 << 11)) / (1 << 1);
 	dst[1] = (z - (1 << 11)) / (1 << 1);
 	dst[2] = (z - (1 << 11)) / (1 << 1);
-	dst[3] = 0xFF;
+	dst[3] = 0x1F;
 	gpu->g3d.front->zbuf[256 * y + x] = z;
 	return;
 #endif
@@ -1808,7 +1813,7 @@ static void draw_pixel(struct gpu *gpu, struct polygon *polygon,
 	dst[0] = 0xFF;
 	dst[1] = t / (1 << 12);
 	dst[2] = s / (1 << 12);
-	dst[3] = 0xFF;
+	dst[3] = 0x1F;
 	gpu->g3d.front->zbuf[256 * y + x] = z;
 	return;
 #endif
@@ -1816,7 +1821,7 @@ static void draw_pixel(struct gpu *gpu, struct polygon *polygon,
 	dst[0] = TO8(b);
 	dst[1] = TO8(g);
 	dst[2] = TO8(r);
-	dst[3] = 0xFF;
+	dst[3] = 0x1F;
 	gpu->g3d.front->zbuf[256 * y + x] = z;
 	return;
 #endif
@@ -1865,7 +1870,7 @@ static void draw_pixel(struct gpu *gpu, struct polygon *polygon,
 		case 0x2:
 		{
 			uint8_t sc = gpu->g3d.toon[(r * 31) / (1 << 12)];
-			uint8_t sv[4];
+			uint8_t sv[3];
 			sv[0] = TO6((sc >> 0xA) & 0x1F);
 			sv[1] = TO6((sc >> 0x5) & 0x1F);
 			sv[2] = TO6((sc >> 0x0) & 0x1F);
@@ -1894,6 +1899,35 @@ static void draw_pixel(struct gpu *gpu, struct polygon *polygon,
 	cv[1] /= 2;
 	cv[2] /= 2;
 	cv[3] /= 2;
+	if ((disp3dcnt & (1 << 7)) && (polygon->attr & (1 < 15)))
+	{
+		uint32_t offset = mem_arm9_get_reg32(gpu->mem, MEM_ARM9_REG_FOG_OFFSET) & 0x7FFF;
+		uint32_t fofs;
+		if ((size_t)w >= offset)
+		{
+			fofs = w - offset / (0x400 >> ((disp3dcnt >> 8) & 0xF));
+			if (fofs > 0x1F)
+				fofs = 0x1F;
+		}
+		else
+		{
+			fofs = 0;
+		}
+		uint8_t fd = mem_arm9_get_reg8(gpu->mem, MEM_ARM9_REG_FOG_TABLE + fofs);
+		uint16_t fc = mem_arm9_get_reg32(gpu->mem, MEM_ARM9_REG_FOG_COLOR);
+		uint8_t fv[4];
+		if (!(disp3dcnt & (1 << 6)))
+		{
+			fv[0] = TO6((fc >> 0x0A) & 0x1F);
+			fv[1] = TO6((fc >> 0x05) & 0x1F);
+			fv[2] = TO6((fc >> 0x00) & 0x1F);
+			cv[0] = (fv[0] * fd + cv[0] * (128 - fd)) / 128;
+			cv[1] = (fv[1] * fd + cv[1] * (128 - fd)) / 128;
+			cv[2] = (fv[2] * fd + cv[2] * (128 - fd)) / 128;
+		}
+		fv[3] = TO6((fc >> 0x10) & 0x1F);
+		cv[3] = (fv[3] * fd + cv[3] * (128 - fd)) / 128;
+	}
 	if (!cv[3])
 		return;
 	if (disp3dcnt & (1 << 2))
@@ -1913,7 +1947,7 @@ static void draw_pixel(struct gpu *gpu, struct polygon *polygon,
 		dst[0] = (cv[0] * (cv[3] + 1) + dst[0] * (31 - cv[3])) / 32;
 		dst[1] = (cv[1] * (cv[3] + 1) + dst[1] * (31 - cv[3])) / 32;
 		dst[2] = (cv[2] * (cv[3] + 1) + dst[2] * (31 - cv[3])) / 32;
-		if (cv[3] > dst[3])
+		if ((polygon->attr & (1 << 11)) && cv[3] > dst[3])
 			dst[3] = cv[3];
 	}
 	gpu->g3d.front->zbuf[256 * y + x] = z;
@@ -2155,6 +2189,13 @@ static void draw_triangle(struct gpu *gpu, struct polygon *polygon,
 	printf("     {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
 	       I12_PRT(v3->screen_x), I12_PRT(v3->screen_y), I12_PRT(v3->position.z));
 #endif
+	if (polygon->attr & (1 << 12))
+	{
+		if (v1->position.z >= 1
+		 || v2->position.z >= 1
+		 || v3->position.z >= 1)
+		return;
+	}
 	switch ((polygon->attr >> 0x4) & 0x3)
 	{
 		case 0: /* modulation */
@@ -2224,8 +2265,19 @@ void gpu_g3d_swap_buffers(struct gpu *gpu)
 	gpu->g3d.front = tmp;
 	gpu->g3d.back->vertexes_nb = 0;
 	gpu->g3d.back->polygons_nb = 0;
+	uint32_t clear_color = mem_arm9_get_reg32(gpu->mem, MEM_ARM9_REG_CLEAR_COLOR);
+	uint8_t clearv[4];
+	clearv[0] = TO8((clear_color >> 0x0A) & 0x1F);
+	clearv[1] = TO8((clear_color >> 0x05) & 0x1F);
+	clearv[2] = TO8((clear_color >> 0x00) & 0x1F);
+	clearv[3] = (clear_color >> 0x10) & 0x1F;
+#if 0
+	printf("[GX] clear color: 0x%08" PRIx32 " (%" PRIu8 ", %" PRIu8 ", %" PRIu8 ", %" PRIu8 ")\n",
+	       clear_color, clearv[0], clearv[1], clearv[2], clearv[3]);
+#endif
 	struct gpu_g3d_buf *buf = gpu->g3d.front;
-	memset(buf, 0, sizeof(buf->data));
+	for (size_t i = 0; i < sizeof(buf->data); i += 4)
+		*(uint32_t*)&buf->data[i] = *(uint32_t*)&clearv[0];
 	for (size_t i = 0; i < sizeof(buf->zbuf) / sizeof(*buf->zbuf); ++i)
 		buf->zbuf[i] = INT32_MAX;
 }
@@ -2649,14 +2701,14 @@ static void mult_4x4(struct matrix *a, struct matrix *b)
 	*a = r;
 }
 
-static void cmd_mtx_mult_4x4(struct gpu *gpu, uint32_t *paramms)
+static void cmd_mtx_mult_4x4(struct gpu *gpu, uint32_t *params)
 {
 #if CMD_DEBUG == 1
 	printf("[GX] MTX_MULT_4X4 (mode=%" PRIu8 ")\n",
 	       gpu->g3d.matrix_mode);
 #endif
 	struct matrix matrix;
-	load_4x4(&matrix, paramms);
+	load_4x4(&matrix, params);
 	switch (gpu->g3d.matrix_mode & 0x3)
 	{
 		case 0:
@@ -3034,7 +3086,8 @@ static void push_vertex(struct gpu *gpu)
 	{
 		v->screen_x = (((int64_t)(v->position.x + v->position.w) * (gpu->g3d.viewport_right - gpu->g3d.viewport_left + 1) * (1 << 12) / (2 * v->position.w))) / (1 << 12) + gpu->g3d.viewport_left;
 		v->screen_y = (((int64_t)(v->position.y + v->position.w) * (gpu->g3d.viewport_bottom - gpu->g3d.viewport_top + 1) * (1 << 12) / (2 * v->position.w))) / (1 << 12) + gpu->g3d.viewport_top;
-		v->position.z = fp12_div(v->position.z, v->position.w) * (1 << 12);
+		/* it somehow works better without this */
+		//v->position.z = fp12_div(v->position.z, v->position.w) * (1 << 12);
 	}
 	else
 	{
@@ -3382,8 +3435,8 @@ void gpu_gx_cmd(struct gpu *gpu, uint8_t cmd, uint32_t *params)
 {
 	if (gpu->g3d.swap_buffers)
 	{
-		printf("[GX] cmd %" PRIx8 " while swapping buffers\n", cmd);
-		return;
+		printf("[GX] cmd 0x%" PRIx8 " while swapping buffers\n", cmd);
+		/* XXX next commands should be delayed until next buffer swap */
 	}
 	switch (cmd)
 	{

@@ -3027,6 +3027,22 @@ static void set_arm9_reg8(struct mem *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM9_REG_ALPHA_TEST_REF + 1:
 		case MEM_ARM9_REG_ALPHA_TEST_REF + 2:
 		case MEM_ARM9_REG_ALPHA_TEST_REF + 3:
+		case MEM_ARM9_REG_CLEAR_COLOR:
+		case MEM_ARM9_REG_CLEAR_COLOR + 1:
+		case MEM_ARM9_REG_CLEAR_COLOR + 2:
+		case MEM_ARM9_REG_CLEAR_COLOR + 3:
+		case MEM_ARM9_REG_CLEAR_DEPTH:
+		case MEM_ARM9_REG_CLEAR_DEPTH + 1:
+		case MEM_ARM9_REG_CLEAR_DEPTH + 2:
+		case MEM_ARM9_REG_CLEAR_DEPTH + 3:
+		case MEM_ARM9_REG_FOG_COLOR:
+		case MEM_ARM9_REG_FOG_COLOR + 1:
+		case MEM_ARM9_REG_FOG_COLOR + 2:
+		case MEM_ARM9_REG_FOG_COLOR + 3:
+		case MEM_ARM9_REG_FOG_OFFSET:
+		case MEM_ARM9_REG_FOG_OFFSET + 1:
+		case MEM_ARM9_REG_FOG_OFFSET + 2:
+		case MEM_ARM9_REG_FOG_OFFSET + 3:
 			mem->arm9_regs[addr] = v;
 			return;
 		case MEM_ARM9_REG_DISPSTAT:
@@ -3396,6 +3412,40 @@ static void set_arm9_reg8(struct mem *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM9_REG_TOON_TABLE + 62:
 		case MEM_ARM9_REG_TOON_TABLE + 63:
 			((uint8_t*)&mem->nds->gpu->g3d.toon)[addr - MEM_ARM9_REG_TOON_TABLE] = v;
+			return;
+		case MEM_ARM9_REG_FOG_TABLE:
+		case MEM_ARM9_REG_FOG_TABLE + 1:
+		case MEM_ARM9_REG_FOG_TABLE + 2:
+		case MEM_ARM9_REG_FOG_TABLE + 3:
+		case MEM_ARM9_REG_FOG_TABLE + 4:
+		case MEM_ARM9_REG_FOG_TABLE + 5:
+		case MEM_ARM9_REG_FOG_TABLE + 6:
+		case MEM_ARM9_REG_FOG_TABLE + 7:
+		case MEM_ARM9_REG_FOG_TABLE + 8:
+		case MEM_ARM9_REG_FOG_TABLE + 9:
+		case MEM_ARM9_REG_FOG_TABLE + 10:
+		case MEM_ARM9_REG_FOG_TABLE + 11:
+		case MEM_ARM9_REG_FOG_TABLE + 12:
+		case MEM_ARM9_REG_FOG_TABLE + 13:
+		case MEM_ARM9_REG_FOG_TABLE + 14:
+		case MEM_ARM9_REG_FOG_TABLE + 15:
+		case MEM_ARM9_REG_FOG_TABLE + 16:
+		case MEM_ARM9_REG_FOG_TABLE + 17:
+		case MEM_ARM9_REG_FOG_TABLE + 18:
+		case MEM_ARM9_REG_FOG_TABLE + 19:
+		case MEM_ARM9_REG_FOG_TABLE + 20:
+		case MEM_ARM9_REG_FOG_TABLE + 21:
+		case MEM_ARM9_REG_FOG_TABLE + 22:
+		case MEM_ARM9_REG_FOG_TABLE + 23:
+		case MEM_ARM9_REG_FOG_TABLE + 24:
+		case MEM_ARM9_REG_FOG_TABLE + 25:
+		case MEM_ARM9_REG_FOG_TABLE + 26:
+		case MEM_ARM9_REG_FOG_TABLE + 27:
+		case MEM_ARM9_REG_FOG_TABLE + 28:
+		case MEM_ARM9_REG_FOG_TABLE + 29:
+		case MEM_ARM9_REG_FOG_TABLE + 30:
+		case MEM_ARM9_REG_FOG_TABLE + 31:
+			mem->nds->gpu->g3d.fog[addr - MEM_ARM9_REG_FOG_TABLE] = v;
 			return;
 		case 0x58: /* silent these. they are memset(0) */
 		case 0x59:
