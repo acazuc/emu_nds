@@ -8,6 +8,21 @@
 #include <string.h>
 #include <stdio.h>
 
+#define TRANSFORM_INT28(n) \
+do \
+{ \
+	if ((n) & (1 << 27)) \
+	{ \
+		n = (0x7FFFFFF - ((n) & 0x7FFFFFF)); \
+		n = -n - 1; \
+	} \
+} while (0)
+
+#define PRIMITIVE_TRIANGLES      0
+#define PRIMITIVE_QUADS          1
+#define PRIMITIVE_TRIANGLE_STRIP 2
+#define PRIMITIVE_QUAD_STRIP     3
+
 #define TO8(v) (((uint32_t)(v) * 527 + 23) >> 6)
 
 #define TO6(v) ((v) * 2 + ((v) + 31) / 32)
@@ -1492,23 +1507,6 @@ void gpu_commit_bgpos(struct gpu *gpu)
 	eng_commit_bgpos(gpu, &gpu->engb);
 }
 
-static void vertex_mix(struct vertex *d, struct vertex *v1, struct vertex *v2,
-                       int64_t num, int64_t dem)
-{
-	int64_t rnum = dem - num;
-	d->position.x = (v1->position.x * rnum + v2->position.x * num) / dem;
-	d->position.y = (v1->position.y * rnum + v2->position.y * num) / dem;
-	d->position.z = (v1->position.z * rnum + v2->position.z * num) / dem;
-	d->position.w = (v1->position.w * rnum + v2->position.w * num) / dem;
-	d->color.x = (v1->color.x * rnum + v2->color.x * num) / dem;
-	d->color.y = (v1->color.y * rnum + v2->color.y * num) / dem;
-	d->color.z = (v1->color.z * rnum + v2->color.z * num) / dem;
-	d->texcoord.x = (v1->texcoord.x * rnum + v2->texcoord.x * num) / dem;
-	d->texcoord.y = (v1->texcoord.y * rnum + v2->texcoord.y * num) / dem;
-	d->screen_x = (v1->screen_x * rnum + v2->screen_x * num) / dem;
-	d->screen_y = (v1->screen_y * rnum + v2->screen_y * num) / dem;
-}
-
 static int32_t fp12_mul(int32_t a, int32_t b)
 {
 	return ((int64_t)a * (int64_t)b) / (1 << 12);
@@ -1519,92 +1517,17 @@ static int32_t fp12_div(int32_t a, int32_t b)
 	return ((int64_t)a * (1 << 12)) / b;
 }
 
-static void draw_pixel(struct gpu *gpu, struct polygon *polygon,
-                       int32_t x, int32_t y, int32_t *v)
+static bool get_tex_color(struct gpu *gpu, struct polygon *polygon,
+                          int16_t s, int16_t t, uint8_t *v)
 {
-	int32_t z = v[1];
-	int32_t w = v[2];
-	int32_t s = v[3];
-	int32_t t = v[4];
-	int32_t r = v[5];
-	int32_t g = v[6];
-	int32_t b = v[7];
-	if (w < 0 || z < 0)
-		return;
-#if 1
-	if (polygon->attr & (1 << 14))
-	{
-		if ((z & ~0x1FF) != (gpu->g3d.front->zbuf[256 * y + x] & ~0x1FF))
-			return;
-	}
-	else
-	{
-		if (z >= gpu->g3d.front->zbuf[256 * y + x])
-			return;
-	}
-#endif
-	if (r > (1 << 12))
-		r = 1 << 12;
-	else if (r < 0)
-		r = 0;
-	if (g > (1 << 12))
-		g = 1 << 12;
-	else if (g < 0)
-		g = 0;
-	if (b > (1 << 12))
-		b = 1 << 12;
-	else if (b < 0)
-		b = 0;
-	uint8_t *dst = &gpu->g3d.front->data[(256 * y + x) * 4];
-#if 0
-	printf("pixel {%" PRId32 ", %" PRId32 ", " I12_FMT "}\n",
-	       x, y, I12_PRT(z));
-#endif
-#if 0
-	dst[0] = (z - (1 << 11)) / (1 << 1);
-	dst[1] = (z - (1 << 11)) / (1 << 1);
-	dst[2] = (z - (1 << 11)) / (1 << 1);
-	dst[3] = 0xFF;
-	gpu->g3d.front->zbuf[256 * y + x] = z;
-	return;
-#endif
-#if 0
-	dst[0] = 0xFF;
-	dst[1] = t / (1 << 12);
-	dst[2] = s / (1 << 12);
-	dst[3] = 0xFF;
-	gpu->g3d.front->zbuf[256 * y + x] = z;
-	return;
-#endif
-#if 0
-	dst[0] = b * 255 / (1 << 12);
-	dst[1] = g * 255 / (1 << 12);
-	dst[2] = r * 255 / (1 << 12);
-	dst[3] = 0xFF;
-	gpu->g3d.front->zbuf[256 * y + x] = z;
-	return;
-#endif
-	uint32_t disp3dcnt = mem_arm9_get_reg32(gpu->mem, MEM_ARM9_REG_DISP3DCNT);
-	uint16_t alpha;
-	if ((disp3dcnt & (1 << 3)) && dst[3])
-	{
-		alpha = (polygon->attr >> 16) & 0x1F;
-		if (!alpha) /* wireframe has solid wires */
-			alpha = 0x1F;
-	}
-	else
-	{
-		alpha = 0x1F;
-	}
 	uint8_t texture_type = (polygon->texture >> 26) & 0x7;
 	if (!texture_type)
 	{
-		dst[0] = b * 255 / (1 << 12);
-		dst[1] = g * 255 / (1 << 12);
-		dst[2] = r * 255 / (1 << 12);
-		dst[3] = alpha;
-		gpu->g3d.front->zbuf[256 * y + x] = z;
-		return;
+		v[0] = 0x1F;
+		v[1] = 0x1F;
+		v[2] = 0x1F;
+		v[3] = 0x1F;
+		return true;
 	}
 	uint32_t width = 8 << ((polygon->texture >> 20) & 0x7);
 	uint32_t height = 8 << ((polygon->texture >> 23) & 0x7);
@@ -1677,14 +1600,13 @@ static void draw_pixel(struct gpu *gpu, struct polygon *polygon,
 	}
 	uint32_t base_addr = (polygon->pltt_base & 0x1FFF) << 4;
 	uint16_t color;
-	uint8_t ta;
 	switch (texture_type)
 	{
 		case 0x1:
 		{
 			uint8_t index = mem_vram_trpi_get8(gpu->mem, offset + width * t + s);
-			ta = (index >> 5) & 0x7;
-			ta = (ta * 4) | (ta / 2);
+			v[3] = (index >> 5) & 0x7;
+			v[3] = (v[3] * 4) | (v[3] / 2);
 			color = mem_vram_texp_get16(gpu->mem, base_addr + ((index & 0x1F) * 2));
 			break;
 		}
@@ -1694,9 +1616,9 @@ static void draw_pixel(struct gpu *gpu, struct polygon *polygon,
 			index >>= 2 * (s & 0x3);
 			index &= 0x3;
 			if (!index && polygon->texture & (1 << 29))
-				return;
+				return false;
 			color = mem_vram_texp_get16(gpu->mem, base_addr / 2 + (index * 2));
-			ta = 0x1F;
+			v[3] = 0x1F;
 			break;
 		}
 		case 0x3:
@@ -1707,18 +1629,18 @@ static void draw_pixel(struct gpu *gpu, struct polygon *polygon,
 			else
 				index &= 0xF;
 			if (!index && polygon->texture & (1 << 29))
-				return;
+				return false;
 			color = mem_vram_texp_get16(gpu->mem, base_addr + (index * 2));
-			ta = 0x1F;
+			v[3] = 0x1F;
 			break;
 		}
 		case 0x4:
 		{
 			uint8_t index = mem_vram_trpi_get8(gpu->mem, offset + width * t + s);
 			if (!index && polygon->texture & (1 << 29))
-				return;
+				return false;
 			color = mem_vram_texp_get16(gpu->mem, base_addr + (index * 2));
-			ta = 0x1F;
+			v[3] = 0x1F;
 			break;
 		}
 		case 0x5:
@@ -1746,7 +1668,7 @@ static void draw_pixel(struct gpu *gpu, struct polygon *polygon,
 							color = mem_vram_texp_get16(gpu->mem, base_addr + 4);
 							break;
 						case 0x3:
-							return;
+							return false;
 					}
 					break;
 				case 0x1:
@@ -1768,7 +1690,7 @@ static void draw_pixel(struct gpu *gpu, struct polygon *polygon,
 							break;
 						}
 						case 0x3:
-							return;
+							return false;
 					}
 					break;
 				case 0x2:
@@ -1818,91 +1740,181 @@ static void draw_pixel(struct gpu *gpu, struct polygon *polygon,
 					}
 					break;
 			}
-			ta = 0x1F;
+			v[3] = 0x1F;
 			break;
 		}
 		case 0x6:
 		{
 			uint8_t index = mem_vram_trpi_get8(gpu->mem, offset + width * t + s);
-			ta = (index >> 3) & 0x1F;
+			v[3] = (index >> 3) & 0x1F;
 			color = mem_vram_texp_get16(gpu->mem, base_addr + ((index & 0x7) * 2));
 			break;
 		}
 		case 0x7:
 		{
 			color = mem_vram_trpi_get16(gpu->mem, offset + (width * t + s) * 2);
-			if (!(color & (1 << 15)))
-				return;
-			ta = 0x1F;
+			if (color & (1 << 15))
+				v[3] = 0x1F;
+			else
+				v[3] = 0x00;
 			break;
 		}
 	}
-	if (disp3dcnt & (1 << 2))
+	v[0] = TO6((color >> 0xA) & 0x1F);
+	v[1] = TO6((color >> 0x5) & 0x1F);
+	v[2] = TO6((color >> 0x0) & 0x1F);
+	v[3] = TO6(v[3]);
+	return true;
+}
+
+static void draw_pixel(struct gpu *gpu, struct polygon *polygon,
+                       int32_t x, int32_t y, int32_t *v)
+{
+	int32_t z = v[1];
+	int32_t w = v[2];
+	int32_t s = v[3];
+	int32_t t = v[4];
+	int32_t r = v[5];
+	int32_t g = v[6];
+	int32_t b = v[7];
+	if (w < 0 || z < 0)
+		return;
+#if 1
+	if (polygon->attr & (1 << 14))
 	{
-		if (alpha <= mem_arm9_get_reg32(gpu->mem, MEM_ARM9_REG_ALPHA_TEST_REF))
+		if ((z & ~0x1FF) != (gpu->g3d.front->zbuf[256 * y + x] & ~0x1FF))
 			return;
 	}
-	uint8_t cr = (r * 63) / (1 << 12);
-	uint8_t cg = (g * 63) / (1 << 12);
-	uint8_t cb = (b * 63) / (1 << 12);
-	uint8_t ca = alpha;
+	else
+	{
+		if (z >= gpu->g3d.front->zbuf[256 * y + x])
+			return;
+	}
+#endif
+	uint8_t *dst = &gpu->g3d.front->data[(256 * y + x) * 4];
+#if 0
+	printf("pixel {%" PRId32 ", %" PRId32 ", " I12_FMT "}\n",
+	       x, y, I12_PRT(z));
+#endif
+#if 0
+	dst[0] = (z - (1 << 11)) / (1 << 1);
+	dst[1] = (z - (1 << 11)) / (1 << 1);
+	dst[2] = (z - (1 << 11)) / (1 << 1);
+	dst[3] = 0xFF;
+	gpu->g3d.front->zbuf[256 * y + x] = z;
+	return;
+#endif
+#if 0
+	dst[0] = 0xFF;
+	dst[1] = t / (1 << 12);
+	dst[2] = s / (1 << 12);
+	dst[3] = 0xFF;
+	gpu->g3d.front->zbuf[256 * y + x] = z;
+	return;
+#endif
+#if 0
+	dst[0] = TO8(b);
+	dst[1] = TO8(g);
+	dst[2] = TO8(r);
+	dst[3] = 0xFF;
+	gpu->g3d.front->zbuf[256 * y + x] = z;
+	return;
+#endif
+	uint32_t disp3dcnt = mem_arm9_get_reg32(gpu->mem, MEM_ARM9_REG_DISP3DCNT);
+	uint16_t a = (polygon->attr >> 16) & 0x1F;
+	if (!a) /* wireframe has solid wires */
+		a = 0x1F;
+	uint8_t vv[4];
+	uint8_t tv[4];
+	uint8_t cv[4];
+	if (!get_tex_color(gpu, polygon, s, t, tv))
+		return;
+	vv[0] = TO6(r);
+	vv[1] = TO6(g);
+	vv[2] = TO6(b);
+	vv[3] = TO6(a);
 	switch ((polygon->attr >> 4) & 0x3)
 	{
 		case 0x0:
-			cr = ((cr + 1) * (((color >> 0xA) & 0x1F) + 1) - 1) / 64;
-			cg = ((cg + 1) * (((color >> 0x5) & 0x1F) + 1) - 1) / 64;
-			cb = ((cb + 1) * (((color >> 0x0) & 0x1F) + 1) - 1) / 64;
-			ca = ((ca + 1) * (ta + 1) - 1) / 64;
+			cv[0] = ((tv[0] + 1) * (vv[0] + 1) - 1) / 64;
+			cv[1] = ((tv[1] + 1) * (vv[1] + 1) - 1) / 64;
+			cv[2] = ((tv[2] + 1) * (vv[2] + 1) - 1) / 64;
+			cv[3] = ((tv[3] + 1) * (vv[3] + 1) - 1) / 64;
 			break;
 		case 0x1:
-			if (ta == 0x1F)
+			if (tv[3] == 0x1F)
 			{
-				cr = (color >> 0xA) & 0x1F;
-				cg = (color >> 0x5) & 0x1F;
-				cb = (color >> 0x0) & 0x1F;
+				cv[0] = tv[0];
+				cv[1] = tv[1];
+				cv[2] = tv[2];
 			}
-			else if (ta)
+			else if (tv[3])
 			{
-				cr = (((color >> 0xA) & 0x1F) * ta + cr * (63 - ta)) / 64;
-				cg = (((color >> 0x5) & 0x1F) * ta + cg * (63 - ta)) / 64;
-				cb = (((color >> 0x0) & 0x1F) * ta + cb * (63 - ta)) / 64;
+				cv[0] = (tv[0] * tv[3] + vv[0] * (63 - tv[3])) / 64;
+				cv[1] = (tv[1] * tv[3] + vv[1] * (63 - tv[3])) / 64;
+				cv[2] = (tv[2] * tv[3] + vv[2] * (63 - tv[3])) / 64;
 			}
+			else
+			{
+				cv[0] = vv[0];
+				cv[1] = vv[1];
+				cv[2] = vv[2];
+			}
+			cv[3] = vv[3];
 			break;
 		case 0x2:
 		{
-			uint8_t rv = gpu->g3d.toon[(color >> 0xA) & 0x1F];
-			uint8_t rs = (rv >> 0xA) & 0x1F;
-			uint8_t gs = (rv >> 0x5) & 0x1F;
-			uint8_t bs = (rv >> 0x0) & 0x1F;
-			cr = ((cr + 1) * (rs + 1) - 1) / 64;
-			cg = ((cg + 1) * (gs + 1) - 1) / 64;
-			cb = ((cb + 1) * (bs + 1) - 1) / 64;
-			ca = ((ca + 1) * (ta + 1) - 1) / 64;
+			uint8_t sc = gpu->g3d.toon[(r * 31) / (1 << 12)];
+			uint8_t sv[4];
+			sv[0] = TO6((sc >> 0xA) & 0x1F);
+			sv[1] = TO6((sc >> 0x5) & 0x1F);
+			sv[2] = TO6((sc >> 0x0) & 0x1F);
+			cv[0] = ((tv[0] + 1) * (sv[0] + 1) - 1) / 64;
+			cv[1] = ((tv[1] + 1) * (sv[1] + 1) - 1) / 64;
+			cv[2] = ((tv[2] + 1) * (sv[2] + 1) - 1) / 64;
+			cv[3] = ((tv[3] + 1) * (vv[3] + 1) - 1) / 64;
 			if (disp3dcnt & (1 << 1))
 			{
-				cr += rs;
-				cg += gs;
-				cb += bs;
+				cv[0] += sv[0];
+				cv[1] += sv[1];
+				cv[2] += sv[2];
+				if (cv[0] > 0x3F)
+					cv[0] = 0x3F;
+				if (cv[1] > 0x3F)
+					cv[1] = 0x3F;
+				if (cv[2] > 0x3F)
+					cv[2] = 0x3F;
 			}
 			break;
 		}
 		case 0x3: /* shadow */
 			return;
 	}
-	if (alpha == 0x1F)
+	cv[0] /= 2;
+	cv[1] /= 2;
+	cv[2] /= 2;
+	cv[3] /= 2;
+	if (!cv[3])
+		return;
+	if (disp3dcnt & (1 << 2))
 	{
-		dst[0] = TO8(cr);
-		dst[1] = TO8(cg);
-		dst[2] = TO8(cb);
-		dst[3] = ca;
+		if (cv[3] <= mem_arm9_get_reg32(gpu->mem, MEM_ARM9_REG_ALPHA_TEST_REF))
+			return;
+	}
+	if (cv[3] == 0x1F || !dst[3] || !(disp3dcnt & (1 << 3)))
+	{
+		dst[0] = TO8(cv[0]);
+		dst[1] = TO8(cv[1]);
+		dst[2] = TO8(cv[2]);
+		dst[3] = cv[3];
 	}
 	else
 	{
-		dst[0] = (cr * (alpha + 1) + dst[0] * (31 - alpha)) / 32;
-		dst[1] = (cg * (alpha + 1) + dst[1] * (31 - alpha)) / 32;
-		dst[2] = (cb * (alpha + 1) + dst[2] * (31 - alpha)) / 32;
-		if (ca > dst[3])
-			dst[3] = ca;
+		dst[0] = (cv[0] * (cv[3] + 1) + dst[0] * (31 - cv[3])) / 32;
+		dst[1] = (cv[1] * (cv[3] + 1) + dst[1] * (31 - cv[3])) / 32;
+		dst[2] = (cv[2] * (cv[3] + 1) + dst[2] * (31 - cv[3])) / 32;
+		if (cv[3] > dst[3])
+			dst[3] = cv[3];
 	}
 	gpu->g3d.front->zbuf[256 * y + x] = z;
 }
@@ -1939,13 +1951,19 @@ static void draw_line(struct gpu *gpu, struct polygon *polygon,
 	}
 	if (v0[0] == v1[0])
 	{
-		draw_pixel(gpu, polygon, v0[0], y, v0);
+		if (v0[0] >= gpu->g3d.viewport_left
+		 && v0[0] <= gpu->g3d.viewport_right)
+			draw_pixel(gpu, polygon, v0[0], y, v0);
 		return;
 	}
-	if (!((polygon->attr >> 16) & 0x1F))
+	if (y != y0 && y != y1 && !((polygon->attr >> 16) & 0x1F))
 	{
-		draw_pixel(gpu, polygon, v0[0], y, v0);
-		draw_pixel(gpu, polygon, v1[0], y, v1);
+		if (v0[0] >= gpu->g3d.viewport_left
+		 && v0[0] <= gpu->g3d.viewport_right)
+			draw_pixel(gpu, polygon, v0[0], y, v0);
+		if (v1[0] >= gpu->g3d.viewport_left
+		 && v1[0] <= gpu->g3d.viewport_right)
+			draw_pixel(gpu, polygon, v1[0], y, v1);
 		return;
 	}
 	int32_t d[8];
@@ -1959,10 +1977,6 @@ static void draw_line(struct gpu *gpu, struct polygon *polygon,
 		maxx = gpu->g3d.viewport_right;
 	for (int32_t x = minx; x <= maxx; ++x)
 	{
-#if 0
-		if (x != x0 && x != x1) /* wireframe */
-			continue;
-#endif
 		int32_t num = (x - v0[0]) * v0[2];
 		int32_t dem = num + (v1[0] - x) * v1[2];
 		int32_t factor = dem ? fp12_div(num, dem) : 0;
@@ -2079,9 +2093,27 @@ static void draw_not_flat(struct gpu *gpu, struct polygon *polygon,
                           struct vertex *v3)
 {
 	struct vertex new;
+	int64_t num;
+	int64_t dem;
+	int64_t rnum;
 
-	vertex_mix(&new, v1, v3, v2->screen_y - v1->screen_y,
-	           v3->screen_y - v1->screen_y);
+	num = (v2->screen_y - v1->screen_y) * v1->position.w;
+	dem = num + (v3->screen_y - v2->screen_y) * v3->position.w;
+	rnum = dem - num;
+	new.position.x = (v1->position.x * rnum + v3->position.x * num) / dem;
+	new.position.y = (v1->position.y * rnum + v3->position.y * num) / dem;
+	new.position.z = (v1->position.z * rnum + v3->position.z * num) / dem;
+	new.position.w = (v1->position.w * rnum + v3->position.w * num) / dem;
+	new.color.x = (v1->color.x * rnum + v3->color.x * num) / dem;
+	new.color.y = (v1->color.y * rnum + v3->color.y * num) / dem;
+	new.color.z = (v1->color.z * rnum + v3->color.z * num) / dem;
+	new.texcoord.x = (v1->texcoord.x * rnum + v3->texcoord.x * num) / dem;
+	new.texcoord.y = (v1->texcoord.y * rnum + v3->texcoord.y * num) / dem;
+	num = v2->screen_y - v1->screen_y;
+	dem = v3->screen_y - v1->screen_y;
+	rnum = dem - num;
+	new.screen_x = (v1->screen_x * rnum + v3->screen_x * num) / dem;
+	new.screen_y = v2->screen_y;
 	draw_top_flat(gpu, polygon, v2, &new, v3);
 	draw_bot_flat(gpu, polygon, v1, v2, &new);
 }
@@ -2123,24 +2155,15 @@ static void draw_triangle(struct gpu *gpu, struct polygon *polygon,
 	printf("     {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
 	       I12_PRT(v3->screen_x), I12_PRT(v3->screen_y), I12_PRT(v3->position.z));
 #endif
-#if 1
-	if (((polygon->attr >> 16) & 0x1F) != 0x1F)
-		return;
-#endif
-#if 1
 	switch ((polygon->attr >> 0x4) & 0x3)
 	{
 		case 0: /* modulation */
-			break;
 		case 1: /* decal */
-			return;
 		case 2: /* toon */
-			return;
+			break;
 		case 3: /* shadow */
 			return;
 	}
-#endif
-#if 1
 	switch ((polygon->attr >> 0x6) & 0x3)
 	{
 		case 0:
@@ -2158,7 +2181,6 @@ static void draw_triangle(struct gpu *gpu, struct polygon *polygon,
 		case 3:
 			break;
 	}
-#endif
 	sort_vertices(&v1, &v2, &v3);
 	if (v2->screen_y == v3->screen_y)
 		draw_bot_flat(gpu, polygon, v1, v2, v3);
@@ -2826,14 +2848,14 @@ static void cmd_mtx_trans(struct gpu *gpu, uint32_t *params)
 
 static void cmd_color(struct gpu *gpu, uint32_t *params)
 {
-	gpu->g3d.color.x = (((params[0] >>  0) & 0x1F) << 12) / 0x1F;
-	gpu->g3d.color.y = (((params[0] >>  5) & 0x1F) << 12) / 0x1F;
-	gpu->g3d.color.z = (((params[0] >> 10) & 0x1F) << 12) / 0x1F;
+	gpu->g3d.color.x = (params[0] >>  0) & 0x1F;
+	gpu->g3d.color.y = (params[0] >>  5) & 0x1F;
+	gpu->g3d.color.z = (params[0] >> 10) & 0x1F;
 #if CMD_DEBUG == 1
-	printf("[GX] COLOR {" I12_FMT ", " I12_FMT ", " I12_FMT "\n",
-	       I12_PRT(gpu->g3d.color.x),
-	       I12_PRT(gpu->g3d.color.y),
-	       I12_PRT(gpu->g3d.color.z));
+	printf("[GX] COLOR {0x%02" PRIx8 ", 0x%02" PRIx8 ", 0x%02" PRIx8 "\n",
+	       gpu->g3d.color.x,
+	       gpu->g3d.color.y,
+	       gpu->g3d.color.z);
 #endif
 }
 
@@ -2896,13 +2918,16 @@ static void cmd_normal(struct gpu *gpu, uint32_t *params)
 		specular.x = fp12_mul(gpu->g3d.specular.x, specular_factor);
 		specular.y = fp12_mul(gpu->g3d.specular.y, specular_factor);
 		specular.z = fp12_mul(gpu->g3d.specular.z, specular_factor);
-		gpu->g3d.color.x += fp12_mul(light->color.x,
-		                             gpu->g3d.ambient.x + diffuse.x + specular.x);
-		gpu->g3d.color.y += fp12_mul(light->color.y,
-		                             gpu->g3d.ambient.y + diffuse.y + specular.y);
-		gpu->g3d.color.z += fp12_mul(light->color.z,
-		                             gpu->g3d.ambient.z + diffuse.z + specular.z);
+		gpu->g3d.color.x += light->color.x * (gpu->g3d.ambient.x + diffuse.x + specular.x) / 31;
+		gpu->g3d.color.y += light->color.y * (gpu->g3d.ambient.y + diffuse.y + specular.y) / 31;
+		gpu->g3d.color.z += light->color.z * (gpu->g3d.ambient.z + diffuse.z + specular.z) / 31;
 	}
+	if (gpu->g3d.color.x > 0x1F)
+		gpu->g3d.color.x = 0x1F;
+	if (gpu->g3d.color.y > 0x1F)
+		gpu->g3d.color.y = 0x1F;
+	if (gpu->g3d.color.z > 0x1F)
+		gpu->g3d.color.z = 0x1F;
 }
 
 static int32_t get_int16_4(uint16_t v)
@@ -3026,10 +3051,10 @@ static void push_vertex(struct gpu *gpu)
 	       I12_PRT(v->position.y),
 	       I12_PRT(v->position.z) / (1 << 12),
 	       I12_PRT(v->position.w));
-	printf("     color: {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
-	       I12_PRT(v->color.x),
-	       I12_PRT(v->color.y),
-	       I12_PRT(v->color.z));
+	printf("     color: {0x%02" PRIx8 ", 0x%02" PRIx8 ", 0x%02" PRIx8 "}\n",
+	       v->color.x,
+	       v->color.y,
+	       v->color.z);
 	printf("     texcoord: {" I12_FMT ", " I12_FMT "}\n",
 	       I12_PRT(v->texcoord.x),
 	       I12_PRT(v->texcoord.y));
@@ -3219,24 +3244,23 @@ static void cmd_dif_amb(struct gpu *gpu, uint32_t *params)
 #if CMD_DEBUG == 1
 	printf("[GX] DIF_AMB 0x%08" PRIx32 "\n", params[0]);
 #endif
-	gpu->g3d.diffuse.x = (((params[0] >>  0) & 0x1F) << 12) / 0x1F;
-	gpu->g3d.diffuse.y = (((params[0] >>  5) & 0x1F) << 12) / 0x1F;
-	gpu->g3d.diffuse.z = (((params[0] >> 10) & 0x1F) << 12) / 0x1F;
-	gpu->g3d.ambient.x = (((params[0] >> 16) & 0x1F) << 12) / 0x1F;
-	gpu->g3d.ambient.y = (((params[0] >> 21) & 0x1F) << 12) / 0x1F;
-	gpu->g3d.ambient.z = (((params[0] >> 26) & 0x1F) << 12) / 0x1F;
-	gpu->g3d.vertex_color = (params[0] >> 15) & 0x1;
-	if (gpu->g3d.vertex_color)
+	gpu->g3d.diffuse.x = (params[0] >>  0) & 0x1F;
+	gpu->g3d.diffuse.y = (params[0] >>  5) & 0x1F;
+	gpu->g3d.diffuse.z = (params[0] >> 10) & 0x1F;
+	gpu->g3d.ambient.x = (params[0] >> 16) & 0x1F;
+	gpu->g3d.ambient.y = (params[0] >> 21) & 0x1F;
+	gpu->g3d.ambient.z = (params[0] >> 26) & 0x1F;
+	if (params[0] & (1 << 15))
 		gpu->g3d.color = gpu->g3d.diffuse;
 #if 0
-	printf("[GX] diffuse: {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
-	       I12_PRT(gpu->g3d.diffuse.x),
-	       I12_PRT(gpu->g3d.diffuse.y),
-	       I12_PRT(gpu->g3d.diffuse.z));
-	printf("[GX] ambient: {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
-	       I12_PRT(gpu->g3d.ambient.x),
-	       I12_PRT(gpu->g3d.ambient.y),
-	       I12_PRT(gpu->g3d.ambient.z));
+	printf("[GX] diffuse: {0x02%" PRIx8 ", 0x%02" PRIx8 ", 0x%02" PRIx8 "}\n",
+	       gpu->g3d.diffuse.x,
+	       gpu->g3d.diffuse.y,
+	       gpu->g3d.diffuse.z);
+	printf("[GX] ambient: {0x%02" PRIx8 ", 0x%02" PRIx8 ", 0x%02" PRIx8 "}\n",
+	       gpu->g3d.ambient.x,
+	       gpu->g3d.ambient.y,
+	       gpu->g3d.ambient.z);
 #endif
 }
 
@@ -3245,22 +3269,22 @@ static void cmd_spe_emi(struct gpu *gpu, uint32_t *params)
 #if CMD_DEBUG == 1
 	printf("[GX] SPE_EMI 0x%08" PRIx32 "\n", params[0]);
 #endif
-	gpu->g3d.specular.x = (((params[0] >>  0) & 0x1F) << 12) / 0x1F;
-	gpu->g3d.specular.y = (((params[0] >>  5) & 0x1F) << 12) / 0x1F;
-	gpu->g3d.specular.z = (((params[0] >> 10) & 0x1F) << 12) / 0x1F;
-	gpu->g3d.emission.x = (((params[0] >> 16) & 0x1F) << 12) / 0x1F;
-	gpu->g3d.emission.y = (((params[0] >> 21) & 0x1F) << 12) / 0x1F;
-	gpu->g3d.emission.z = (((params[0] >> 26) & 0x1F) << 12) / 0x1F;
+	gpu->g3d.specular.x = (params[0] >>  0) & 0x1F;
+	gpu->g3d.specular.y = (params[0] >>  5) & 0x1F;
+	gpu->g3d.specular.z = (params[0] >> 10) & 0x1F;
+	gpu->g3d.emission.x = (params[0] >> 16) & 0x1F;
+	gpu->g3d.emission.y = (params[0] >> 21) & 0x1F;
+	gpu->g3d.emission.z = (params[0] >> 26) & 0x1F;
 	gpu->g3d.specular_table = (params[0] >> 15) & 0x1;
 #if 0
-	printf("[GX] specular: {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
-	       I12_PRT(gpu->g3d.specular.x),
-	       I12_PRT(gpu->g3d.specular.y),
-	       I12_PRT(gpu->g3d.specular.z));
-	printf("[GX] emission: {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
-	       I12_PRT(gpu->g3d.emission.x),
-	       I12_PRT(gpu->g3d.emission.y),
-	       I12_PRT(gpu->g3d.emission.z));
+	printf("[GX] specular: {0x%02" PRIx8 ", 0x%02" PRIx8 ", 0x%02" PRIx8 "}\n",
+	       gpu->g3d.specular.x,
+	       gpu->g3d.specular.y,
+	       gpu->g3d.specular.z);
+	printf("[GX] emission: {0x%02" PRIx8 ", 0x%02" PRIx8 ", 0x%02" PRIx8 "}\n",
+	       gpu->g3d.emission.x,
+	       gpu->g3d.emission.y,
+	       gpu->g3d.emission.z);
 #endif
 }
 
@@ -3288,9 +3312,9 @@ static void cmd_light_color(struct gpu *gpu, uint32_t *params)
 #endif
 	uint8_t light_id = (params[0] >> 30) & 0x3;
 	struct light *light = &gpu->g3d.lights[light_id];
-	light->color.x = (((params[0] >>  0) & 0x1F) << 12) / 0x1F;
-	light->color.y = (((params[0] >>  5) & 0x1F) << 12) / 0x1F;
-	light->color.z = (((params[0] >> 10) & 0x1F) << 12) / 0x1F;
+	light->color.x = (params[0] >>  0) & 0x1F;
+	light->color.y = (params[0] >>  5) & 0x1F;
+	light->color.z = (params[0] >> 10) & 0x1F;
 }
 
 static void cmd_shininess(struct gpu *gpu, uint32_t *params)

@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 #ifdef ENABLE_MULTITHREAD
-#include <pthread.h>
+# include <pthread.h>
 #endif
 
 struct mbc;

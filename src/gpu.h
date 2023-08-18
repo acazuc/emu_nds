@@ -3,21 +3,6 @@
 
 #include <stdint.h>
 
-#define TRANSFORM_INT28(n) \
-do \
-{ \
-	if ((n) & (1 << 27)) \
-	{ \
-		n = (0x7FFFFFF - ((n) & 0x7FFFFFF)); \
-		n = -n - 1; \
-	} \
-} while (0)
-
-#define PRIMITIVE_TRIANGLES      0
-#define PRIMITIVE_QUADS          1
-#define PRIMITIVE_TRIANGLE_STRIP 2
-#define PRIMITIVE_QUAD_STRIP     3
-
 struct mem;
 
 struct gpu_eng
@@ -125,7 +110,6 @@ struct gpu_g3d
 	struct vec3 ambient;
 	struct vec3 specular;
 	struct vec3 emission;
-	uint8_t vertex_color;
 	uint8_t specular_table;
 	uint8_t matrix_mode;
 	uint8_t proj_stack_pos;
