@@ -2320,6 +2320,13 @@ static void run_div(struct mem *mem)
 			printf("DIV0: %" PRId32 " / %" PRId32 " = %" PRId32 " / %" PRId32 "\n",
 			       num, den, div, rem);
 #endif
+#if 0
+			printf("DIV0: %+6.4f (%08x) / %+6.4f (%08x) = %+6.4f (%08x) / %+6.4f (%08x)\n",
+			       num / (float)(1 << 12), (uint32_t)num,
+			       den / (float)(1 << 12), (uint32_t)den,
+			       div / (float)(1 << 12), (uint32_t)div,
+			       rem / (float)(1 << 12), (uint32_t)rem);
+#endif
 			mem_arm9_set_reg32(mem, MEM_ARM9_REG_DIV_RESULT, div);
 			mem_arm9_set_reg32(mem, MEM_ARM9_REG_DIVREM_RESULT, rem);
 			break;
@@ -2350,6 +2357,13 @@ static void run_div(struct mem *mem)
 			printf("DIV1: %" PRId64 " / %" PRId32 " = %" PRId64 " / %" PRId32 "\n",
 			       num, den, div, rem);
 #endif
+#if 0
+			printf("DIV1: %+6.4f (%016lx) / %+6.4f (%08x) = %+6.4f (%016lx) / %+6.4f (%08x)\n",
+			       num / (float)(1 << 12), (uint64_t)num,
+			       den / (float)(1 << 12), (uint32_t)den,
+			       div / (float)(1 << 12), (uint64_t)div,
+			       rem / (float)(1 << 12), (uint32_t)rem);
+#endif
 			mem_arm9_set_reg64(mem, MEM_ARM9_REG_DIV_RESULT, div);
 			mem_arm9_set_reg32(mem, MEM_ARM9_REG_DIVREM_RESULT, rem);
 			break;
@@ -2378,6 +2392,11 @@ static void run_div(struct mem *mem)
 #if 0
 			printf("DIV2: %" PRId64 " / %" PRId64 " = %" PRId64 " / %" PRId64 "\n",
 			       num, den, div, rem);
+#endif
+#if 0
+			printf("DIV2: %+6.4f / %+6.4f = %+6.4f / %+6.4f\n",
+			       num / (float)(1 << 12), den / (float)(1 << 12),
+			       div / (float)(1 << 12), rem / (float)(1 << 12));
 #endif
 			mem_arm9_set_reg64(mem, MEM_ARM9_REG_DIV_RESULT, div);
 			mem_arm9_set_reg64(mem, MEM_ARM9_REG_DIVREM_RESULT, rem);
@@ -3869,22 +3888,6 @@ static uint8_t get_arm9_reg8(struct mem *mem, uint32_t addr)
 		case MEM_ARM9_REG_DIV_DENOM + 5:
 		case MEM_ARM9_REG_DIV_DENOM + 6:
 		case MEM_ARM9_REG_DIV_DENOM + 7:
-		case MEM_ARM9_REG_DIV_RESULT:
-		case MEM_ARM9_REG_DIV_RESULT + 1:
-		case MEM_ARM9_REG_DIV_RESULT + 2:
-		case MEM_ARM9_REG_DIV_RESULT + 3:
-		case MEM_ARM9_REG_DIV_RESULT + 4:
-		case MEM_ARM9_REG_DIV_RESULT + 5:
-		case MEM_ARM9_REG_DIV_RESULT + 6:
-		case MEM_ARM9_REG_DIV_RESULT + 7:
-		case MEM_ARM9_REG_DIVREM_RESULT:
-		case MEM_ARM9_REG_DIVREM_RESULT + 1:
-		case MEM_ARM9_REG_DIVREM_RESULT + 2:
-		case MEM_ARM9_REG_DIVREM_RESULT + 3:
-		case MEM_ARM9_REG_DIVREM_RESULT + 4:
-		case MEM_ARM9_REG_DIVREM_RESULT + 5:
-		case MEM_ARM9_REG_DIVREM_RESULT + 6:
-		case MEM_ARM9_REG_DIVREM_RESULT + 7:
 		case MEM_ARM9_REG_DISPCNT:
 		case MEM_ARM9_REG_DISPCNT + 1:
 		case MEM_ARM9_REG_DISPCNT + 2:
@@ -3963,6 +3966,32 @@ static uint8_t get_arm9_reg8(struct mem *mem, uint32_t addr)
 		case MEM_ARM9_REG_DISPCAPCNT + 1:
 		case MEM_ARM9_REG_DISPCAPCNT + 2:
 		case MEM_ARM9_REG_DISPCAPCNT + 3:
+			return mem->arm9_regs[addr];
+		case MEM_ARM9_REG_DIV_RESULT:
+		case MEM_ARM9_REG_DIV_RESULT + 1:
+		case MEM_ARM9_REG_DIV_RESULT + 2:
+		case MEM_ARM9_REG_DIV_RESULT + 3:
+		case MEM_ARM9_REG_DIV_RESULT + 4:
+		case MEM_ARM9_REG_DIV_RESULT + 5:
+		case MEM_ARM9_REG_DIV_RESULT + 6:
+		case MEM_ARM9_REG_DIV_RESULT + 7:
+#if 0
+			printf("[ARM9] [%08" PRIx32 "] DIV_RESULT[%08" PRIx32 "] read 0x%02" PRIx8 "\n",
+			       cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr, mem->arm9_regs[addr]);
+#endif
+			return mem->arm9_regs[addr];
+		case MEM_ARM9_REG_DIVREM_RESULT:
+		case MEM_ARM9_REG_DIVREM_RESULT + 1:
+		case MEM_ARM9_REG_DIVREM_RESULT + 2:
+		case MEM_ARM9_REG_DIVREM_RESULT + 3:
+		case MEM_ARM9_REG_DIVREM_RESULT + 4:
+		case MEM_ARM9_REG_DIVREM_RESULT + 5:
+		case MEM_ARM9_REG_DIVREM_RESULT + 6:
+		case MEM_ARM9_REG_DIVREM_RESULT + 7:
+#if 0
+			printf("[ARM9] [%08" PRIx32 "] DIVREM_RESULT[%08" PRIx32 "] read 0x%02" PRIx8 "\n",
+			       cpu_get_reg(mem->nds->arm9, CPU_REG_PC), addr, mem->arm9_regs[addr]);
+#endif
 			return mem->arm9_regs[addr];
 		case MEM_ARM9_REG_GXSTAT:
 		case MEM_ARM9_REG_GXSTAT + 1:
