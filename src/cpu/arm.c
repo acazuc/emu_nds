@@ -1567,7 +1567,7 @@ const struct cpu_instr *cpu_instr_arm[0x1000] =
 	/* 0x000 */ ALU_OPS(and, mul  , strh_ptrm, ldrd_ptrm, strd_ptrm, muls  , ldrh_ptrm, ldrsb_ptrm, ldrsh_ptrm),
 	/* 0x020 */ ALU_OPS(eor, mla  , strh_ptrm, ldrd_ptrm, strd_ptrm, mlas  , ldrh_ptrm, ldrsb_ptrm, ldrsh_ptrm),
 	/* 0x040 */ ALU_OPS(sub, undef, strh_ptim, ldrd_ptim, strd_ptim, undef , ldrh_ptim, ldrsb_ptim, ldrsh_ptim),
-	/* 0x060 */ ALU_OPS(rsb, undef, strh_ptim, ldrd_ptim, strd_ptim ,undef , ldrh_ptim, ldrsb_ptim, ldrsh_ptim),
+	/* 0x060 */ ALU_OPS(rsb, undef, strh_ptim, ldrd_ptim, strd_ptim, undef , ldrh_ptim, ldrsb_ptim, ldrsh_ptim),
 	/* 0x080 */ ALU_OPS(add, umull, strh_ptrp, ldrd_ptrp, strd_ptrp, umulls, ldrh_ptrp, ldrsb_ptrp, ldrsh_ptrp),
 	/* 0x0A0 */ ALU_OPS(adc, umlal, strh_ptrp, ldrd_ptrp, strd_ptrp, umlals, ldrh_ptrp, ldrsb_ptrp, ldrsh_ptrp),
 	/* 0x0C0 */ ALU_OPS(sbc, smull, strh_ptip, ldrd_ptip, strd_ptip, smulls, ldrh_ptip, ldrsb_ptip, ldrsh_ptip),
