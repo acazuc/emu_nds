@@ -153,6 +153,11 @@ void apu_cycles(struct apu *apu, uint32_t cycles)
 				}
 				case 2:
 				{
+					if (channel->pos == channel->pnt)
+					{
+						channel->adpcm_init_idx = channel->adpcm_idx;
+						channel->adpcm_init_sample = channel->sample;
+					}
 					uint8_t v = mem_arm7_get8(apu->mem,
 					                          channel->sad + channel->pos / 2,
 					                          MEM_DIRECT);
@@ -188,11 +193,6 @@ void apu_cycles(struct apu *apu, uint32_t cycles)
 						channel->adpcm_idx = 88;
 					else
 						channel->adpcm_idx = tmp;
-					if (channel->pos == channel->len)
-					{
-						channel->adpcm_init_idx = channel->adpcm_idx;
-						channel->adpcm_init_sample = channel->sample;
-					}
 					channel->pos += 1;
 					break;
 				}
