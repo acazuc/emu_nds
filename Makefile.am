@@ -28,6 +28,8 @@ AM_CFLAGS = -Wall -Wextra -Wshadow -flto=auto
 if ENABLE_MULTITHREAD
 
 AM_CFLAGS += -DENABLE_MULTITHREAD
+libemu_nds_la_LIBADD = -lpthread
+libemu_nds_libretro_la_LIBADD = -lpthread
 
 endif
 
