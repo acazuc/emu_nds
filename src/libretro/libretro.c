@@ -170,14 +170,20 @@ void retro_run(void)
 	joypad |= NDS_BUTTON_SELECT * (!!input_state_cb(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_SELECT));
 	int32_t x = input_state_cb(0, RETRO_DEVICE_POINTER, 0, RETRO_DEVICE_ID_POINTER_X);
 	int32_t y = input_state_cb(0, RETRO_DEVICE_POINTER, 0, RETRO_DEVICE_ID_POINTER_Y);
+	int pressed = input_state_cb(0, RETRO_DEVICE_POINTER, 0, RETRO_DEVICE_ID_POINTER_PRESSED);
 #if TOP_BOTTOM == 1
 	if (y < 0)
+	{
 		y = 0;
+		pressed = 0;
+	}
 #else
 	if (x < 0)
+	{
 		x = 0;
+		pressed = 0;
+	}
 #endif
-	int pressed = input_state_cb(0, RETRO_DEVICE_POINTER, 0, RETRO_DEVICE_ID_POINTER_PRESSED);
 
 	uint8_t *video_top_buf;
 	uint32_t video_top_pitch;
