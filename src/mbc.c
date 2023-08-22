@@ -44,10 +44,12 @@ struct mbc *mbc_new(struct nds *nds, const void *data, size_t size)
 		case 0x50443241:
 		case 0x50543841:
 		case 0x504D5241:
+		case 0x50575941:
 			mbc->backup_type = MBC_EEPROM_8K;
 			break;
 		case 0x45415041:
 		case 0x50455A41:
+		case 0x45475049:
 			mbc->backup_type = MBC_FLASH_512K;
 			break;
 		default:
