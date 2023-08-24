@@ -39,6 +39,7 @@ struct mbc *mbc_new(struct nds *nds, const void *data, size_t size)
 			break;
 		case 0x50395941:
 		case 0x45395941:
+		case 0x45463541:
 			mbc->backup_type = MBC_EEPROM_64K;
 			break;
 		case 0x50443241:
@@ -50,6 +51,7 @@ struct mbc *mbc_new(struct nds *nds, const void *data, size_t size)
 		case 0x45415041:
 		case 0x50455A41:
 		case 0x45475049:
+		case 0x45455A41:
 			mbc->backup_type = MBC_FLASH_512K;
 			break;
 		default:
@@ -58,6 +60,9 @@ struct mbc *mbc_new(struct nds *nds, const void *data, size_t size)
 			       ((uint32_t*)data)[3]);
 			break;
 	}
+#if 1
+	printf("backup type: %d\n", mbc->backup_type);
+#endif
 	switch (mbc->backup_type)
 	{
 		case MBC_BACKUP_UNKNOWN:
@@ -518,6 +523,9 @@ void mbc_spi_write(struct mbc *mbc, uint8_t v)
 					break;
 				case MBC_SPI_CMD_WRDI:
 					mbc->spi.write = 0;
+					break;
+				case MBC_SPI_CMD_RDSR:
+					mbc->spi.read_latch = (mbc->spi.write & 1) << 1;
 					break;
 			}
 			break;

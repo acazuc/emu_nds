@@ -1775,8 +1775,11 @@ static bool get_tex_color(struct gpu *gpu, struct polygon *polygon,
 static void draw_pixel(struct gpu *gpu, struct polygon *polygon,
                        int32_t x, int32_t y, int32_t *v)
 {
-	x /= (1 << 12);
-	y /= (1 << 12);
+	x /= (1 << 4);
+	y /= (1 << 4);
+	if (x < 0 || x > gpu->g3d.viewport_right
+	 || y < 0 || y > gpu->g3d.viewport_bottom)
+		return;
 	int32_t z = v[1];
 	int32_t w = v[2];
 	int32_t s = v[3];
@@ -1955,6 +1958,19 @@ static void draw_pixel(struct gpu *gpu, struct polygon *polygon,
 	gpu->g3d.front->zbuf[256 * y + x] = z;
 }
 
+static void draw_line_pixel(struct gpu *gpu, struct polygon *polygon,
+                            int32_t x, int32_t y,
+                            int32_t *v0, int32_t *v1, int32_t *d)
+{
+	int64_t num = (x - v0[0]) * (int64_t)v0[2];
+	int64_t dem = num + (v1[0] - x) * (int64_t)v1[2];
+	int64_t factor = dem ? fp12_div(num, dem) : 0;
+	int32_t v[8];
+	for (size_t i = 0; i < 8; ++i)
+		v[i] = v0[i] + fp12_mul(d[i], factor);
+	draw_pixel(gpu, polygon, x, y, v);
+}
+
 static void draw_line(struct gpu *gpu, struct polygon *polygon,
                       int32_t y0, int32_t y1, int32_t y,
                       int32_t *vl, int32_t *vr, int32_t *dl, int32_t *dr)
@@ -1963,7 +1979,7 @@ static void draw_line(struct gpu *gpu, struct polygon *polygon,
 	int32_t v1[8];
 	v0[0] = vl[0] + dl[0] * (int64_t)(y - y0) / (y1 - y0);
 	v1[0] = vr[0] + dr[0] * (int64_t)(y - y0) / (y1 - y0);
-	if (y0 / (1 << 12) != y1 / (1 << 12))
+	if (y0 / (1 << 4) != y1 / (1 << 4))
 	{
 		int64_t numl = (y - y0) * (int64_t)vl[2];
 		int64_t deml = numl + (y1 - y) * (int64_t)(vl[2] + dl[2]);
@@ -1971,14 +1987,6 @@ static void draw_line(struct gpu *gpu, struct polygon *polygon,
 		int64_t demr = numr + (y1 - y) * (int64_t)(vr[2] + dr[2]);
 		int64_t fl = deml ? fp12_div(numl, deml) : 0;
 		int64_t fr = demr ? fp12_div(numr, demr) : 0;
-		if (fl < 0)
-			fl = 0;
-		if (fl > 1 << 12)
-			fl = 1 << 12;
-		if (fr < 0)
-			fr = 0;
-		if (fr > 1 << 12)
-			fr = 1 << 12;
 		for (size_t i = 1; i < 8; ++i)
 		{
 			v0[i] = vl[i] + fp12_mul(dl[i], fl);
@@ -1993,22 +2001,22 @@ static void draw_line(struct gpu *gpu, struct polygon *polygon,
 			v1[i] = vr[i];
 		}
 	}
-	if (v0[0] / (1 << 12) == v1[0] / (1 << 12))
+	if (v0[0] / (1 << 4) == v1[0] / (1 << 4))
 	{
-		if (v0[0] >= gpu->g3d.viewport_left * (1 << 12)
-		 && v0[0] <= gpu->g3d.viewport_right * (1 << 12))
+		if (v0[0] / (1 << 4) >= gpu->g3d.viewport_left
+		 && v0[0] / (1 << 4) <= gpu->g3d.viewport_right)
 			draw_pixel(gpu, polygon, v0[0], y, v0);
 		return;
 	}
-	if (y / (1 << 12) != y0 / (1 << 12)
-	 && y / (1 << 12) != y1 / (1 << 12)
+	if (y / (1 << 4) != y0 / (1 << 4)
+	 && y / (1 << 4) != y1 / (1 << 4)
 	 && !((polygon->attr >> 16) & 0x1F))
 	{
-		if (v0[0] >= gpu->g3d.viewport_left * (1 << 12)
-		 && v0[0] <= gpu->g3d.viewport_right * (1 << 12))
+		if (v0[0] / (1 << 4) >= gpu->g3d.viewport_left
+		 && v0[0] / (1 << 4) <= gpu->g3d.viewport_right)
 			draw_pixel(gpu, polygon, v0[0], y, v0);
-		if (v1[0] >= gpu->g3d.viewport_left * (1 << 12)
-		 && v1[0] <= gpu->g3d.viewport_right * (1 << 12))
+		if (v1[0] / (1 << 4) >= gpu->g3d.viewport_left
+		 && v1[0] / (1 << 4) <= gpu->g3d.viewport_right)
 			draw_pixel(gpu, polygon, v1[0], y, v1);
 		return;
 	}
@@ -2017,28 +2025,16 @@ static void draw_line(struct gpu *gpu, struct polygon *polygon,
 		d[i] = v1[i] - v0[i];
 	int32_t minx = v0[0];
 	int32_t maxx = v1[0];
-	if (minx < gpu->g3d.viewport_left * (1 << 12))
-		minx = gpu->g3d.viewport_left * (1 << 12);
-	if (maxx > gpu->g3d.viewport_right * (1 << 12))
-		maxx = gpu->g3d.viewport_right * (1 << 12);
-#if 1
-	minx = ((minx + 0xFFF) & ~0xFFF) | 0x800;
-	maxx = ((maxx + 0xFFF) & ~0xFFF) | 0x800;
-#endif
-	for (int32_t x = minx; x <= maxx; x += (1 << 12))
-	{
-		int64_t num = (x - v0[0]) * (int64_t)v0[2];
-		int64_t dem = num + (v1[0] - x) * (int64_t)v1[2];
-		int64_t factor = dem ? fp12_div(num, dem) : 0;
-		if (factor < 0)
-			factor = 0;
-		if (factor > 1 << 12)
-			factor = 1 << 12;
-		int32_t v[8];
-		for (size_t i = 0; i < 8; ++i)
-			v[i] = v0[i] + fp12_mul(d[i], factor);
-		draw_pixel(gpu, polygon, x, y, v);
-	}
+	if (minx / (1 << 4) < gpu->g3d.viewport_left)
+		minx = gpu->g3d.viewport_left * (1 << 4);
+	if (maxx / (1 << 4) > gpu->g3d.viewport_right)
+		maxx = gpu->g3d.viewport_right * (1 << 4);
+	draw_line_pixel(gpu, polygon, minx, y, v0, v1, d);
+	minx = (minx & ~0xF) + 0x12;
+	int32_t endx = maxx & ~0xF;
+	for (int32_t x = minx; x < endx; x += (1 << 4))
+		draw_line_pixel(gpu, polygon, x, y, v0, v1, d);
+	draw_line_pixel(gpu, polygon, maxx, y, v0, v1, d);
 }
 
 static void draw_span(struct gpu *gpu, struct polygon *polygon,
@@ -2052,10 +2048,12 @@ static void draw_span(struct gpu *gpu, struct polygon *polygon,
 
 	int32_t miny = y0;
 	int32_t maxy = y1;
-	if (miny < gpu->g3d.viewport_top * (1 << 12))
-		miny = gpu->g3d.viewport_top * (1 << 12);
-	if (maxy > gpu->g3d.viewport_bottom * (1 << 12))
-		maxy = gpu->g3d.viewport_bottom * (1 << 12);
+	if (miny / (1 << 4) < gpu->g3d.viewport_top)
+		miny = gpu->g3d.viewport_top * (1 << 4);
+	if (maxy / (1 << 4) > gpu->g3d.viewport_bottom)
+		maxy = gpu->g3d.viewport_bottom * (1 << 4);
+	if (miny > maxy)
+		return;
 
 	int32_t vl[8];
 	int32_t vr[8];
@@ -2079,12 +2077,12 @@ static void draw_span(struct gpu *gpu, struct polygon *polygon,
 
 #undef INIT_INTERP
 
-#if 1
-	miny = ((miny + 0xFFF) & ~0xFFF) | 0x800;
-	maxy = ((maxy + 0xFFF) & ~0xFFF) | 0x800;
-#endif
-	for (int32_t y = miny; y <= maxy; y += (1 << 12))
+	draw_line(gpu, polygon, y0, y1, miny, vl, vr, dl, dr);
+	miny = (miny & ~0xF) + 0x11;
+	int32_t endy = maxy & ~0xF;
+	for (int32_t y = miny; y < endy; y += (1 << 4))
 		draw_line(gpu, polygon, y0, y1, y, vl, vr, dl, dr);
+	draw_line(gpu, polygon, y0, y1, maxy, vl, vr, dl, dr);
 }
 
 static void draw_top_flat(struct gpu *gpu, struct polygon *polygon,
@@ -2094,21 +2092,21 @@ static void draw_top_flat(struct gpu *gpu, struct polygon *polygon,
 #if 0
 	printf("draw top flat triangle:\n");
 	printf("     {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
-	       I12_PRT(v1->screen_x),
-	       I12_PRT(v1->screen_y),
+	       I12_PRT(v1->screen_x * (1 << 8)),
+	       I12_PRT(v1->screen_y * (1 << 8)),
 	       I12_PRT(v1->position.z));
 	printf("     {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
-	       I12_PRT(v2->screen_x),
-	       I12_PRT(v2->screen_y),
+	       I12_PRT(v2->screen_x * (1 << 8)),
+	       I12_PRT(v2->screen_y * (1 << 8)),
 	       I12_PRT(v2->position.z));
 	printf("     {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
-	       I12_PRT(v3->screen_x),
-	       I12_PRT(v3->screen_y),
+	       I12_PRT(v3->screen_x * (1 << 8)),
+	       I12_PRT(v3->screen_y * (1 << 8)),
 	       I12_PRT(v3->position.z));
 #endif
 
-	if (v3->screen_y / (1 << 12) == v1->screen_y / (1 << 12)
-	 || v3->screen_y / (1 << 12) == v2->screen_y / (1 << 12))
+	if (v3->screen_y / (1 << 4) == v1->screen_y / (1 << 4)
+	 || v3->screen_y / (1 << 4) == v2->screen_y / (1 << 4))
 		return;
 
 	if (v1->screen_x > v2->screen_x)
@@ -2128,21 +2126,21 @@ static void draw_bot_flat(struct gpu *gpu, struct polygon *polygon,
 #if 0
 	printf("draw bot flat triangle:\n");
 	printf("     {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
-	       I12_PRT(v1->screen_x),
-	       I12_PRT(v1->screen_y),
+	       I12_PRT(v1->screen_x * (1 << 8)),
+	       I12_PRT(v1->screen_y * (1 << 8)),
 	       I12_PRT(v1->position.z));
 	printf("     {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
-	       I12_PRT(v2->screen_x),
-	       I12_PRT(v2->screen_y),
+	       I12_PRT(v2->screen_x * (1 << 8)),
+	       I12_PRT(v2->screen_y * (1 << 8)),
 	       I12_PRT(v2->position.z));
 	printf("     {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
-	       I12_PRT(v3->screen_x),
-	       I12_PRT(v3->screen_y),
+	       I12_PRT(v3->screen_x * (1 << 8)),
+	       I12_PRT(v3->screen_y * (1 << 8)),
 	       I12_PRT(v3->position.z));
 #endif
 
-	if (v2->screen_y / (1 << 12) == v1->screen_y / (1 << 12)
-	 || v3->screen_y / (1 << 12) == v1->screen_y / (1 << 12))
+	if (v2->screen_y / (1 << 4) == v1->screen_y / (1 << 4)
+	 || v3->screen_y / (1 << 4) == v1->screen_y / (1 << 4))
 		return;
 
 	if (v2->screen_x > v3->screen_x)
@@ -2164,8 +2162,8 @@ static void draw_not_flat(struct gpu *gpu, struct polygon *polygon,
 	int64_t dem;
 	int64_t rnum;
 
-	num = (v2->screen_y - v1->screen_y) * v1->position.w;
-	dem = num + (v3->screen_y - v2->screen_y) * v3->position.w;
+	num = (v2->screen_y - v1->screen_y) * (int64_t)v1->position.w;
+	dem = num + (v3->screen_y - v2->screen_y) * (int64_t)v3->position.w;
 	rnum = dem - num;
 	new.position.x = (v1->position.x * rnum + v3->position.x * num) / dem;
 	new.position.y = (v1->position.y * rnum + v3->position.y * num) / dem;
@@ -2216,16 +2214,16 @@ static void draw_triangle(struct gpu *gpu, struct polygon *polygon,
 #if 0
 	printf("draw triangle:\n");
 	printf("     {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
-	       I12_PRT(v1->screen_x),
-	       I12_PRT(v1->screen_y),
+	       I12_PRT(v1->screen_x * (1 << 8)),
+	       I12_PRT(v1->screen_y * (1 << 8)),
 	       I12_PRT(v1->position.z));
 	printf("     {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
-	       I12_PRT(v2->screen_x),
-	       I12_PRT(v2->screen_y),
+	       I12_PRT(v2->screen_x * (1 << 8)),
+	       I12_PRT(v2->screen_y * (1 << 8)),
 	       I12_PRT(v2->position.z));
 	printf("     {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
-	       I12_PRT(v3->screen_x),
-	       I12_PRT(v3->screen_y),
+	       I12_PRT(v3->screen_x * (1 << 8)),
+	       I12_PRT(v3->screen_y * (1 << 8)),
 	       I12_PRT(v3->position.z));
 #endif
 	if (polygon->attr & (1 << 12))
@@ -2244,7 +2242,6 @@ static void draw_triangle(struct gpu *gpu, struct polygon *polygon,
 		case 3: /* shadow */
 			return;
 	}
-#if 1
 	switch ((polygon->attr >> 0x6) & 0x3)
 	{
 		case 0:
@@ -2262,11 +2259,10 @@ static void draw_triangle(struct gpu *gpu, struct polygon *polygon,
 		case 3:
 			break;
 	}
-#endif
 	sort_vertices(&v1, &v2, &v3);
-	if (v2->screen_y / (1 << 12) == v3->screen_y / (1 << 12))
+	if (v2->screen_y / (1 << 4) == v3->screen_y / (1 << 4))
 		draw_bot_flat(gpu, polygon, v1, v2, v3);
-	else if (v1->screen_y / (1 << 12) == v2->screen_y / (1 << 12))
+	else if (v1->screen_y / (1 << 4) == v2->screen_y / (1 << 4))
 		draw_top_flat(gpu, polygon, v1, v2, v3);
 	else
 		draw_not_flat(gpu, polygon, v1, v2, v3);
@@ -3127,10 +3123,10 @@ static void push_vertex(struct gpu *gpu)
 	{
 		int64_t viewport_width = gpu->g3d.viewport_right - gpu->g3d.viewport_left + 1;
 		int64_t viewport_height = gpu->g3d.viewport_bottom - gpu->g3d.viewport_top + 1;
-		v->screen_x = fp12_div((v->position.x + v->position.w) * viewport_width, 2 * v->position.w) + gpu->g3d.viewport_left * (1 << 12);
-		v->screen_y = fp12_div((v->position.y + v->position.w) * viewport_height, 2 * v->position.w) + gpu->g3d.viewport_top * (1 << 12);
-		/* it somehow works better without this */
-		//v->position.z = fp12_div(v->position.z, v->position.w) * (1 << 12);
+		v->screen_x = fp12_div((v->position.x + v->position.w) * viewport_width, 2 * v->position.w);
+		v->screen_x = (v->screen_x >> 8) + gpu->g3d.viewport_left * (1 << 4);
+		v->screen_y = fp12_div((v->position.y + v->position.w) * viewport_height, 2 * v->position.w);
+		v->screen_y = (v->screen_y >> 8) + gpu->g3d.viewport_top * (1 << 4);
 	}
 	else
 	{
@@ -3155,8 +3151,8 @@ static void push_vertex(struct gpu *gpu)
 	       I12_PRT(v->texcoord.x),
 	       I12_PRT(v->texcoord.y));
 	printf("     screen: {" I12_FMT ", " I12_FMT "}\n",
-	       I12_PRT(v->screen_x),
-	       I12_PRT(v->screen_y));
+	       I12_PRT(v->screen_x * (1 << 8)),
+	       I12_PRT(v->screen_y * (1 << 8)));
 #endif
 	switch (gpu->g3d.primitive)
 	{
@@ -3475,6 +3471,59 @@ static void cmd_viewport(struct gpu *gpu, uint32_t *params)
 		gpu->g3d.viewport_bottom = gpu->g3d.viewport_top;
 }
 
+static void cmd_box_test(struct gpu *gpu, uint32_t *params)
+{
+#if CMD_DEBUG ==1
+	printf("[GX] BOX_TEST 0x%08" PRIx32 " 0x%08" PRIx32 " 0x%08" PRIx32 "\n",
+	       params[0], params[1], params[2]);
+#endif
+}
+
+static void cmd_pos_test(struct gpu *gpu, uint32_t *params)
+{
+#if CMD_DEBUG ==1
+	printf("[GX] POS_TEST 0x%08" PRIx32 " 0x%08" PRIx32 "\n",
+	       params[0], params[1]);
+#endif
+	struct vec4 pos;
+	pos.x = get_int16_12((params[0] >>  0) & 0xFFFF);
+	pos.y = get_int16_12((params[0] >> 16) & 0xFFFF);
+	pos.z = get_int16_12((params[1] >>  0) & 0xFFFF);
+	pos.w = 1;
+	mtx_mult_vec4(&pos, &gpu->g3d.clip_matrix, &pos);
+	mem_arm9_set_reg32(gpu->mem, MEM_ARM9_REG_POS_RESULT + 0x0, pos.x);
+	mem_arm9_set_reg32(gpu->mem, MEM_ARM9_REG_POS_RESULT + 0x4, pos.y);
+	mem_arm9_set_reg32(gpu->mem, MEM_ARM9_REG_POS_RESULT + 0x8, pos.z);
+	mem_arm9_set_reg32(gpu->mem, MEM_ARM9_REG_POS_RESULT + 0xC, pos.w);
+}
+
+static void cmd_vec_test(struct gpu *gpu, uint32_t *params)
+{
+#if CMD_DEBUG ==1
+	printf("[GX] VEC_TEST 0x%08" PRIx32 "\n", params[0]);
+#endif
+	struct vec3 dir;
+	dir.x = get_int10_9((params[0] >>  0) & 0x3FF);
+	dir.y = get_int10_9((params[0] >> 10) & 0x3FF);
+	dir.z = get_int10_9((params[0] >> 20) & 0x3FF);
+	mtx_mult_vec3(&dir, &gpu->g3d.dir_matrix, &dir);
+	uint16_t dx = dir.x;
+	uint16_t dy = dir.y;
+	uint16_t dz = dir.z;
+	if (dir.x < 0)
+		dx |= (1 << 12);
+	dx = (dx & 0xFFF) | (((dx >> 12) & 1) * 0xF000);
+	if (dir.y < 0)
+		dy |= (1 << 12);
+	dy = (dy & 0xFFF) | (((dy >> 12) & 1) * 0xF000);
+	if (dir.z < 0)
+		dz |= (1 << 12);
+	dz = (dz & 0xFFF) | (((dz >> 12) & 1) * 0xF000);
+	mem_arm9_set_reg16(gpu->mem, MEM_ARM9_REG_VEC_RESULT + 0, dx);
+	mem_arm9_set_reg16(gpu->mem, MEM_ARM9_REG_VEC_RESULT + 2, dy);
+	mem_arm9_set_reg16(gpu->mem, MEM_ARM9_REG_VEC_RESULT + 4, dz);
+}
+
 void gpu_gx_cmd(struct gpu *gpu, uint8_t cmd, uint32_t *params)
 {
 	if (gpu->g3d.swap_buffers)
@@ -3585,6 +3634,15 @@ void gpu_gx_cmd(struct gpu *gpu, uint8_t cmd, uint32_t *params)
 			break;
 		case GX_CMD_VIEWPORT:
 			cmd_viewport(gpu, params);
+			break;
+		case GX_CMD_BOX_TEST:
+			cmd_box_test(gpu, params);
+			break;
+		case GX_CMD_POS_TEST:
+			cmd_pos_test(gpu, params);
+			break;
+		case GX_CMD_VEC_TEST:
+			cmd_vec_test(gpu, params);
 			break;
 		default:
 			printf("[GX] unhandled gx cmd 0x%" PRIx8 "\n", cmd);

@@ -115,7 +115,7 @@ struct mem *mem_new(struct nds *nds, struct mbc *mbc)
 	mem_arm9_set_reg32(mem, MEM_ARM7_REG_ROMCTRL, 1 << 23);
 	mem_arm7_set_reg32(mem, MEM_ARM7_REG_SOUNDBIAS, 0x200);
 	mem_arm7_set_reg32(mem, MEM_ARM7_REG_POWCNT2, 1);
-	mem_arm9_set_reg32(mem, MEM_ARM9_REG_GXSTAT, (1 << 25) | (1 << 1));
+	mem_arm9_set_reg32(mem, MEM_ARM9_REG_GXSTAT, (1 << 25));
 	mem->spi_powerman.regs[0x0] = 0x0C; /* enable backlight */
 	mem->spi_powerman.regs[0x4] = 0x42; /* high brightness */
 	update_vram_maps(mem);
@@ -3966,6 +3966,28 @@ static uint8_t get_arm9_reg8(struct mem *mem, uint32_t addr)
 		case MEM_ARM9_REG_DISPCAPCNT + 1:
 		case MEM_ARM9_REG_DISPCAPCNT + 2:
 		case MEM_ARM9_REG_DISPCAPCNT + 3:
+		case MEM_ARM9_REG_VEC_RESULT:
+		case MEM_ARM9_REG_VEC_RESULT + 1:
+		case MEM_ARM9_REG_VEC_RESULT + 2:
+		case MEM_ARM9_REG_VEC_RESULT + 3:
+		case MEM_ARM9_REG_VEC_RESULT + 4:
+		case MEM_ARM9_REG_VEC_RESULT + 5:
+		case MEM_ARM9_REG_POS_RESULT:
+		case MEM_ARM9_REG_POS_RESULT + 1:
+		case MEM_ARM9_REG_POS_RESULT + 2:
+		case MEM_ARM9_REG_POS_RESULT + 3:
+		case MEM_ARM9_REG_POS_RESULT + 4:
+		case MEM_ARM9_REG_POS_RESULT + 5:
+		case MEM_ARM9_REG_POS_RESULT + 6:
+		case MEM_ARM9_REG_POS_RESULT + 7:
+		case MEM_ARM9_REG_POS_RESULT + 8:
+		case MEM_ARM9_REG_POS_RESULT + 9:
+		case MEM_ARM9_REG_POS_RESULT + 10:
+		case MEM_ARM9_REG_POS_RESULT + 11:
+		case MEM_ARM9_REG_POS_RESULT + 12:
+		case MEM_ARM9_REG_POS_RESULT + 13:
+		case MEM_ARM9_REG_POS_RESULT + 14:
+		case MEM_ARM9_REG_POS_RESULT + 15:
 			return mem->arm9_regs[addr];
 		case MEM_ARM9_REG_DIV_RESULT:
 		case MEM_ARM9_REG_DIV_RESULT + 1:
