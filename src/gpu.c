@@ -1976,6 +1976,28 @@ static void draw_line(struct gpu *gpu, struct polygon *polygon, int32_t y,
 	int32_t v1[8];
 	v0[0] = vl[0] + dl[0] * (int64_t)(y - yl0) / (yl1 - yl0);
 	v1[0] = vr[0] + dr[0] * (int64_t)(y - yr0) / (yr1 - yr0);
+	if (v0[0] > v1[0])
+	{
+		{
+			int32_t *tmp = vl;
+			vl = vr;
+			vr = tmp;
+			tmp = dl;
+			dl = dr;
+			dr = tmp;
+		}
+		{
+			int32_t tmp = yl0;
+			yl0 = yr0;
+			yr0 = tmp;
+			tmp = yl1;
+			yl1 = yr1;
+			yr1 = tmp;
+			tmp = v0[0];
+			v0[0] = v1[0];
+			v1[0] = tmp;
+		}
+	}
 	if (v1[0] / (1 << 4) < gpu->g3d.viewport_left
 	 || v0[0] / (1 << 4) > gpu->g3d.viewport_right)
 		return;
@@ -2117,15 +2139,6 @@ static void draw_top_flat(struct gpu *gpu, struct polygon *polygon,
 	       I12_PRT(v3->screen_y * (1 << 8)),
 	       I12_PRT(v3->position.z));
 #endif
-
-	/* XXX by slope, not abs x */
-	if (v1->screen_x > v2->screen_x)
-	{
-		struct vertex *tmp = v1;
-		v1 = v2;
-		v2 = tmp;
-	}
-
 	draw_span(gpu, polygon, v1, v3, v2, v3, y0, y1);
 }
 
@@ -2149,14 +2162,6 @@ static void draw_bot_flat(struct gpu *gpu, struct polygon *polygon,
 	       I12_PRT(v3->position.z));
 #endif
 
-	/* XXX by slope, not abs x */
-	if (v2->screen_x > v3->screen_x)
-	{
-		struct vertex *tmp = v2;
-		v2 = v3;
-		v3 = tmp;
-	}
-
 	draw_span(gpu, polygon, v1, v2, v1, v3, y0, y1);
 }
 
@@ -2164,31 +2169,8 @@ static void draw_not_flat(struct gpu *gpu, struct polygon *polygon,
                           struct vertex *v1, struct vertex *v2,
                           struct vertex *v3)
 {
-	struct vertex new;
-	int64_t num;
-	int64_t dem;
-	int64_t rnum;
-
-	num = (v2->screen_y - v1->screen_y) * (int64_t)v1->position.w;
-	dem = num + (v3->screen_y - v2->screen_y) * (int64_t)v3->position.w;
-	rnum = dem - num;
-	new.position.x = (v1->position.x * rnum + v3->position.x * num) / dem;
-	new.position.y = (v1->position.y * rnum + v3->position.y * num) / dem;
-	new.position.z = (v1->position.z * rnum + v3->position.z * num) / dem;
-	new.position.w = (v1->position.w * rnum + v3->position.w * num) / dem;
-	new.color.x = (v1->color.x * rnum + v3->color.x * num) / dem;
-	new.color.y = (v1->color.y * rnum + v3->color.y * num) / dem;
-	new.color.z = (v1->color.z * rnum + v3->color.z * num) / dem;
-	new.texcoord.x = (v1->texcoord.x * rnum + v3->texcoord.x * num) / dem;
-	new.texcoord.y = (v1->texcoord.y * rnum + v3->texcoord.y * num) / dem;
-	num = v2->screen_y - v1->screen_y;
-	dem = v3->screen_y - v1->screen_y;
-	rnum = dem - num;
-	new.screen_x = (v1->screen_x * rnum + v3->screen_x * num) / dem;
-	new.screen_y = v2->screen_y;
-	/* XXX remove new */
-	draw_bot_flat(gpu, polygon, v1, v2, &new, v1->screen_y, v2->screen_y);
-	draw_top_flat(gpu, polygon, v2, &new, v3, v2->screen_y, v3->screen_y);
+	draw_bot_flat(gpu, polygon, v1, v2, v3, v1->screen_y, v2->screen_y);
+	draw_top_flat(gpu, polygon, v2, v1, v3, v2->screen_y, v3->screen_y);
 }
 
 static void sort_vertices(struct vertex **v1, struct vertex **v2,
