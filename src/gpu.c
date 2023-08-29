@@ -3466,15 +3466,18 @@ static void cmd_viewport(struct gpu *gpu, uint32_t *params)
 
 static void cmd_box_test(struct gpu *gpu, uint32_t *params)
 {
-#if CMD_DEBUG ==1
+#if CMD_DEBUG == 1
 	printf("[GX] BOX_TEST 0x%08" PRIx32 " 0x%08" PRIx32 " 0x%08" PRIx32 "\n",
 	       params[0], params[1], params[2]);
 #endif
+	/* XXX */
+	mem_arm9_set_reg32(gpu->mem, MEM_ARM9_REG_GXSTAT,
+	                   mem_arm9_get_reg32(gpu->mem, MEM_ARM9_REG_GXSTAT) | (1 << 1));
 }
 
 static void cmd_pos_test(struct gpu *gpu, uint32_t *params)
 {
-#if CMD_DEBUG ==1
+#if CMD_DEBUG == 1
 	printf("[GX] POS_TEST 0x%08" PRIx32 " 0x%08" PRIx32 "\n",
 	       params[0], params[1]);
 #endif
@@ -3484,6 +3487,10 @@ static void cmd_pos_test(struct gpu *gpu, uint32_t *params)
 	pos.z = get_int16_12((params[1] >>  0) & 0xFFFF);
 	pos.w = 1;
 	mtx_mult_vec4(&pos, &gpu->g3d.clip_matrix, &pos);
+#if 0
+	printf("pos: {" I12_FMT ", " I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
+	       I12_PRT(pos.x), I12_PRT(pos.y), I12_PRT(pos.z), I12_PRT(pos.w));
+#endif
 	mem_arm9_set_reg32(gpu->mem, MEM_ARM9_REG_POS_RESULT + 0x0, pos.x);
 	mem_arm9_set_reg32(gpu->mem, MEM_ARM9_REG_POS_RESULT + 0x4, pos.y);
 	mem_arm9_set_reg32(gpu->mem, MEM_ARM9_REG_POS_RESULT + 0x8, pos.z);
@@ -3492,7 +3499,7 @@ static void cmd_pos_test(struct gpu *gpu, uint32_t *params)
 
 static void cmd_vec_test(struct gpu *gpu, uint32_t *params)
 {
-#if CMD_DEBUG ==1
+#if CMD_DEBUG == 1
 	printf("[GX] VEC_TEST 0x%08" PRIx32 "\n", params[0]);
 #endif
 	struct vec3 dir;
@@ -3512,6 +3519,10 @@ static void cmd_vec_test(struct gpu *gpu, uint32_t *params)
 	if (dir.z < 0)
 		dz |= (1 << 12);
 	dz = (dz & 0xFFF) | (((dz >> 12) & 1) * 0xF000);
+#if 0
+	printf("dir: {%04" PRIx16 ", %04" PRIX16 ", %04" PRIx16 "}\n",
+	       dx, dy, dz);
+#endif
 	mem_arm9_set_reg16(gpu->mem, MEM_ARM9_REG_VEC_RESULT + 0, dx);
 	mem_arm9_set_reg16(gpu->mem, MEM_ARM9_REG_VEC_RESULT + 2, dy);
 	mem_arm9_set_reg16(gpu->mem, MEM_ARM9_REG_VEC_RESULT + 4, dz);

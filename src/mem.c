@@ -128,6 +128,10 @@ struct mem *mem_new(struct nds *nds, struct mbc *mbc)
 	}
 	mbc->backup = &mem->sram[0x40000];
 	memset(mbc->backup, 0xFF, mbc->backup_size);
+	mem_set_wifi_reg8(mem, MEM_ARM7_REG_W_ID, 0x40);
+	mem_set_wifi_reg8(mem, MEM_ARM7_REG_W_ID + 1, 0xC3); /* NDS-lite; 0x14 for NDS */
+	mem_set_wifi_reg8(mem, MEM_ARM7_REG_W_RF_STATUS, 9); /* idle */
+	mem_set_wifi_reg8(mem, MEM_ARM7_REG_W_POWERSTATE + 1, 2); /* disabled */
 	return mem;
 }
 
@@ -468,6 +472,7 @@ static void update_gxfifo_irq(struct mem *mem)
 	}
 	cpu_update_irq_state(mem->nds->arm9);
 }
+
 void mem_arm9_irq(struct mem *mem, uint32_t f)
 {
 	mem_arm9_set_reg32(mem, MEM_ARM9_REG_IF, mem_arm9_get_reg32(mem, MEM_ARM9_REG_IF) | f);
@@ -1701,6 +1706,207 @@ static void set_arm7_reg8(struct mem *mem, uint32_t addr, uint8_t v)
 		case MEM_ARM7_REG_ROMSEED1_H:
 		case MEM_ARM7_REG_ROMSEED1_H + 1:
 			return;
+		case MEM_ARM7_REG_W_BB_CNT:
+		case MEM_ARM7_REG_W_BB_WRITE:
+		case MEM_ARM7_REG_W_BB_WRITE + 1:
+		case MEM_ARM7_REG_W_BB_MODE:
+		case MEM_ARM7_REG_W_BB_MODE + 1:
+		case MEM_ARM7_REG_W_BB_POWER:
+		case MEM_ARM7_REG_W_BB_POWER + 1:
+		case MEM_ARM7_REG_W_MACADDR_0:
+		case MEM_ARM7_REG_W_MACADDR_0 + 1:
+		case MEM_ARM7_REG_W_MACADDR_1:
+		case MEM_ARM7_REG_W_MACADDR_1 + 1:
+		case MEM_ARM7_REG_W_MACADDR_2:
+		case MEM_ARM7_REG_W_MACADDR_2 + 1:
+		case MEM_ARM7_REG_W_BSSID_0:
+		case MEM_ARM7_REG_W_BSSID_0 + 1:
+		case MEM_ARM7_REG_W_BSSID_1:
+		case MEM_ARM7_REG_W_BSSID_1 + 1:
+		case MEM_ARM7_REG_W_BSSID_2:
+		case MEM_ARM7_REG_W_BSSID_2 + 1:
+		case MEM_ARM7_REG_W_TX_RETRYLIMIT:
+		case MEM_ARM7_REG_W_TX_RETRYLIMIT + 1:
+		case MEM_ARM7_REG_W_CONFIG_140:
+		case MEM_ARM7_REG_W_CONFIG_140 + 1:
+		case MEM_ARM7_REG_W_CONFIG_142:
+		case MEM_ARM7_REG_W_CONFIG_142 + 1:
+		case MEM_ARM7_REG_W_CONFIG_144:
+		case MEM_ARM7_REG_W_CONFIG_146:
+		case MEM_ARM7_REG_W_CONFIG_148:
+		case MEM_ARM7_REG_W_CONFIG_14A:
+		case MEM_ARM7_REG_W_CONFIG_14C:
+		case MEM_ARM7_REG_W_CONFIG_14C + 1:
+		case MEM_ARM7_REG_W_CONFIG_150 + 1:
+		case MEM_ARM7_REG_W_BEACONINT:
+		case MEM_ARM7_REG_W_RF_DATA1:
+		case MEM_ARM7_REG_W_RF_DATA1 + 1:
+		case MEM_ARM7_REG_W_RF_DATA2:
+		case MEM_ARM7_REG_W_RF_DATA2 + 1:
+		case MEM_ARM7_REG_W_AID_FULL:
+		case MEM_ARM7_REG_W_RXBUF_BEGIN:
+		case MEM_ARM7_REG_W_RXBUF_BEGIN + 1:
+		case MEM_ARM7_REG_W_RXBUF_END:
+		case MEM_ARM7_REG_W_RXBUF_END + 1:
+		case MEM_ARM7_REG_W_RXBUF_WR_ADDR:
+		case MEM_ARM7_REG_W_RXBUF_READCSR:
+		case MEM_ARM7_REG_W_RXBUF_COUNT:
+		case MEM_ARM7_REG_W_CONFIG_120:
+		case MEM_ARM7_REG_W_CONFIG_122:
+		case MEM_ARM7_REG_W_CONFIG_122 + 1:
+		case MEM_ARM7_REG_W_CONFIG_124:
+		case MEM_ARM7_REG_W_CONFIG_124 + 1:
+		case MEM_ARM7_REG_W_CONFIG_128:
+		case MEM_ARM7_REG_W_CONFIG_128 + 1:
+		case MEM_ARM7_REG_W_CONFIG_130:
+		case MEM_ARM7_REG_W_CONFIG_132:
+		case MEM_ARM7_REG_W_POST_BEACON:
+		case MEM_ARM7_REG_W_POST_BEACON + 1:
+		case MEM_ARM7_REG_W_RXBUF_GAPDISP:
+		case MEM_ARM7_REG_W_TXBUF_COUNT:
+		case MEM_ARM7_REG_W_MODE_RST:
+		case MEM_ARM7_REG_W_TXSTATCNT:
+		case MEM_ARM7_REG_W_TXSTATCNT + 1:
+		case MEM_ARM7_REG_W_IE:
+		case MEM_ARM7_REG_W_IE + 1:
+		case MEM_ARM7_REG_W_X_00A:
+		case MEM_ARM7_REG_W_X_00A + 1:
+			mem_set_wifi_reg8(mem, addr, v);
+			return;
+		case MEM_ARM7_REG_W_MODE_WEP:
+			mem_set_wifi_reg8(mem, addr, v & 0x7F);
+			return;
+		case MEM_ARM7_REG_W_MODE_WEP + 1:
+			return;
+		case MEM_ARM7_REG_W_BB_CNT + 1:
+			switch (v & 0xF0)
+			{
+				case 0x50:
+#if 1
+					printf("WIFI BB write [%02" PRIx8 "] = 0x%02" PRIx8 "\n",
+					       mem_get_wifi_reg8(mem, MEM_ARM7_REG_W_BB_CNT),
+					       mem_get_wifi_reg8(mem, MEM_ARM7_REG_W_BB_WRITE));
+#endif
+					mem->wifi.bb_regs[mem_get_wifi_reg8(mem, MEM_ARM7_REG_W_BB_CNT)] = mem_get_wifi_reg8(mem, MEM_ARM7_REG_W_BB_WRITE);
+					break;
+				case 0x60:
+					mem_set_wifi_reg8(mem, MEM_ARM7_REG_W_BB_READ, mem->wifi.bb_regs[mem_get_wifi_reg8(mem, MEM_ARM7_REG_W_BB_CNT)]);
+#if 1
+					printf("WIFI BB read [%02" PRIx8 "] = 0x%02" PRIx8 "\n",
+					       mem_get_wifi_reg8(mem, MEM_ARM7_REG_W_BB_CNT),
+					       mem_get_wifi_reg8(mem, MEM_ARM7_REG_W_BB_READ));
+#endif
+					break;
+				default:
+					printf("WIFI unknown BB dir: 0x%02" PRIx8 "\n", v);
+					break;
+			}
+			return;
+		case MEM_ARM7_REG_W_CONFIG_144 + 1:
+		case MEM_ARM7_REG_W_CONFIG_146 + 1:
+		case MEM_ARM7_REG_W_CONFIG_148 + 1:
+		case MEM_ARM7_REG_W_CONFIG_14A + 1:
+		case MEM_ARM7_REG_W_POWER_US + 1:
+		case MEM_ARM7_REG_W_TXREQ_SET + 1:
+		case MEM_ARM7_REG_W_POWER_TX + 1:
+		case MEM_ARM7_REG_W_PREAMBLE + 1:
+			return;
+		case MEM_ARM7_REG_W_CONFIG_150:
+			mem_set_wifi_reg8(mem, addr, v & 0x3F);
+			return;
+		case MEM_ARM7_REG_W_CONFIG_154:
+			mem_set_wifi_reg8(mem, addr, v & 0x7F);
+			return;
+		case MEM_ARM7_REG_W_CONFIG_154 + 1:
+			mem_set_wifi_reg8(mem, addr, v & 0x7A);
+			return;
+		case MEM_ARM7_REG_W_POWER_US:
+			mem_set_wifi_reg8(mem, addr, v & 0x3);
+			return;
+		case MEM_ARM7_REG_W_RF_CNT:
+			mem_set_wifi_reg8(mem, addr, v & 0x3F);
+			return;
+		case MEM_ARM7_REG_W_RF_CNT + 1:
+			mem_set_wifi_reg8(mem, addr, v & 0x41);
+			return;
+		case MEM_ARM7_REG_W_BEACONINT + 1:
+			mem_set_wifi_reg8(mem, addr, v & 0x3);
+			return;
+		case MEM_ARM7_REG_W_AID_FULL + 1:
+			mem_set_wifi_reg8(mem, addr, v & 0x7);
+			return;
+		case MEM_ARM7_REG_W_RXBUF_WR_ADDR + 1:
+			mem_set_wifi_reg8(mem, addr, v & 0xF);
+			return;
+		case MEM_ARM7_REG_W_RXBUF_RD_ADDR:
+			mem_set_wifi_reg8(mem, addr, v & 0xFE);
+			return;
+		case MEM_ARM7_REG_W_RXBUF_RD_ADDR + 1:
+			mem_set_wifi_reg8(mem, addr, v & 0x1F);
+			return;
+		case MEM_ARM7_REG_W_RXBUF_READCSR + 1:
+			mem_set_wifi_reg8(mem, addr, v & 0xF);
+			return;
+		case MEM_ARM7_REG_W_RXBUF_COUNT + 1:
+			mem_set_wifi_reg8(mem, addr, v & 0xF);
+			return;
+		case MEM_ARM7_REG_W_RXBUF_GAP:
+			mem_set_wifi_reg8(mem, addr, v & 0xFE);
+			return;
+		case MEM_ARM7_REG_W_RXBUF_GAP + 1:
+			mem_set_wifi_reg8(mem, addr, v & 0x1F);
+			return;
+		case MEM_ARM7_REG_W_CONFIG_120 + 1:
+			mem_set_wifi_reg8(mem, addr, v & 0x81);
+			return;
+		case MEM_ARM7_REG_W_CONFIG_130 + 1:
+			mem_set_wifi_reg8(mem, addr, v & 0xF);
+			return;
+		case MEM_ARM7_REG_W_CONFIG_132 + 1:
+			mem_set_wifi_reg8(mem, addr, v & 0x8F);
+			return;
+		case MEM_ARM7_REG_W_RXBUF_GAPDISP + 1:
+			mem_set_wifi_reg8(mem, addr, v & 0xF);
+			return;
+		case MEM_ARM7_REG_W_TXBUF_WR_ADDR:
+			mem_set_wifi_reg8(mem, addr, v & 0xFE);
+			return;
+		case MEM_ARM7_REG_W_TXBUF_WR_ADDR + 1:
+			mem_set_wifi_reg8(mem, addr, v & 0x1F);
+			return;
+		case MEM_ARM7_REG_W_TXBUF_COUNT + 1:
+			mem_set_wifi_reg8(mem, addr, v & 0xF);
+			return;
+		case MEM_ARM7_REG_W_TXBUF_GAP:
+			mem_set_wifi_reg8(mem, addr, v & 0xFE);
+			return;
+		case MEM_ARM7_REG_W_TXBUF_GAP + 1:
+			mem_set_wifi_reg8(mem, addr, v & 0x1F);
+			return;
+		case MEM_ARM7_REG_W_TXREQ_SET:
+			mem_set_wifi_reg8(mem, MEM_ARM7_REG_W_TXREQ_READ, mem_get_wifi_reg8(mem, MEM_ARM7_REG_W_TXREQ_READ) | (v & 0xF));
+			return;
+		case MEM_ARM7_REG_W_POWER_TX:
+			mem_set_wifi_reg8(mem, addr, v & 0x7);
+			return;
+		case MEM_ARM7_REG_W_MODE_RST + 1:
+			mem_set_wifi_reg8(mem, addr, v & 0x9F);
+			return;
+		case MEM_ARM7_REG_W_IF:
+			mem_set_wifi_reg8(mem, addr, mem_get_wifi_reg8(mem, addr) & ~v);
+			return;
+		case MEM_ARM7_REG_W_IF + 1:
+			mem_set_wifi_reg8(mem, addr, mem_get_wifi_reg8(mem, addr) & ~v);
+			return;
+		case MEM_ARM7_REG_W_PREAMBLE:
+			mem_set_wifi_reg8(mem, addr, v & 0x3);
+			return;
+		case MEM_ARM7_REG_W_POWERFORCE:
+			mem_set_wifi_reg8(mem, addr, v & 0x1);
+			return;
+		case MEM_ARM7_REG_W_POWERFORCE + 1:
+			mem_set_wifi_reg8(mem, addr, v & 0x80);
+			return;
 		case 0xE0:  /* silent these. they are memset(0) */
 		case 0xE1:
 		case 0xE2:
@@ -1757,8 +1963,19 @@ static void set_arm7_reg8(struct mem *mem, uint32_t addr, uint8_t v)
 		case 0x12D:
 		case 0x12E:
 		case 0x12F:
+		case 0x50A:
+		case 0x50B:
+		case 0x50C:
+		case 0x50D:
+		case 0x50E:
+		case 0x50F:
 			return;
 		default:
+			if (addr >= 0x804000 && addr < 0x806000)
+			{
+				mem->wifi.xbuf[addr - 0x804000] = v;
+				return;
+			}
 			printf("[ARM7] [%08" PRIx32 "] unknown set register %08" PRIx32 " = %02" PRIx8 "\n",
 			       cpu_get_reg(mem->nds->arm7, CPU_REG_PC), addr, v);
 			break;
@@ -2137,7 +2354,123 @@ static uint8_t get_arm7_reg8(struct mem *mem, uint32_t addr)
 			if (mem->dscard_dma_count)  /* nasty hack: fake non-availibility if dma is running */
 				return mem->arm9_regs[addr] & ~(1 << 7);
 			return mem->arm9_regs[addr];
+		case MEM_ARM7_REG_W_ID:
+		case MEM_ARM7_REG_W_ID + 1:
+		case MEM_ARM7_REG_W_BB_READ:
+		case MEM_ARM7_REG_W_BB_READ + 1:
+		case MEM_ARM7_REG_W_BB_BUSY:
+		case MEM_ARM7_REG_W_BB_BUSY + 1:
+		case MEM_ARM7_REG_W_BB_MODE:
+		case MEM_ARM7_REG_W_BB_MODE + 1:
+		case MEM_ARM7_REG_W_BB_POWER:
+		case MEM_ARM7_REG_W_BB_POWER + 1:
+		case MEM_ARM7_REG_W_MODE_WEP:
+		case MEM_ARM7_REG_W_MODE_WEP + 1:
+		case MEM_ARM7_REG_W_MACADDR_0:
+		case MEM_ARM7_REG_W_MACADDR_0 + 1:
+		case MEM_ARM7_REG_W_MACADDR_1:
+		case MEM_ARM7_REG_W_MACADDR_1 + 1:
+		case MEM_ARM7_REG_W_MACADDR_2:
+		case MEM_ARM7_REG_W_MACADDR_2 + 1:
+		case MEM_ARM7_REG_W_BSSID_0:
+		case MEM_ARM7_REG_W_BSSID_0 + 1:
+		case MEM_ARM7_REG_W_BSSID_1:
+		case MEM_ARM7_REG_W_BSSID_1 + 1:
+		case MEM_ARM7_REG_W_BSSID_2:
+		case MEM_ARM7_REG_W_BSSID_2 + 1:
+		case MEM_ARM7_REG_W_TX_RETRYLIMIT:
+		case MEM_ARM7_REG_W_TX_RETRYLIMIT + 1:
+		case MEM_ARM7_REG_W_CONFIG_140:
+		case MEM_ARM7_REG_W_CONFIG_140 + 1:
+		case MEM_ARM7_REG_W_CONFIG_142:
+		case MEM_ARM7_REG_W_CONFIG_142 + 1:
+		case MEM_ARM7_REG_W_CONFIG_144:
+		case MEM_ARM7_REG_W_CONFIG_144 + 1:
+		case MEM_ARM7_REG_W_CONFIG_146:
+		case MEM_ARM7_REG_W_CONFIG_146 + 1:
+		case MEM_ARM7_REG_W_CONFIG_148:
+		case MEM_ARM7_REG_W_CONFIG_148 + 1:
+		case MEM_ARM7_REG_W_CONFIG_14A:
+		case MEM_ARM7_REG_W_CONFIG_14A + 1:
+		case MEM_ARM7_REG_W_CONFIG_14C:
+		case MEM_ARM7_REG_W_CONFIG_14C + 1:
+		case MEM_ARM7_REG_W_CONFIG_150:
+		case MEM_ARM7_REG_W_CONFIG_150 + 1:
+		case MEM_ARM7_REG_W_CONFIG_154:
+		case MEM_ARM7_REG_W_CONFIG_154 + 1:
+		case MEM_ARM7_REG_W_POWER_US:
+		case MEM_ARM7_REG_W_POWER_US + 1:
+		case MEM_ARM7_REG_W_RF_CNT:
+		case MEM_ARM7_REG_W_RF_CNT + 1:
+		case MEM_ARM7_REG_W_BEACONINT:
+		case MEM_ARM7_REG_W_BEACONINT + 1:
+		case MEM_ARM7_REG_W_RF_DATA1:
+		case MEM_ARM7_REG_W_RF_DATA1 + 1:
+		case MEM_ARM7_REG_W_RF_DATA2:
+		case MEM_ARM7_REG_W_RF_DATA2 + 1:
+		case MEM_ARM7_REG_W_AID_FULL:
+		case MEM_ARM7_REG_W_AID_FULL + 1:
+		case MEM_ARM7_REG_W_RXBUF_BEGIN:
+		case MEM_ARM7_REG_W_RXBUF_BEGIN + 1:
+		case MEM_ARM7_REG_W_RXBUF_END:
+		case MEM_ARM7_REG_W_RXBUF_END + 1:
+		case MEM_ARM7_REG_W_RXBUF_WR_ADDR:
+		case MEM_ARM7_REG_W_RXBUF_WR_ADDR + 1:
+		case MEM_ARM7_REG_W_RXBUF_RD_ADDR:
+		case MEM_ARM7_REG_W_RXBUF_RD_ADDR + 1:
+		case MEM_ARM7_REG_W_RXBUF_READCSR:
+		case MEM_ARM7_REG_W_RXBUF_READCSR + 1:
+		case MEM_ARM7_REG_W_RXBUF_COUNT:
+		case MEM_ARM7_REG_W_RXBUF_COUNT + 1:
+		case MEM_ARM7_REG_W_RXBUF_GAP:
+		case MEM_ARM7_REG_W_RXBUF_GAP + 1:
+		case MEM_ARM7_REG_W_CONFIG_120:
+		case MEM_ARM7_REG_W_CONFIG_120 + 1:
+		case MEM_ARM7_REG_W_CONFIG_122:
+		case MEM_ARM7_REG_W_CONFIG_122 + 1:
+		case MEM_ARM7_REG_W_CONFIG_124:
+		case MEM_ARM7_REG_W_CONFIG_124 + 1:
+		case MEM_ARM7_REG_W_CONFIG_128:
+		case MEM_ARM7_REG_W_CONFIG_128 + 1:
+		case MEM_ARM7_REG_W_CONFIG_130:
+		case MEM_ARM7_REG_W_CONFIG_130 + 1:
+		case MEM_ARM7_REG_W_CONFIG_132:
+		case MEM_ARM7_REG_W_CONFIG_132 + 1:
+		case MEM_ARM7_REG_W_POST_BEACON:
+		case MEM_ARM7_REG_W_POST_BEACON + 1:
+		case MEM_ARM7_REG_W_RXBUF_GAPDISP:
+		case MEM_ARM7_REG_W_RXBUF_GAPDISP + 1:
+		case MEM_ARM7_REG_W_TXBUF_WR_ADDR:
+		case MEM_ARM7_REG_W_TXBUF_WR_ADDR + 1:
+		case MEM_ARM7_REG_W_TXBUF_COUNT:
+		case MEM_ARM7_REG_W_TXBUF_COUNT + 1:
+		case MEM_ARM7_REG_W_TXBUF_GAP:
+		case MEM_ARM7_REG_W_TXBUF_GAP + 1:
+		case MEM_ARM7_REG_W_POWER_TX:
+		case MEM_ARM7_REG_W_POWER_TX + 1:
+		case MEM_ARM7_REG_W_TXSTATCNT:
+		case MEM_ARM7_REG_W_TXSTATCNT + 1:
+		case MEM_ARM7_REG_W_IE:
+		case MEM_ARM7_REG_W_IE + 1:
+		case MEM_ARM7_REG_W_IF:
+		case MEM_ARM7_REG_W_IF + 1:
+		case MEM_ARM7_REG_W_X_00A:
+		case MEM_ARM7_REG_W_X_00A + 1:
+		case MEM_ARM7_REG_W_POWERSTATE:
+		case MEM_ARM7_REG_W_POWERSTATE + 1:
+		case MEM_ARM7_REG_W_PREAMBLE:
+		case MEM_ARM7_REG_W_PREAMBLE + 1:
+		case MEM_ARM7_REG_W_POWERFORCE:
+		case MEM_ARM7_REG_W_POWERFORCE + 1:
+		case MEM_ARM7_REG_W_RF_STATUS:
+		case MEM_ARM7_REG_W_RF_STATUS + 1:
+			return mem_get_wifi_reg8(mem, addr);
+		case MEM_ARM7_REG_W_RF_BUSY:
+		case MEM_ARM7_REG_W_RF_BUSY + 1:
+			return 0; /* XXX */
 		default:
+			if (addr >= 0x804000 && addr < 0x806000)
+				return mem->wifi.xbuf[addr - 0x804000];
 			printf("[ARM7] [%08" PRIx32 "] unknown get register %08" PRIx32 "\n",
 			       cpu_get_reg(mem->nds->arm7, CPU_REG_PC), addr);
 			break;

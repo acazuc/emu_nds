@@ -547,6 +547,10 @@ void mbc_spi_write(struct mbc *mbc, uint8_t v)
 					{
 						mbc->spi.posb = 1;
 						mbc->spi.addr = v;
+#if 0
+						printf("MBC SPI read from 0x%02" PRIx32 "\n",
+						       mbc->spi.addr);
+#endif
 						break;
 					}
 					if (mbc->spi.addr < mbc->backup_size)
@@ -569,6 +573,11 @@ void mbc_spi_write(struct mbc *mbc, uint8_t v)
 						mbc->spi.posb++;
 						mbc->spi.addr <<= 8;
 						mbc->spi.addr += v;
+#if 0
+						if (mbc->spi.posb == 2)
+							printf("MBC SPI read from 0x%04" PRIx32 "\n",
+							       mbc->spi.addr);
+#endif
 						break;
 					}
 					if (mbc->spi.addr < mbc->backup_size)
@@ -592,6 +601,11 @@ void mbc_spi_write(struct mbc *mbc, uint8_t v)
 						mbc->spi.posb++;
 						mbc->spi.addr <<= 8;
 						mbc->spi.addr += v;
+#if 0
+						if (mbc->spi.posb == 3)
+							printf("MBC SPI read from 0x%06" PRIx32 "\n",
+							       mbc->spi.addr);
+#endif
 						break;
 					}
 					if (mbc->spi.addr < mbc->backup_size)
@@ -618,6 +632,10 @@ void mbc_spi_write(struct mbc *mbc, uint8_t v)
 					{
 						mbc->spi.posb = 1;
 						mbc->spi.addr = v;
+#if 0
+						printf("MBC SPI read from 0x%02" PRIx32 "\n",
+						       mbc->spi.addr);
+#endif
 						break;
 					}
 					if (mbc->spi.addr + 0x100 < mbc->backup_size)
@@ -661,6 +679,10 @@ void mbc_spi_write(struct mbc *mbc, uint8_t v)
 					{
 						mbc->spi.posb = 1;
 						mbc->spi.addr = v;
+#if 0
+						printf("MBC SPI write to 0x%02" PRIx32 "\n",
+						       mbc->spi.addr);
+#endif
 						break;
 					}
 					if (mbc->spi.addr + 0x100 < mbc->backup_size)
@@ -690,6 +712,11 @@ void mbc_spi_write(struct mbc *mbc, uint8_t v)
 						mbc->spi.posb++;
 						mbc->spi.addr <<= 8;
 						mbc->spi.addr += v;
+#if 0
+						if (mbc->spi.posb == 3)
+							printf("MBC SPI write to 0x%06" PRIx32 "\n",
+							       mbc->spi.addr);
+#endif
 						break;
 					}
 					if (mbc->spi.addr < mbc->backup_size)
@@ -721,6 +748,10 @@ void mbc_spi_write(struct mbc *mbc, uint8_t v)
 					{
 						mbc->spi.posb = 1;
 						mbc->spi.addr = v;
+#if 0
+						printf("MBC SPI write to 0x%02" PRIx32 "\n",
+						       mbc->spi.addr);
+#endif
 						break;
 					}
 					if (mbc->spi.addr < mbc->backup_size)
@@ -743,6 +774,11 @@ void mbc_spi_write(struct mbc *mbc, uint8_t v)
 						mbc->spi.posb++;
 						mbc->spi.addr <<= 8;
 						mbc->spi.addr += v;
+#if 0
+						if (mbc->spi.posb == 2)
+							printf("MBC SPI write to 0x%04" PRIx32 "\n",
+							       mbc->spi.addr);
+#endif
 						break;
 					}
 					if (mbc->spi.addr < mbc->backup_size)
@@ -762,6 +798,11 @@ void mbc_spi_write(struct mbc *mbc, uint8_t v)
 						mbc->spi.posb++;
 						mbc->spi.addr <<= 8;
 						mbc->spi.addr += v;
+#if 0
+						if (mbc->spi.posb == 3)
+							printf("MBC SPI write to 0x%06" PRIx32 "\n",
+							       mbc->spi.addr);
+#endif
 						break;
 					}
 					if (mbc->spi.addr < mbc->backup_size)
