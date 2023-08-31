@@ -2071,7 +2071,7 @@ static void draw_span(struct gpu *gpu, struct polygon *polygon,
                       struct vertex *vr0, struct vertex *vr1,
                       int32_t y0, int32_t y1)
 {
-#if 1
+#if 0
 	if (vl0->position.w <= 0 || vl1->position.w <= 0
 	 || vr0->position.w <= 0 || vr1->position.w <= 0)
 		return;
@@ -2118,59 +2118,6 @@ static void draw_span(struct gpu *gpu, struct polygon *polygon,
 		          vr0->screen_y, vr1->screen_y, vl, vr, dl, dr);
 	draw_line(gpu, polygon, maxy, vl0->screen_y, vl1->screen_y,
 	          vr0->screen_y, vr1->screen_y, vl, vr, dl, dr);
-}
-
-static void draw_top_flat(struct gpu *gpu, struct polygon *polygon,
-                          struct vertex *v1, struct vertex *v2,
-                          struct vertex *v3, int32_t y0, int32_t y1)
-{
-#if 0
-	printf("draw top flat triangle:\n");
-	printf("     {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
-	       I12_PRT(v1->screen_x * (1 << 8)),
-	       I12_PRT(v1->screen_y * (1 << 8)),
-	       I12_PRT(v1->position.z));
-	printf("     {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
-	       I12_PRT(v2->screen_x * (1 << 8)),
-	       I12_PRT(v2->screen_y * (1 << 8)),
-	       I12_PRT(v2->position.z));
-	printf("     {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
-	       I12_PRT(v3->screen_x * (1 << 8)),
-	       I12_PRT(v3->screen_y * (1 << 8)),
-	       I12_PRT(v3->position.z));
-#endif
-	draw_span(gpu, polygon, v1, v3, v2, v3, y0, y1);
-}
-
-static void draw_bot_flat(struct gpu *gpu, struct polygon *polygon,
-                          struct vertex *v1, struct vertex *v2,
-                          struct vertex *v3, int32_t y0, int32_t y1)
-{
-#if 0
-	printf("draw bot flat triangle:\n");
-	printf("     {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
-	       I12_PRT(v1->screen_x * (1 << 8)),
-	       I12_PRT(v1->screen_y * (1 << 8)),
-	       I12_PRT(v1->position.z));
-	printf("     {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
-	       I12_PRT(v2->screen_x * (1 << 8)),
-	       I12_PRT(v2->screen_y * (1 << 8)),
-	       I12_PRT(v2->position.z));
-	printf("     {" I12_FMT ", " I12_FMT ", " I12_FMT "}\n",
-	       I12_PRT(v3->screen_x * (1 << 8)),
-	       I12_PRT(v3->screen_y * (1 << 8)),
-	       I12_PRT(v3->position.z));
-#endif
-
-	draw_span(gpu, polygon, v1, v2, v1, v3, y0, y1);
-}
-
-static void draw_not_flat(struct gpu *gpu, struct polygon *polygon,
-                          struct vertex *v1, struct vertex *v2,
-                          struct vertex *v3)
-{
-	draw_bot_flat(gpu, polygon, v1, v2, v3, v1->screen_y, v2->screen_y);
-	draw_top_flat(gpu, polygon, v2, v1, v3, v2->screen_y, v3->screen_y);
 }
 
 static void sort_vertices(struct vertex **v1, struct vertex **v2,
@@ -2250,15 +2197,10 @@ static void draw_triangle(struct gpu *gpu, struct polygon *polygon,
 			break;
 	}
 	sort_vertices(&v1, &v2, &v3);
-	if (v2->screen_y / (1 << 4) == v1->screen_y / (1 << 4)
-	 && v3->screen_y / (1 << 4) == v1->screen_y / (1 << 4))
-		return;
-	if (v2->screen_y / (1 << 4) == v3->screen_y / (1 << 4))
-		draw_bot_flat(gpu, polygon, v1, v2, v3, v1->screen_y, v2->screen_y);
-	else if (v1->screen_y / (1 << 4) == v2->screen_y / (1 << 4))
-		draw_top_flat(gpu, polygon, v1, v2, v3, v2->screen_y, v3->screen_y);
-	else
-		draw_not_flat(gpu, polygon, v1, v2, v3);
+	if (v1->screen_y / (1 << 4) != v2->screen_y / (1 << 4))
+		draw_span(gpu, polygon, v1, v2, v1, v3, v1->screen_y, v2->screen_y);
+	if (v2->screen_y / (1 << 4) != v3->screen_y / (1 << 4))
+		draw_span(gpu, polygon, v1, v3, v2, v3, v2->screen_y, v3->screen_y);
 }
 
 void gpu_g3d_draw(struct gpu *gpu)
