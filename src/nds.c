@@ -230,9 +230,10 @@ struct nds *nds_new(const void *rom_data, size_t rom_size)
 		return NULL;
 
 #ifdef ENABLE_MULTITHREAD
-	pthread_cond_init(&nds->gpu_cond, NULL);
-	pthread_mutex_init(&nds->gpu_mutex, NULL);
-	nds->gpu_thread = pthread_create(&nds->gpu_thread, NULL, gpu_loop, nds);
+	if (pthread_cond_init(&nds->gpu_cond, NULL)
+	 || pthread_mutex_init(&nds->gpu_mutex, NULL)
+	 || pthread_create(&nds->gpu_thread, NULL, gpu_loop, nds))
+		return NULL;
 #endif
 	return nds;
 }
