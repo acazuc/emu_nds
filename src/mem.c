@@ -336,11 +336,6 @@ static void arm##armv##_dma_control(struct mem *mem, uint8_t id) \
 	} \
 	else \
 	{ \
-		if (dma->src & 0xF0000000) \
-		{ \
-			printf("[%08" PRIx32 "] start\n", cpu_get_reg(mem->nds->arm9, CPU_REG_PC)); \
-			/*mem->nds->arm9->debug = CPU_DEBUG_ALL_ML;*/ \
-		} \
 		dma->src &= 0x0FFFFFFE; \
 		dma->dst &= 0x0FFFFFFE; \
 	} \
@@ -1782,7 +1777,7 @@ static void set_arm7_reg8(struct mem *mem, uint32_t addr, uint8_t v)
 			switch (v & 0xF0)
 			{
 				case 0x50:
-#if 1
+#if 0
 					printf("WIFI BB write [%02" PRIx8 "] = 0x%02" PRIx8 "\n",
 					       mem_get_wifi_reg8(mem, MEM_ARM7_REG_W_BB_CNT),
 					       mem_get_wifi_reg8(mem, MEM_ARM7_REG_W_BB_WRITE));
@@ -1791,7 +1786,7 @@ static void set_arm7_reg8(struct mem *mem, uint32_t addr, uint8_t v)
 					break;
 				case 0x60:
 					mem_set_wifi_reg8(mem, MEM_ARM7_REG_W_BB_READ, mem->wifi.bb_regs[mem_get_wifi_reg8(mem, MEM_ARM7_REG_W_BB_CNT)]);
-#if 1
+#if 0
 					printf("WIFI BB read [%02" PRIx8 "] = 0x%02" PRIx8 "\n",
 					       mem_get_wifi_reg8(mem, MEM_ARM7_REG_W_BB_CNT),
 					       mem_get_wifi_reg8(mem, MEM_ARM7_REG_W_BB_READ));
